@@ -69,7 +69,7 @@ export default function Page() {
           />
         )
       case 'quests':
-        return <QuestsScreen habits={habits} onToggleHabit={handleToggleHabit} />
+        return <QuestsScreen habits={habits} onToggleHabit={handleToggleHabit} onEditHabits={() => setShowHabitEditor(true)} />
       case 'finanzas':
         return <FinanzasScreen />
       case 'carrera':

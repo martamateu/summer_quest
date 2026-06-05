@@ -1,14 +1,15 @@
 'use client'
 
-import { Check } from 'lucide-react'
+import { Check, Settings } from 'lucide-react'
 import { AREA_COLORS, AREA_LABELS, type Habit, type HabitArea } from '@/lib/types'
 
 interface QuestsScreenProps {
   habits: Habit[]
   onToggleHabit: (id: string) => void
+  onEditHabits: () => void
 }
 
-export function QuestsScreen({ habits, onToggleHabit }: QuestsScreenProps) {
+export function QuestsScreen({ habits, onToggleHabit, onEditHabits }: QuestsScreenProps) {
   // Group habits by area
   const habitsByArea = habits.reduce(
     (acc, habit) => {
@@ -25,7 +26,16 @@ export function QuestsScreen({ habits, onToggleHabit }: QuestsScreenProps) {
 
   return (
     <div className="px-4 pt-6 pb-24">
-      <h1 className="text-2xl font-bold text-foreground mb-6">Quests</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold text-foreground">Quests</h1>
+        <button
+          onClick={onEditHabits}
+          className="p-2 rounded-full hover:bg-secondary transition-colors"
+          aria-label="Editar habitos"
+        >
+          <Settings className="w-5 h-5 text-muted-foreground" />
+        </button>
+      </div>
 
       <div className="space-y-4">
         {areaOrder.map((area) => {
