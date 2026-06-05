@@ -22,7 +22,7 @@ export default function Page() {
   const [showHabitEditor, setShowHabitEditor] = useState(false)
 
   // Fetch today's steps from the API (updated by the Android app)
-  useEffect(() => {
+  const fetchSteps = () => {
     fetch('/api/steps')
       .then((r) => r.json())
       .then((data) => {
@@ -31,7 +31,6 @@ export default function Page() {
             ...prev,
             steps: { ...prev.steps, current: data.steps },
           }))
-          // Auto-complete the steps habit when goal is reached
           if (data.steps >= 15000) {
             setHabits((prev) =>
               prev.map((h) => h.id === '10' ? { ...h, completed: true } : h)
@@ -40,6 +39,13 @@ export default function Page() {
         }
       })
       .catch(() => {})
+  }
+
+  useEffect(() => {
+    fetchSteps()
+    const handleVisibility = () => { if (document.visibilityState === 'visible') fetchSteps() }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
   }, [])
 
   const handleToggleHabit = (id: string) => {
