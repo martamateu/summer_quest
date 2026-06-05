@@ -1,18 +1,18 @@
 import type { Habit, DailyMetrics } from './types'
 
 export const INITIAL_HABITS: Habit[] = [
-  { id: '1', title: 'Meditar 10 minutos', area: 'mindset', frequency: 'Diario', completed: true },
-  { id: '2', title: 'Leer 20 páginas', area: 'mindset', frequency: 'Diario', completed: true },
-  { id: '3', title: 'Ejercicio 30 min', area: 'health', frequency: 'Diario', completed: true },
-  { id: '4', title: 'Beber 2L de agua', area: 'health', frequency: 'Diario', completed: true },
+  { id: '1', title: 'Meditar 10 minutos', area: 'mindset', frequency: 'Diario', completed: false },
+  { id: '2', title: 'Leer 20 páginas', area: 'mindset', frequency: 'Diario', completed: false },
+  { id: '3', title: 'Ejercicio 30 min', area: 'health', frequency: 'Diario', completed: false },
+  { id: '4', title: 'Beber 2L de agua', area: 'health', frequency: 'Diario', completed: false },
   { id: '5', title: 'Dormir 8 horas', area: 'wellness', frequency: 'Diario', completed: false },
-  { id: '6', title: 'No redes sociales hasta 12pm', area: 'digital', frequency: 'Diario', completed: true },
+  { id: '6', title: 'No redes sociales hasta 12pm', area: 'digital', frequency: 'Diario', completed: false },
   { id: '7', title: 'Revisar presupuesto', area: 'finance', frequency: 'Semanal', completed: false },
-  { id: '8', title: 'Deep work 2h', area: 'career', frequency: 'Diario', completed: true },
+  { id: '8', title: 'Deep work 2h', area: 'career', frequency: 'Diario', completed: false },
   { id: '9', title: 'Journaling nocturno', area: 'mindset', frequency: 'Diario', completed: false },
   { id: '10', title: 'Caminar 10k pasos', area: 'health', frequency: 'Diario', completed: false },
   { id: '11', title: 'Estudiar nuevo skill', area: 'career', frequency: 'Diario', completed: false },
-  { id: '12', title: 'Revisar inversiones', area: 'finance', frequency: 'Semanal', completed: true },
+  { id: '12', title: 'Revisar inversiones', area: 'finance', frequency: 'Semanal', completed: false },
   { id: '13', title: 'Estiramientos matutinos', area: 'wellness', frequency: 'Diario', completed: false },
   { id: '14', title: 'Límite pantalla 3h', area: 'digital', frequency: 'Diario', completed: false },
   { id: '15', title: 'Networking 1 persona', area: 'career', frequency: 'Semanal', completed: false },
@@ -27,9 +27,9 @@ export const INITIAL_HABITS: Habit[] = [
 ]
 
 export const INITIAL_METRICS: DailyMetrics = {
-  steps: { current: 12450, goal: 15000 },
-  screenTime: '2h 10m',
-  deepWork: 50,
+  steps: { current: 0, goal: 10000 },
+  screenTime: '0h 0m',
+  deepWork: 0,
 }
 
 export const MOTIVATIONAL_QUOTES = [
