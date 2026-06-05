@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { BottomNav } from '@/components/bottom-nav'
 import { PomodoroTimer } from '@/components/pomodoro-timer'
 import { HabitEditor } from '@/components/habit-editor'
@@ -20,6 +20,22 @@ export default function Page() {
   const [metrics, setMetrics] = useState<DailyMetrics>(INITIAL_METRICS)
   const [showPomodoro, setShowPomodoro] = useState(false)
   const [showHabitEditor, setShowHabitEditor] = useState(false)
+
+  // Fetch today's steps from the API (updated by the Android app)
+  useEffect(() => {
+    const today = new Date().toISOString().split('T')[0]
+    fetch(`/api/steps?date=${today}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.steps > 0) {
+          setMetrics((prev) => ({
+            ...prev,
+            steps: { ...prev.steps, current: data.steps },
+          }))
+        }
+      })
+      .catch(() => {}) // fail silently — steps just stay at 0
+  }, [])
 
   const handleToggleHabit = (id: string) => {
     setHabits((prev) =>
