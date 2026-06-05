@@ -27,7 +27,7 @@ export const INITIAL_HABITS: Habit[] = [
 ]
 
 export const INITIAL_METRICS: DailyMetrics = {
-  steps: { current: 0, goal: 10000 },
+  steps: { current: 0, goal: 15000 },
   screenTime: '0h 0m',
   deepWork: 0,
 }

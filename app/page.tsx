@@ -23,8 +23,7 @@ export default function Page() {
 
   // Fetch today's steps from the API (updated by the Android app)
   useEffect(() => {
-    const today = new Date().toISOString().split('T')[0]
-    fetch(`/api/steps?date=${today}`)
+    fetch('/api/steps')
       .then((r) => r.json())
       .then((data) => {
         if (data.steps > 0) {
@@ -32,9 +31,15 @@ export default function Page() {
             ...prev,
             steps: { ...prev.steps, current: data.steps },
           }))
+          // Auto-complete the steps habit when goal is reached
+          if (data.steps >= 15000) {
+            setHabits((prev) =>
+              prev.map((h) => h.id === '10' ? { ...h, completed: true } : h)
+            )
+          }
         }
       })
-      .catch(() => {}) // fail silently — steps just stay at 0
+      .catch(() => {})
   }, [])
 
   const handleToggleHabit = (id: string) => {
