@@ -27,7 +27,7 @@ export function StatsScreen({ habits }: StatsScreenProps) {
   )
 
   const weekDays = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
-  const mockWeekData = [85, 72, 90, 68, 95, 45, 32] // Mock completion percentages
+  const mockWeekData = [0, 0, 0, 0, 0, 0, 0]
 
   return (
     <div className="px-4 pt-6 pb-24">
@@ -54,14 +54,14 @@ export function StatsScreen({ habits }: StatsScreenProps) {
             <Flame className="w-5 h-5 text-orange-500" />
             <span className="text-sm text-muted-foreground">Racha</span>
           </div>
-          <p className="text-2xl font-bold text-foreground">12 días</p>
+          <p className="text-2xl font-bold text-foreground">0 días</p>
         </div>
         <div className="bg-card rounded-2xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Calendar className="w-5 h-5 text-blue-500" />
             <span className="text-sm text-muted-foreground">Mejor racha</span>
           </div>
-          <p className="text-2xl font-bold text-foreground">23 días</p>
+          <p className="text-2xl font-bold text-foreground">0 días</p>
         </div>
       </div>
 

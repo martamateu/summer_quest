@@ -5,13 +5,7 @@ import { Camera, Plus, X, Check, Loader2, Flame, Receipt } from 'lucide-react'
 import type { Expense, ExpenseCategory } from '@/lib/types'
 import { EXPENSE_CATEGORY_LABELS } from '@/lib/types'
 
-const INITIAL_EXPENSES: Expense[] = [
-  { id: '1', description: 'Cafe', amount: 2.50, category: 'comida', date: '2026-06-05' },
-  { id: '2', description: 'Metro', amount: 1.50, category: 'transporte', date: '2026-06-05' },
-  { id: '3', description: 'Mercadona', amount: 23.40, category: 'comida', date: '2026-06-04' },
-  { id: '4', description: 'Gasolina', amount: 45.00, category: 'transporte', date: '2026-06-03' },
-  { id: '5', description: 'Netflix', amount: 12.99, category: 'suscripciones', date: '2026-06-01' },
-]
+const INITIAL_EXPENSES: Expense[] = []
 
 interface PendingExpense {
   description: string

@@ -17,7 +17,7 @@ interface TodayDashboardProps {
 export function TodayDashboard({ habits, metrics, onToggleHabit, onOpenPomodoro, onEditHabits }: TodayDashboardProps) {
   const completedCount = habits.filter((h) => h.completed).length
   const totalCount = habits.length
-  const streakDays = 12 // Mock streak data
+  const streakDays = completedCount === totalCount && totalCount > 0 ? 1 : 0
 
   const today = new Date()
   const dateString = today.toLocaleDateString('es-ES', {
