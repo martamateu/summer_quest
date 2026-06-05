@@ -1,5 +1,5 @@
 import { generateObject } from 'ai'
-import { gateway } from '@ai-sdk/gateway'
+import { google } from '@ai-sdk/google'
 import { z } from 'zod'
 
 const ExpenseSchema = z.object({
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     const mimeType = image.type || 'image/jpeg'
 
     const { object } = await generateObject({
-      model: gateway('openai/gpt-4o-mini'),
+      model: google('gemini-2.0-flash'),
       schema: ExpenseSchema,
       messages: [
         {

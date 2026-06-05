@@ -30,10 +30,10 @@ pnpm install
 Crea un archivo `.env.local` en la raíz:
 
 ```env
-AI_GATEWAY_API_KEY=tu_api_key_aqui
+GOOGLE_GENERATIVE_AI_API_KEY=tu_api_key_aqui
 ```
 
-> Necesaria para que el escáner de tickets funcione. Ver sección [Finanzas – requisitos](#finanzas--requisitos) más abajo.
+> Consigue tu key gratuita en [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (hasta 1.500 requests/día sin coste). Necesaria para el escáner de tickets.
 
 ## Desarrollo
 
