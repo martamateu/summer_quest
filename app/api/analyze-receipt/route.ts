@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     const mimeType = image.type || 'image/jpeg'
 
     const { object } = await generateObject({
-      model: google('gemini-2.0-flash'),
+      model: google('gemini-2.5-flash'),
       schema: ExpenseSchema,
       messages: [
         {
