@@ -6,10 +6,12 @@ const redis = new Redis({
 })
 
 // GET /api/steps — returns today's steps
-export async function GET() {
-  const today = new Date().toISOString().split('T')[0]
-  const steps = await redis.get<number>(`steps:${today}`)
-  return Response.json({ date: today, steps: steps ?? 0 })
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url)
+  const dateParam = searchParams.get('date')
+  const date = dateParam ?? new Date().toISOString().split('T')[0]
+  const steps = await redis.get<number>(`steps:${date}`)
+  return Response.json({ date, steps: steps ?? 0 })
 }
 
 // POST /api/steps  { steps: 8432, date: "2026-06-05" }
