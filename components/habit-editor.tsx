@@ -15,6 +15,7 @@ const DAY_LABELS = ['D', 'L', 'M', 'X', 'J', 'V', 'S']
 
 export function HabitEditor({ habits, onClose, onSave }: HabitEditorProps) {
   const [editedHabits, setEditedHabits] = useState<Habit[]>(habits)
+  const [editingHabitId, setEditingHabitId] = useState<string | null>(null)
   const [newHabitTitle, setNewHabitTitle] = useState('')
   const [newHabitArea, setNewHabitArea] = useState<HabitArea>('health')
   const [newHabitFrequency, setNewHabitFrequency] = useState('Diario')
@@ -24,6 +25,25 @@ export function HabitEditor({ habits, onClose, onSave }: HabitEditorProps) {
 
   const handleDeleteHabit = (id: string) => {
     setEditedHabits((prev) => prev.filter((h) => h.id !== id))
+  }
+
+  const openEditHabit = (habit: Habit) => {
+    setEditingHabitId(habit.id)
+    setNewHabitTitle(habit.title)
+    setNewHabitArea(habit.area)
+    setNewHabitFrequency(habit.frequency)
+    setNewHabitNonNeg(habit.nonNegotiable)
+    setNewHabitDays(habit.scheduledDays ?? [])
+    setShowAddForm(true)
+  }
+
+  const resetForm = () => {
+    setEditingHabitId(null)
+    setNewHabitTitle('')
+    setNewHabitArea('health')
+    setNewHabitFrequency('Diario')
+    setNewHabitNonNeg(false)
+    setNewHabitDays([])
   }
 
   const toggleNonNeg = (id: string) => {
@@ -41,19 +61,36 @@ export function HabitEditor({ habits, onClose, onSave }: HabitEditorProps) {
   const handleAddHabit = () => {
     if (!newHabitTitle.trim()) return
     const needsDays = newHabitFrequency === '3x/sem' || newHabitFrequency === '1x/sem'
-    const newHabit: Habit = {
-      id: `habit-${Date.now()}`,
-      title: newHabitTitle.trim(),
-      area: newHabitArea,
-      frequency: newHabitFrequency,
-      nonNegotiable: newHabitNonNeg,
-      scheduledDays: needsDays ? newHabitDays : undefined,
-      completed: false,
+
+    if (editingHabitId) {
+      setEditedHabits((prev) =>
+        prev.map((h) =>
+          h.id === editingHabitId
+            ? {
+                ...h,
+                title: newHabitTitle.trim(),
+                area: newHabitArea,
+                frequency: newHabitFrequency,
+                nonNegotiable: newHabitNonNeg,
+                scheduledDays: needsDays ? newHabitDays : undefined,
+              }
+            : h
+        )
+      )
+    } else {
+      const newHabit: Habit = {
+        id: `habit-${Date.now()}`,
+        title: newHabitTitle.trim(),
+        area: newHabitArea,
+        frequency: newHabitFrequency,
+        nonNegotiable: newHabitNonNeg,
+        scheduledDays: needsDays ? newHabitDays : undefined,
+        completed: false,
+      }
+      setEditedHabits((prev) => [...prev, newHabit])
     }
-    setEditedHabits((prev) => [...prev, newHabit])
-    setNewHabitTitle('')
-    setNewHabitNonNeg(false)
-    setNewHabitDays([])
+
+    resetForm()
     setShowAddForm(false)
   }
 
@@ -105,21 +142,34 @@ export function HabitEditor({ habits, onClose, onSave }: HabitEditorProps) {
               </div>
               <div className="space-y-2">
                 {areaHabits.map((habit) => (
-                  <div key={habit.id} className="py-2 px-2 bg-background rounded-xl">
+                  <div
+                    key={habit.id}
+                    className="py-2 px-2 bg-background rounded-xl cursor-pointer"
+                    onClick={() => openEditHabit(habit)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => e.key === 'Enter' && openEditHabit(habit)}
+                  >
                     <div className="flex items-center gap-3">
                       <GripVertical className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                       <span className="flex-1 text-sm text-foreground">{habit.title}</span>
                       <span className="text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">{habit.frequency}</span>
                       {/* Non-negotiable star toggle */}
                       <button
-                        onClick={() => toggleNonNeg(habit.id)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          toggleNonNeg(habit.id)
+                        }}
                         className="p-1.5 rounded-full transition-colors"
                         aria-label="No negociable"
                       >
                         <Star className={`w-4 h-4 ${habit.nonNegotiable ? 'text-amber-400 fill-amber-400' : 'text-muted-foreground'}`} />
                       </button>
                       <button
-                        onClick={() => handleDeleteHabit(habit.id)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDeleteHabit(habit.id)
+                        }}
                         className="p-1.5 rounded-full hover:bg-destructive/10 transition-colors"
                         aria-label={`Eliminar ${habit.title}`}
                       >
@@ -132,7 +182,10 @@ export function HabitEditor({ habits, onClose, onSave }: HabitEditorProps) {
                         {DAY_LABELS.map((label, idx) => (
                           <button
                             key={idx}
-                            onClick={() => toggleScheduledDay(habit.id, idx)}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              toggleScheduledDay(habit.id, idx)
+                            }}
                             className={`w-7 h-7 rounded-full text-xs font-medium transition-colors ${
                               (habit.scheduledDays ?? []).includes(idx)
                                 ? 'bg-primary text-primary-foreground'
@@ -155,7 +208,9 @@ export function HabitEditor({ habits, onClose, onSave }: HabitEditorProps) {
       {/* Add New Habit */}
       {showAddForm ? (
         <div className="bg-card rounded-2xl p-4">
-          <h3 className="text-sm font-semibold text-foreground mb-4">Nuevo Habito</h3>
+          <h3 className="text-sm font-semibold text-foreground mb-4">
+            {editingHabitId ? 'Editar Habito' : 'Nuevo Habito'}
+          </h3>
           <div className="space-y-4">
             <input
               type="text"
@@ -213,8 +268,18 @@ export function HabitEditor({ habits, onClose, onSave }: HabitEditorProps) {
               No negociable (aparece en Hoy)
             </button>
             <div className="flex gap-3">
-              <button onClick={() => setShowAddForm(false)} className="flex-1 py-3 bg-secondary text-foreground text-sm font-medium rounded-xl">Cancelar</button>
-              <button onClick={handleAddHabit} disabled={!newHabitTitle.trim()} className="flex-1 py-3 bg-primary text-primary-foreground text-sm font-medium rounded-xl disabled:opacity-50">Agregar</button>
+              <button
+                onClick={() => {
+                  setShowAddForm(false)
+                  resetForm()
+                }}
+                className="flex-1 py-3 bg-secondary text-foreground text-sm font-medium rounded-xl"
+              >
+                Cancelar
+              </button>
+              <button onClick={handleAddHabit} disabled={!newHabitTitle.trim()} className="flex-1 py-3 bg-primary text-primary-foreground text-sm font-medium rounded-xl disabled:opacity-50">
+                {editingHabitId ? 'Guardar cambios' : 'Agregar'}
+              </button>
             </div>
           </div>
         </div>
