@@ -88,7 +88,7 @@ export default function Page() {
 
   const { streak, bestStreak } = useMemo(() => getStreaks(habits), [habits])
 
-  // Fetch today's steps from the API (updated by the Android app)
+  // Fetch today's steps and screen time from the API (updated by the Android app)
   const fetchSteps = () => {
     fetch('/api/steps')
       .then((r) => r.json())
@@ -103,6 +103,18 @@ export default function Page() {
               prev.map((h) => h.id === '10' ? { ...h, completed: true } : h)
             )
           }
+        }
+      })
+      .catch(() => {})
+
+    fetch('/api/screen-time')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.minutes > 0) {
+          const h = Math.floor(data.minutes / 60)
+          const m = data.minutes % 60
+          const formatted = h > 0 ? `${h}h ${m}m` : `${m}m`
+          setMetrics((prev) => ({ ...prev, screenTime: formatted }))
         }
       })
       .catch(() => {})
