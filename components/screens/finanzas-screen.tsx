@@ -1,11 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Camera, Plus, X, Check, Loader2, Flame, Receipt } from 'lucide-react'
 import type { Expense, ExpenseCategory } from '@/lib/types'
 import { EXPENSE_CATEGORY_LABELS } from '@/lib/types'
 
 const INITIAL_EXPENSES: Expense[] = []
+const EXPENSES_STORAGE_KEY = 'sq_expenses'
+const FINANCE_START_STORAGE_KEY = 'sq_finance_started_at'
+
+const getTodayStr = () => new Date().toISOString().split('T')[0]
 
 interface PendingExpense {
   description: string
@@ -16,12 +20,35 @@ interface PendingExpense {
 
 export function FinanzasScreen() {
   const [expenses, setExpenses] = useState<Expense[]>(INITIAL_EXPENSES)
+  const [financeStartDate, setFinanceStartDate] = useState<string | null>(null)
   const [isScanning, setIsScanning] = useState(false)
   const [pendingExpense, setPendingExpense] = useState<PendingExpense | null>(null)
   const [showManualAdd, setShowManualAdd] = useState(false)
   const [manualDescription, setManualDescription] = useState('')
   const [manualAmount, setManualAmount] = useState('')
   const [manualCategory, setManualCategory] = useState<ExpenseCategory>('otros')
+
+  useEffect(() => {
+    try {
+      const storedExpenses = localStorage.getItem(EXPENSES_STORAGE_KEY)
+      if (storedExpenses) {
+        setExpenses(JSON.parse(storedExpenses) as Expense[])
+      }
+
+      const storedStartDate = localStorage.getItem(FINANCE_START_STORAGE_KEY)
+      const startDate = storedStartDate || getTodayStr()
+      if (!storedStartDate) {
+        localStorage.setItem(FINANCE_START_STORAGE_KEY, startDate)
+      }
+      setFinanceStartDate(startDate)
+    } catch {
+      setFinanceStartDate(getTodayStr())
+    }
+  }, [])
+
+  useEffect(() => {
+    localStorage.setItem(EXPENSES_STORAGE_KEY, JSON.stringify(expenses))
+  }, [expenses])
 
   // Calculate monthly total
   const currentMonth = new Date().getMonth()
@@ -41,13 +68,16 @@ export function FinanzasScreen() {
 
     let streak = 0
     const today = new Date()
-    
+    const startDate = financeStartDate ? new Date(financeStartDate) : today
+
     for (let i = 0; i < 365; i++) {
       const date = new Date(today)
       date.setDate(date.getDate() - i)
+      if (date < startDate) break
+
       const dateStr = date.toISOString().split('T')[0]
       const dayTotal = expensesByDate[dateStr] || 0
-      
+
       if (dayTotal < 10) {
         streak++
       } else {
