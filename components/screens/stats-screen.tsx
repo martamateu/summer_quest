@@ -6,9 +6,11 @@ import { AREA_COLORS, AREA_LABELS, type HabitArea } from '@/lib/types'
 
 interface StatsScreenProps {
   habits: Habit[]
+  streak: number
+  bestStreak: number
 }
 
-export function StatsScreen({ habits }: StatsScreenProps) {
+export function StatsScreen({ habits, streak, bestStreak }: StatsScreenProps) {
   const completedToday = habits.filter((h) => h.completed).length
   const totalHabits = habits.length
   const completionRate = Math.round((completedToday / totalHabits) * 100)
@@ -54,14 +56,14 @@ export function StatsScreen({ habits }: StatsScreenProps) {
             <Flame className="w-5 h-5 text-orange-500" />
             <span className="text-sm text-muted-foreground">Racha</span>
           </div>
-          <p className="text-2xl font-bold text-foreground">0 días</p>
+          <p className="text-2xl font-bold text-foreground">{streak} días</p>
         </div>
         <div className="bg-card rounded-2xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Calendar className="w-5 h-5 text-blue-500" />
             <span className="text-sm text-muted-foreground">Mejor racha</span>
           </div>
-          <p className="text-2xl font-bold text-foreground">0 días</p>
+          <p className="text-2xl font-bold text-foreground">{bestStreak} días</p>
         </div>
       </div>
 

@@ -9,15 +9,15 @@ import type { Habit, DailyMetrics } from '@/lib/types'
 interface TodayDashboardProps {
   habits: Habit[]
   metrics: DailyMetrics
+  streak: number
   onToggleHabit: (id: string) => void
   onOpenPomodoro: () => void
   onEditHabits: () => void
 }
 
-export function TodayDashboard({ habits, metrics, onToggleHabit, onOpenPomodoro, onEditHabits }: TodayDashboardProps) {
+export function TodayDashboard({ habits, metrics, streak, onToggleHabit, onOpenPomodoro, onEditHabits }: TodayDashboardProps) {
   const completedCount = habits.filter((h) => h.completed).length
   const totalCount = habits.length
-  const streakDays = completedCount === totalCount && totalCount > 0 ? 1 : 0
 
   const today = new Date()
   const dateString = today.toLocaleDateString('es-ES', {
@@ -36,7 +36,7 @@ export function TodayDashboard({ habits, metrics, onToggleHabit, onOpenPomodoro,
         </div>
         <div className="flex items-center gap-1.5 bg-accent px-3 py-1.5 rounded-full">
           <Flame className="w-4 h-4 text-primary" />
-          <span className="text-sm font-semibold text-primary">{streakDays} días</span>
+          <span className="text-sm font-semibold text-primary">{streak} días</span>
         </div>
       </div>
 
