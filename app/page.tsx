@@ -120,9 +120,22 @@ export default function Page() {
       .catch(() => {})
   }
 
+  const triggerAndroidSync = () => {
+    // Ask Android to push fresh steps + screen time, then fetch after 5s
+    fetch('/api/trigger-sync', { method: 'POST' })
+      .then(() => setTimeout(fetchSteps, 5000))
+      .catch(() => {})
+  }
+
   useEffect(() => {
-    fetchSteps()
-    const handleVisibility = () => { if (document.visibilityState === 'visible') fetchSteps() }
+    fetchSteps() // show cached data immediately
+    triggerAndroidSync() // ping Android, then re-fetch after 5s
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchSteps()
+        triggerAndroidSync()
+      }
+    }
     document.addEventListener('visibilitychange', handleVisibility)
     return () => document.removeEventListener('visibilitychange', handleVisibility)
   }, [])
