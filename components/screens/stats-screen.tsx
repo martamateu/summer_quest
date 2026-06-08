@@ -8,15 +8,16 @@ interface StatsScreenProps {
   habits: Habit[]
   streak: number
   bestStreak: number
+  weeklyData: number[]
 }
 
-export function StatsScreen({ habits, streak, bestStreak }: StatsScreenProps) {
-  const completedToday = habits.filter((h) => h.completed).length
-  const totalHabits = habits.length
-  const completionRate = Math.round((completedToday / totalHabits) * 100)
+export function StatsScreen({ habits, streak, bestStreak, weeklyData }: StatsScreenProps) {
+  const completedToday = habits.filter((h) => h.nonNegotiable && h.completed).length
+  const totalHabits = habits.filter((h) => h.nonNegotiable).length
+  const completionRate = totalHabits > 0 ? Math.round((completedToday / totalHabits) * 100) : 0
 
-  // Calculate habits by area
-  const habitsByArea = habits.reduce(
+  // Calculate habits by area (non-negotiables only for stats)
+  const habitsByArea = habits.filter(h => h.nonNegotiable).reduce(
     (acc, habit) => {
       if (!acc[habit.area]) {
         acc[habit.area] = { total: 0, completed: 0 }
@@ -29,7 +30,6 @@ export function StatsScreen({ habits, streak, bestStreak }: StatsScreenProps) {
   )
 
   const weekDays = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
-  const mockWeekData = [0, 0, 0, 0, 0, 0, 0]
 
   return (
     <div className="px-4 pt-6 pb-24">
@@ -72,7 +72,7 @@ export function StatsScreen({ habits, streak, bestStreak }: StatsScreenProps) {
         <h2 className="text-base font-semibold text-foreground mb-4">Esta semana</h2>
         <div className="flex items-end justify-between gap-2 h-32">
           {weekDays.map((day, index) => {
-            const height = mockWeekData[index]
+            const height = weeklyData[index] ?? 0
             const isToday = index === new Date().getDay() - 1 || (new Date().getDay() === 0 && index === 6)
             return (
               <div key={day} className="flex-1 flex flex-col items-center gap-2">

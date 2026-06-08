@@ -16,8 +16,10 @@ interface TodayDashboardProps {
 }
 
 export function TodayDashboard({ habits, metrics, streak, onToggleHabit, onOpenPomodoro, onEditHabits }: TodayDashboardProps) {
-  const completedCount = habits.filter((h) => h.completed).length
-  const totalCount = habits.length
+  // Only show non-negotiable habits in today's dashboard
+  const todayHabits = habits.filter((h) => h.nonNegotiable)
+  const completedCount = todayHabits.filter((h) => h.completed).length
+  const totalCount = todayHabits.length
 
   const today = new Date()
   const dateString = today.toLocaleDateString('es-ES', {
@@ -78,7 +80,7 @@ export function TodayDashboard({ habits, metrics, streak, onToggleHabit, onOpenP
           </button>
         </div>
         <div className="divide-y divide-border/50">
-          {habits.slice(0, 8).map((habit) => (
+          {todayHabits.map((habit) => (
             <HabitRow key={habit.id} habit={habit} onToggle={onToggleHabit} />
           ))}
         </div>

@@ -10,8 +10,19 @@ interface QuestsScreenProps {
 }
 
 export function QuestsScreen({ habits, onToggleHabit, onEditHabits }: QuestsScreenProps) {
+  const todayDow = new Date().getDay() // 0=Sun ... 6=Sat
+
+  // Show only non-non-negotiable habits that are relevant today
+  // A habit is relevant today if: it's daily, OR its scheduledDays includes today
+  const questHabits = habits.filter((h) => {
+    if (h.nonNegotiable) return false
+    if (h.frequency === 'Diario' || h.frequency === 'L-V' || h.frequency === 'Fin de semana') return true
+    if (h.scheduledDays && h.scheduledDays.length > 0) return h.scheduledDays.includes(todayDow)
+    return true
+  })
+
   // Group habits by area
-  const habitsByArea = habits.reduce(
+  const habitsByArea = questHabits.reduce(
     (acc, habit) => {
       if (!acc[habit.area]) {
         acc[habit.area] = []
