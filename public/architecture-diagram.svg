@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="920" viewBox="0 0 1400 920" role="img" aria-labelledby="title desc">
+  <title id="title">Summer Quest Architecture</title>
+  <desc id="desc">Full architecture diagram: Web, Vercel, APIs, Redis, Firebase FCM, Android, Gemini, localStorage.</desc>
+
+  <defs>
+    <style>
+      .bg { fill: #0f172a; }
+      .title { font: 700 26px 'Segoe UI', Arial, sans-serif; fill: #f8fafc; }
+      .subtitle { font: 400 14px 'Segoe UI', Arial, sans-serif; fill: #94a3b8; }
+      .label { font: 700 13px 'Segoe UI', Arial, sans-serif; fill: #f1f5f9; }
+      .small { font: 400 11.5px 'Segoe UI', Arial, sans-serif; fill: #cbd5e1; }
+      .endpoint { font: 500 11px 'Courier New', monospace; fill: #a5b4fc; }
+      .box { rx: 12; }
+      .line { stroke-width: 2; fill: none; marker-end: url(#arrow); }
+      .line-back { stroke-width: 2; fill: none; marker-end: url(#arrow-back); }
+      .line-dash { stroke-width: 2; fill: none; stroke-dasharray: 7 5; marker-end: url(#arrow); }
+    </style>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#64748b"/></marker>
+    <marker id="arrow-back" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#22d3ee"/></marker>
+  </defs>
+
+  <rect class="bg" width="1400" height="920"/>
+
+  <!-- Title -->
+  <text class="title" x="40" y="44">Summer Quest — Architecture</text>
+  <text class="subtitle" x="40" y="68">Personal habit tracker with health sync, OCR expense scanning and gamification</text>
+
+  <!-- USER -->
+  <rect class="box" x="40" y="110" width="200" height="100" fill="#1e293b" stroke="#475569" stroke-width="2"/>
+  <text class="label" x="68" y="148">User (Browser)</text>
+  <text class="small" x="68" y="172">Opens web app on</text>
+  <text class="small" x="68" y="188">mobile or desktop</text>
+
+  <!-- VERCEL -->
+  <rect class="box" x="310" y="96" width="390" height="260" fill="#1e293b" stroke="#6366f1" stroke-width="2"/>
+  <text class="label" x="340" y="128">Vercel  (Next.js 16)</text>
+  <text class="small" x="340" y="148">App Router + React 19 + Tailwind 4</text>
+
+  <rect class="box" x="330" y="162" width="350" height="176" fill="#0f172a" stroke="#334155" stroke-width="1.5"/>
+  <text class="endpoint" x="346" y="186">GET|POST  /api/steps</text>
+  <text class="endpoint" x="346" y="206">GET|POST  /api/screen-time</text>
+  <text class="endpoint" x="346" y="226">POST      /api/fcm-token</text>
+  <text class="endpoint" x="346" y="246">POST      /api/trigger-sync</text>
+  <text class="endpoint" x="346" y="266">POST      /api/analyze-receipt</text>
+  <text class="small" x="346" y="296">Fetches steps + screen time on load</text>
+  <text class="small" x="346" y="314">Triggers Android via FCM on visit</text>
+  <text class="small" x="346" y="332">Re-fetches data after 5 s delay</text>
+
+  <!-- REDIS -->
+  <rect class="box" x="770" y="110" width="270" height="160" fill="#1e293b" stroke="#16a34a" stroke-width="2"/>
+  <text class="label" x="800" y="144">Upstash Redis</text>
+  <text class="small" x="800" y="168">steps:{date}       → {steps, calories}</text>
+  <text class="small" x="800" y="188">screentime:{date}  → minutes</text>
+  <text class="small" x="800" y="208">fcm:token          → device token</text>
+  <text class="small" x="800" y="234">TTL 48 h (data) / 30 d (token)</text>
+
+  <!-- FIREBASE -->
+  <rect class="box" x="1100" y="110" width="260" height="120" fill="#1e293b" stroke="#f59e0b" stroke-width="2"/>
+  <text class="label" x="1130" y="144">Firebase Cloud Messaging</text>
+  <text class="small" x="1130" y="168">Project: steps-sync-f0322</text>
+  <text class="small" x="1130" y="188">Silent data message</text>
+  <text class="small" x="1130" y="208">{ action: "sync" }</text>
+
+  <!-- ANDROID -->
+  <rect class="box" x="1060" y="340" width="300" height="220" fill="#1e293b" stroke="#d97706" stroke-width="2"/>
+  <text class="label" x="1090" y="374">Android App (Kotlin)</text>
+  <text class="small" x="1090" y="398">Receives FCM silent push</text>
+  <text class="small" x="1090" y="418">Reads Health Connect → steps</text>
+  <text class="small" x="1090" y="438">Reads UsageStatsManager → screen time</text>
+  <text class="small" x="1090" y="462">Scheduled alarms: 14h 18h 20h 23:30h</text>
+  <text class="small" x="1090" y="486">POST /api/steps</text>
+  <text class="small" x="1090" y="506">POST /api/screen-time</text>
+  <text class="small" x="1090" y="526">POST /api/fcm-token (on launch)</text>
+
+  <!-- GEMINI -->
+  <rect class="box" x="770" y="380" width="270" height="140" fill="#1e293b" stroke="#3b82f6" stroke-width="2"/>
+  <text class="label" x="800" y="414">Google Gemini 2.5 Flash</text>
+  <text class="small" x="800" y="438">Receives receipt image (base64)</text>
+  <text class="small" x="800" y="458">Returns structured JSON:</text>
+  <text class="endpoint" x="800" y="478">{ description, amount, category }</text>
+  <text class="small" x="800" y="498">Free tier: 500 req/day</text>
+
+  <!-- LOCALSTORAGE -->
+  <rect class="box" x="310" y="420" width="390" height="180" fill="#1e293b" stroke="#22d3ee" stroke-width="2"/>
+  <text class="label" x="340" y="454">localStorage (Browser)</text>
+  <text class="small" x="340" y="478">sq_habits          habit list and config</text>
+  <text class="small" x="340" y="498">sq_today           today's completions</text>
+  <text class="small" x="340" y="518">sq_history         daily history for streaks</text>
+  <text class="small" x="340" y="538">sq_expenses        finance expenses</text>
+  <text class="small" x="340" y="558">sq_finance_started_at   tracking start date</text>
+  <text class="small" x="340" y="580">Persists across reloads, resets daily completions</text>
+
+  <!-- LEGEND -->
+  <rect class="box" x="40" y="700" width="1320" height="190" fill="#1e293b" stroke="#334155" stroke-width="1.5"/>
+  <text class="label" x="72" y="732">Sync Flow (triggered on every web visit)</text>
+  <text class="small" x="72" y="758">1. User opens web app</text>
+  <text class="small" x="72" y="778">2. Web immediately shows cached data from Redis (GET /api/steps, GET /api/screen-time)</text>
+  <text class="small" x="72" y="798">3. Web sends POST /api/trigger-sync → server retrieves FCM token from Redis</text>
+  <text class="small" x="72" y="818">4. Server sends silent FCM push to Android → Android wakes up</text>
+  <text class="small" x="72" y="838">5. Android reads Health Connect (steps) + UsageStatsManager (screen time) → POSTs to API → stored in Redis</text>
+  <text class="small" x="72" y="858">6. After 5 s delay, web re-fetches from Redis → UI updates with live data</text>
+  <text class="small" x="72" y="878">7. If steps ≥ 15,000 → "Walk 15k steps" habit is auto-completed</text>
+
+  <!-- ARROWS -->
+  <path class="line" d="M240 160 L310 160" stroke="#6366f1"/>
+  <path class="line" d="M700 190 L770 190" stroke="#16a34a"/>
+  <path class="line" d="M700 140 L1100 155" stroke="#f59e0b"/>
+  <path class="line" d="M1230 230 L1230 340" stroke="#f59e0b"/>
+  <path class="line-back" d="M1060 460 L700 280" stroke="#22d3ee"/>
+  <path class="line" d="M700 310 L770 420" stroke="#3b82f6"/>
+  <path class="line-back" d="M770 480 L700 320" stroke="#22d3ee"/>
+  <path class="line" d="M505 356 L505 420" stroke="#22d3ee"/>
+</svg>
