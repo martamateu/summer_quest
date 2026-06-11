@@ -572,25 +572,37 @@ export function FinanzasScreen() {
                   </button>
                 </div>
                 {item.suggestedCategory && item.confidence !== 'low' ? (
-                  <div>
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <button
-                        onClick={() => setPendingItems(prev => prev.map((p, i) => i === index ? { ...p, confidence: 'low' } : p))}
-                        className="px-2 py-0.5 rounded-full text-xs bg-secondary text-foreground hover:bg-secondary/80 transition-colors"
-                      >
-                        {EXPENSE_CATEGORY_LABELS[item.suggestedCategory]} ✎
-                      </button>
-                      <button onClick={() => confirmItem(index)} className="ml-auto p-1.5 rounded-full bg-primary text-primary-foreground"><Check className="w-4 h-4" /></button>
-                      <button onClick={() => dismissItem(index)} className="p-1.5 rounded-full bg-secondary text-foreground"><X className="w-4 h-4" /></button>
-                    </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setPendingItems(prev => prev.map((p, i) => i === index ? { ...p, confidence: 'low' } : p))}
+                      className="px-2 py-0.5 rounded-full text-xs bg-secondary text-foreground hover:bg-secondary/80 transition-colors"
+                    >
+                      {EXPENSE_CATEGORY_LABELS[item.suggestedCategory]} ✎
+                    </button>
+                    <button onClick={() => confirmItem(index)} className="ml-auto p-1.5 rounded-full bg-primary text-primary-foreground"><Check className="w-4 h-4" /></button>
+                    <button onClick={() => dismissItem(index)} className="p-1.5 rounded-full bg-secondary text-foreground"><X className="w-4 h-4" /></button>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-4 gap-1.5 mt-1">
-                    {categories.map(cat => (
-                      <button key={cat} onClick={() => confirmItem(index, cat)} className="p-1.5 rounded-lg bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground transition-colors">
-                        <span className="text-[10px]">{EXPENSE_CATEGORY_LABELS[cat]}</span>
-                      </button>
-                    ))}
+                  <div>
+                    <div className="grid grid-cols-4 gap-1.5 mt-1 mb-2">
+                      {categories.map(cat => (
+                        <button
+                          key={cat}
+                          onClick={() => setPendingItems(prev => prev.map((p, i) => i === index ? { ...p, suggestedCategory: cat, confidence: 'high' } : p))}
+                          className={`p-1.5 rounded-lg transition-colors ${
+                            item.suggestedCategory === cat
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-secondary text-foreground hover:bg-primary/20'
+                          }`}
+                        >
+                          <span className="text-[10px]">{EXPENSE_CATEGORY_LABELS[cat]}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => confirmItem(index)} disabled={!item.suggestedCategory} className="ml-auto p-1.5 rounded-full bg-primary text-primary-foreground disabled:opacity-50"><Check className="w-4 h-4" /></button>
+                      <button onClick={() => dismissItem(index)} className="p-1.5 rounded-full bg-secondary text-foreground"><X className="w-4 h-4" /></button>
+                    </div>
                   </div>
                 )}
               </div>
