@@ -103,9 +103,10 @@ export async function POST(request: NextRequest) {
     const rows = readRes.data.values || []
 
     // Build a searchable list combining A and B columns
+    const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     const rowTexts = rows.map((r, i) => ({
       row: i + 1,
-      text: ((r[0] || '') + ' ' + (r[1] || '')).toLowerCase(),
+      text: normalize((r[0] || '') + ' ' + (r[1] || '')),
     }))
 
     const updates: { range: string; values: string[][] }[] = []
@@ -116,7 +117,7 @@ export async function POST(request: NextRequest) {
       const searchTerm = EXERCISE_NAMES[ex.exerciseId]
       if (!searchTerm) { unmatched.push(ex.exerciseId); continue }
 
-      const found = rowTexts.find(r => r.text.includes(searchTerm.toLowerCase()))
+      const found = rowTexts.find(r => r.text.includes(normalize(searchTerm)))
       if (!found) { unmatched.push(`${ex.exerciseId}:${searchTerm}`); continue }
 
       const formatted = formatSets(ex.sets)
