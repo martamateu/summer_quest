@@ -36,7 +36,6 @@ export function GymScreen() {
   const [sessionDate, setSessionDate] = useState(getTodayStr())
   const [currentSets, setCurrentSets] = useState<Record<string, GymSet[]>>({})
   const [expandedExercise, setExpandedExercise] = useState<string | null>(null)
-  const [showStats, setShowStats] = useState(false)
 
   useEffect(() => { setLogs(loadLogs()) }, [])
 
@@ -113,65 +112,46 @@ export function GymScreen() {
     setCurrentSets({})
   }
 
-  // Weekly comparison stats
-  const weeklyStats = useMemo(() => {
-    const now = new Date()
-    const dayOfWeek = now.getDay()
-    const thisMonday = new Date(now)
-    thisMonday.setDate(now.getDate() - ((dayOfWeek + 6) % 7))
-    const lastMonday = new Date(thisMonday)
-    lastMonday.setDate(thisMonday.getDate() - 7)
+  // Per-exercise progression across all sessions for the selected workout
+  const exerciseProgression = useMemo(() => {
+    const workoutLogs = logs
+      .filter(l => l.workoutId === selectedWorkout)
+      .sort((a, b) => a.date.localeCompare(b.date))
 
-    const thisWeekStr = thisMonday.toISOString().split('T')[0]
-    const lastWeekStr = lastMonday.toISOString().split('T')[0]
+    return workout.exercises.map(ex => {
+      const history = workoutLogs
+        .map(session => {
+          const found = session.exercises.find(e => e.exerciseId === ex.id)
+          if (!found || found.sets.length === 0) return null
+          const maxWeight = Math.max(...found.sets.map(s => s.weight))
+          const totalVol = found.sets.reduce((s, set) => s + set.weight * set.reps, 0)
+          const totalReps = found.sets.reduce((s, set) => s + set.reps, 0)
+          return { date: session.date, maxWeight, totalVol, totalReps, sets: found.sets }
+        })
+        .filter((h): h is NonNullable<typeof h> => h !== null)
 
-    const thisWeekLogs = logs.filter(l => l.date >= thisWeekStr)
-    const lastWeekLogs = logs.filter(l => l.date >= lastWeekStr && l.date < thisWeekStr)
+      if (history.length === 0) return null
 
-    // Calculate total volume (weight × reps) per exercise
-    const getVolume = (sessionLogs: GymSessionLog[], exerciseId: string) => {
-      let total = 0
-      for (const session of sessionLogs) {
-        for (const ex of session.exercises) {
-          if (ex.exerciseId === exerciseId) {
-            for (const s of ex.sets) {
-              total += s.weight * s.reps
-            }
-          }
-        }
+      const latest = history[history.length - 1]
+      const prev = history.length >= 2 ? history[history.length - 2] : null
+      const first = history[0]
+
+      return {
+        exerciseId: ex.id,
+        name: ex.name,
+        sessions: history.length,
+        latestMax: latest.maxWeight,
+        latestVol: latest.totalVol,
+        // vs previous session
+        maxDiff: prev ? latest.maxWeight - prev.maxWeight : 0,
+        volDiff: prev ? Math.round(((latest.totalVol - prev.totalVol) / prev.totalVol) * 100) : 0,
+        // vs first session (overall progress)
+        overallMaxDiff: latest.maxWeight - first.maxWeight,
+        overallVolDiff: first.totalVol > 0 ? Math.round(((latest.totalVol - first.totalVol) / first.totalVol) * 100) : 0,
+        history,
       }
-      return total
-    }
-
-    const getMaxWeight = (sessionLogs: GymSessionLog[], exerciseId: string) => {
-      let max = 0
-      for (const session of sessionLogs) {
-        for (const ex of session.exercises) {
-          if (ex.exerciseId === exerciseId) {
-            for (const s of ex.sets) {
-              if (s.weight > max) max = s.weight
-            }
-          }
-        }
-      }
-      return max
-    }
-
-    const stats: { exerciseId: string; name: string; thisVol: number; lastVol: number; thisMax: number; lastMax: number }[] = []
-
-    for (const w of WORKOUTS) {
-      for (const ex of w.exercises) {
-        const thisVol = getVolume(thisWeekLogs, ex.id)
-        const lastVol = getVolume(lastWeekLogs, ex.id)
-        const thisMax = getMaxWeight(thisWeekLogs, ex.id)
-        const lastMax = getMaxWeight(lastWeekLogs, ex.id)
-        if (thisVol > 0 || lastVol > 0) {
-          stats.push({ exerciseId: ex.id, name: ex.name, thisVol, lastVol, thisMax, lastMax })
-        }
-      }
-    }
-    return stats
-  }, [logs])
+    }).filter((p): p is NonNullable<typeof p> => p !== null)
+  }, [logs, selectedWorkout, workout.exercises])
 
   // Render active session
   if (activeSession) {
@@ -293,12 +273,6 @@ export function GymScreen() {
     <div className="px-4 pt-6 pb-24">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-foreground">Gym</h1>
-        <button
-          onClick={() => setShowStats(s => !s)}
-          className="p-2 rounded-full hover:bg-secondary transition-colors"
-        >
-          <TrendingUp className="w-5 h-5 text-muted-foreground" />
-        </button>
       </div>
 
       {/* Workout Selector */}
@@ -354,6 +328,65 @@ export function GymScreen() {
         </div>
       </div>
 
+      {/* Progression Stats — always visible */}
+      {exerciseProgression.length > 0 && (
+        <div className="bg-card rounded-2xl p-4 mb-4">
+          <div className="flex items-center gap-2 mb-3">
+            <TrendingUp className="w-5 h-5 text-primary" />
+            <h2 className="text-base font-semibold text-foreground">Progreso</h2>
+          </div>
+          <div className="space-y-4">
+            {exerciseProgression.map(stat => (
+              <div key={stat.exerciseId} className="pb-3 border-b border-border/50 last:border-0 last:pb-0">
+                <p className="text-sm font-medium text-foreground mb-2">{stat.name}</p>
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <div className="bg-secondary rounded-xl p-2.5">
+                    <p className="text-[10px] text-muted-foreground uppercase">Peso max</p>
+                    <p className="text-lg font-bold text-foreground">{stat.latestMax}kg</p>
+                    {stat.maxDiff !== 0 && (
+                      <p className={`text-xs font-medium ${stat.maxDiff > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {stat.maxDiff > 0 ? '↑' : '↓'} {Math.abs(stat.maxDiff)}kg vs anterior
+                      </p>
+                    )}
+                  </div>
+                  <div className="bg-secondary rounded-xl p-2.5">
+                    <p className="text-[10px] text-muted-foreground uppercase">Volumen</p>
+                    <p className="text-lg font-bold text-foreground">{stat.latestVol.toLocaleString()}kg</p>
+                    {stat.volDiff !== 0 && (
+                      <p className={`text-xs font-medium ${stat.volDiff > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {stat.volDiff > 0 ? '↑' : '↓'} {Math.abs(stat.volDiff)}% vs anterior
+                      </p>
+                    )}
+                  </div>
+                </div>
+                {/* Mini progression bar */}
+                {stat.history.length >= 2 && (
+                  <div className="flex items-end gap-1 h-8">
+                    {stat.history.map((h, i) => {
+                      const maxVol = Math.max(...stat.history.map(x => x.totalVol))
+                      const pct = maxVol > 0 ? (h.totalVol / maxVol) * 100 : 0
+                      return (
+                        <div key={i} className="flex-1 flex flex-col items-center gap-0.5">
+                          <div
+                            className={`w-full rounded-t ${i === stat.history.length - 1 ? 'bg-primary' : 'bg-primary/30'}`}
+                            style={{ height: `${Math.max(pct, 8)}%` }}
+                          />
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+                {stat.sessions >= 2 && stat.overallMaxDiff !== 0 && (
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Desde la 1ª sesión: {stat.overallMaxDiff > 0 ? '+' : ''}{stat.overallMaxDiff}kg peso max · {stat.overallVolDiff > 0 ? '+' : ''}{stat.overallVolDiff}% volumen
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Recent Sessions */}
       <div className="bg-card rounded-2xl p-4 mb-4">
         <h2 className="text-base font-semibold text-foreground mb-3">Últimas sesiones</h2>
@@ -392,44 +425,6 @@ export function GymScreen() {
           </div>
         )}
       </div>
-
-      {/* Weekly Stats */}
-      {showStats && weeklyStats.length > 0 && (
-        <div className="bg-card rounded-2xl p-4">
-          <h2 className="text-base font-semibold text-foreground mb-3">Progreso semanal</h2>
-          <div className="space-y-3">
-            {weeklyStats.map(stat => {
-              const volDiff = stat.lastVol > 0
-                ? Math.round(((stat.thisVol - stat.lastVol) / stat.lastVol) * 100)
-                : null
-              const maxDiff = stat.thisMax - stat.lastMax
-              return (
-                <div key={stat.exerciseId} className="py-2 border-b border-border/50 last:border-0">
-                  <p className="text-sm font-medium text-foreground mb-1">{stat.name}</p>
-                  <div className="flex items-center gap-4 text-xs">
-                    <span className="text-muted-foreground">
-                      Vol: {stat.thisVol.toLocaleString()}kg
-                      {volDiff !== null && (
-                        <span className={volDiff >= 0 ? 'text-green-500 ml-1' : 'text-red-500 ml-1'}>
-                          {volDiff >= 0 ? '+' : ''}{volDiff}%
-                        </span>
-                      )}
-                    </span>
-                    <span className="text-muted-foreground">
-                      Max: {stat.thisMax}kg
-                      {maxDiff !== 0 && stat.lastMax > 0 && (
-                        <span className={maxDiff > 0 ? 'text-green-500 ml-1' : 'text-red-500 ml-1'}>
-                          {maxDiff > 0 ? '+' : ''}{maxDiff}kg
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
