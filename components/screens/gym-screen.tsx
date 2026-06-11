@@ -3,13 +3,24 @@
 import { useEffect, useState, useMemo } from 'react'
 import { Dumbbell, Plus, Check, X, TrendingUp, ChevronDown, ChevronUp, Info } from 'lucide-react'
 import type { GymSessionLog, GymExerciseLog, GymSet, GymWorkout, GymExercise } from '@/lib/types'
-import { WORKOUTS } from '@/lib/gym-data'
+import { WORKOUTS, SEED_GYM_LOGS } from '@/lib/gym-data'
 
 const GYM_LOGS_KEY = 'sq_gym_logs'
+const GYM_SEEDED_KEY = 'sq_gym_seeded'
 
 function loadLogs(): GymSessionLog[] {
   if (typeof window === 'undefined') return []
-  try { return JSON.parse(localStorage.getItem(GYM_LOGS_KEY) || '[]') } catch { return [] }
+  try {
+    const raw = localStorage.getItem(GYM_LOGS_KEY)
+    if (raw) return JSON.parse(raw)
+    // First time: seed with data from Patrick's Excel
+    if (!localStorage.getItem(GYM_SEEDED_KEY)) {
+      localStorage.setItem(GYM_LOGS_KEY, JSON.stringify(SEED_GYM_LOGS))
+      localStorage.setItem(GYM_SEEDED_KEY, '1')
+      return [...SEED_GYM_LOGS]
+    }
+    return []
+  } catch { return [] }
 }
 
 function saveLogs(logs: GymSessionLog[]) {

@@ -1,4 +1,4 @@
-import type { GymWorkout } from './types'
+import type { GymWorkout, GymSessionLog } from './types'
 
 export const WORKOUTS: GymWorkout[] = [
   {
@@ -34,6 +34,49 @@ export const WORKOUTS: GymWorkout[] = [
       { id: 'c3', name: 'Dominadas', setsReps: '3x max' },
       { id: 'c4', name: 'Prensa', setsReps: '3x10-12' },
       { id: 'c5', name: 'Flexiones', setsReps: '3x max' },
+    ],
+  },
+]
+
+// Pre-recorded sessions from Patrick's Excel (Bloque 01)
+// Training days: Tue/Thu/Sat → A/B/C rotation
+export const SEED_GYM_LOGS: GymSessionLog[] = [
+  // ── Workout A – Week 1 (Tue May 26) ──
+  {
+    date: '2026-05-26',
+    workoutId: 'A',
+    exercises: [
+      { exerciseId: 'a1', sets: [{ weight: 33, reps: 12 }, { weight: 33, reps: 12 }, { weight: 33, reps: 12 }] },
+      { exerciseId: 'a2', sets: [{ weight: 54, reps: 12 }, { weight: 54, reps: 12 }] },
+      { exerciseId: 'a3', sets: [{ weight: 4, reps: 14 }, { weight: 4, reps: 12 }] },
+      { exerciseId: 'a4', sets: [{ weight: 10, reps: 12 }, { weight: 10, reps: 12 }, { weight: 10, reps: 12 }] },
+      { exerciseId: 'a5', sets: [{ weight: 8.75, reps: 12 }, { weight: 8.75, reps: 12 }] },
+      { exerciseId: 'a6', sets: [{ weight: 8.75, reps: 12 }, { weight: 8.75, reps: 12 }] },
+    ],
+  },
+  // ── Workout A – Week 2 (Tue Jun 2) ──
+  {
+    date: '2026-06-02',
+    workoutId: 'A',
+    exercises: [
+      { exerciseId: 'a1', sets: [{ weight: 47, reps: 10 }, { weight: 40, reps: 12 }, { weight: 42.5, reps: 12 }] },
+      { exerciseId: 'a2', sets: [{ weight: 49.5, reps: 12 }, { weight: 54, reps: 12 }] },
+      { exerciseId: 'a3', sets: [{ weight: 4, reps: 12 }, { weight: 4, reps: 12 }] },
+      { exerciseId: 'a4', sets: [{ weight: 15, reps: 8 }, { weight: 15, reps: 8 }, { weight: 15, reps: 8 }] },
+      { exerciseId: 'a5', sets: [{ weight: 8.75, reps: 12 }, { weight: 8.75, reps: 12 }] },
+      { exerciseId: 'a6', sets: [{ weight: 8.75, reps: 12 }, { weight: 8.75, reps: 12 }] },
+    ],
+  },
+  // ── Workout B – Week 2 (Thu Jun 4) — "entreno marta" ──
+  {
+    date: '2026-06-04',
+    workoutId: 'B',
+    exercises: [
+      { exerciseId: 'b2', sets: [{ weight: 7, reps: 12 }, { weight: 7, reps: 9 }] },
+      { exerciseId: 'b3', sets: [{ weight: 20, reps: 12 }, { weight: 25, reps: 12 }, { weight: 25, reps: 10 }] },
+      { exerciseId: 'b4', sets: [{ weight: 7.5, reps: 8 }, { weight: 7.5, reps: 9 }] },
+      { exerciseId: 'b5', sets: [{ weight: 20, reps: 9 }, { weight: 20, reps: 10 }] },
+      { exerciseId: 'b6', sets: [{ weight: 15, reps: 12 }, { weight: 15, reps: 12 }] },
     ],
   },
 ]
