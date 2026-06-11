@@ -142,6 +142,17 @@ export default function Page() {
   const { streak, bestStreak } = useMemo(() => getStreaks(habits), [habits])
   const weeklyData = useMemo(() => getWeeklyData(), [habits])
 
+  const yesterdayData = useMemo((): DayHistory | null => {
+    if (typeof window === 'undefined') return null
+    try {
+      const history: Record<string, DayHistory> = JSON.parse(localStorage.getItem('sq_history') || '{}')
+      const y = new Date()
+      y.setDate(y.getDate() - 1)
+      const key = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, '0')}-${String(y.getDate()).padStart(2, '0')}`
+      return history[key] || null
+    } catch { return null }
+  }, [habits])
+
   // Fetch today's steps and screen time from the API (updated by the Android app)
   const fetchSteps = () => {
     fetch('/api/steps')
@@ -232,6 +243,8 @@ export default function Page() {
             habits={habits}
             metrics={metrics}
             streak={streak}
+            bestStreak={bestStreak}
+            yesterdayData={yesterdayData}
             onToggleHabit={handleToggleHabit}
             onOpenPomodoro={() => setShowPomodoro(true)}
             onEditHabits={() => setShowHabitEditor(true)}
