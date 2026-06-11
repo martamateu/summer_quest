@@ -8,7 +8,8 @@ import { EXPENSE_CATEGORY_LABELS } from '@/lib/types'
 const EXPENSES_STORAGE_KEY = 'sq_expenses'
 const FINANCE_START_STORAGE_KEY = 'sq_finance_started_at'
 
-const getTodayStr = () => new Date().toISOString().split('T')[0]
+const toDateStr = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+const getTodayStr = () => toDateStr(new Date())
 
 interface PendingItem {
   description: string
@@ -44,7 +45,7 @@ function getWeekRange(refDate: Date, offset: number = 0) {
   monday.setHours(0, 0, 0, 0)
   const sunday = new Date(monday)
   sunday.setDate(monday.getDate() + 6)
-  return { start: monday.toISOString().split('T')[0], end: sunday.toISOString().split('T')[0], monday, sunday }
+  return { start: toDateStr(monday), end: toDateStr(sunday), monday, sunday }
 }
 
 function getMonthRange(refDate: Date, offset: number = 0) {
@@ -52,7 +53,7 @@ function getMonthRange(refDate: Date, offset: number = 0) {
   const month = refDate.getMonth() + offset
   const start = new Date(year, month, 1)
   const end = new Date(year, month + 1, 0)
-  return { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0], startDate: start, endDate: end }
+  return { start: toDateStr(start), end: toDateStr(end), startDate: start, endDate: end }
 }
 
 function filterByRange(expenses: Expense[], start: string, end: string) {
@@ -122,7 +123,7 @@ export function FinanzasScreen() {
       const date = new Date(today)
       date.setDate(date.getDate() - i)
       if (date < start) break
-      const dateStr = date.toISOString().split('T')[0]
+      const dateStr = toDateStr(date)
       if ((expensesByDate[dateStr] || 0) < 10) s++
       else break
     }
