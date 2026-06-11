@@ -69,14 +69,8 @@ function categoryTotals(expenses: Expense[]) {
 }
 
 export function FinanzasScreen() {
-  const [expenses, setExpenses] = useState<Expense[]>(() => {
-    if (typeof window === 'undefined') return []
-    try {
-      const stored = localStorage.getItem(EXPENSES_STORAGE_KEY)
-      return stored ? JSON.parse(stored) as Expense[] : []
-    } catch { return [] }
-  })
-  const isInitialMount = useRef(true)
+  const [expenses, setExpenses] = useState<Expense[]>([])
+  const loaded = useRef(false)
   const [financeStartDate, setFinanceStartDate] = useState<string | null>(null)
   const [isScanning, setIsScanning] = useState(false)
   const [pendingItems, setPendingItems] = useState<PendingItem[]>([])
@@ -91,8 +85,11 @@ export function FinanzasScreen() {
   const [monthOffset, setMonthOffset] = useState(0)
   const [filterCategory, setFilterCategory] = useState<ExpenseCategory | 'all'>('all')
 
+  // Load from localStorage on mount
   useEffect(() => {
     try {
+      const stored = localStorage.getItem(EXPENSES_STORAGE_KEY)
+      if (stored) setExpenses(JSON.parse(stored) as Expense[])
       const storedStartDate = localStorage.getItem(FINANCE_START_STORAGE_KEY)
       const startDate = storedStartDate || getTodayStr()
       if (!storedStartDate) localStorage.setItem(FINANCE_START_STORAGE_KEY, startDate)
@@ -100,13 +97,12 @@ export function FinanzasScreen() {
     } catch {
       setFinanceStartDate(getTodayStr())
     }
+    loaded.current = true
   }, [])
 
+  // Save to localStorage on every change (but not on initial mount)
   useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false
-      return
-    }
+    if (!loaded.current) return
     localStorage.setItem(EXPENSES_STORAGE_KEY, JSON.stringify(expenses))
   }, [expenses])
 
