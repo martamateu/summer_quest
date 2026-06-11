@@ -16,6 +16,8 @@ export interface Expense {
   amount: number
   category: ExpenseCategory
   date: string
+  isIncome?: boolean
+  source?: string // e.g. 'tarjeta comida', 'cuenta corriente', 'N26', etc.
 }
 
 export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
