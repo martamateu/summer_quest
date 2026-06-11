@@ -36,6 +36,7 @@ export function GymScreen() {
   const [sessionDate, setSessionDate] = useState(getTodayStr())
   const [currentSets, setCurrentSets] = useState<Record<string, GymSet[]>>({})
   const [expandedExercise, setExpandedExercise] = useState<string | null>(null)
+  const [showStats, setShowStats] = useState(false)
 
   useEffect(() => { setLogs(loadLogs()) }, [])
 
@@ -273,6 +274,12 @@ export function GymScreen() {
     <div className="px-4 pt-6 pb-24">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-foreground">Gym</h1>
+        <button
+          onClick={() => setShowStats(s => !s)}
+          className="p-2 rounded-full hover:bg-secondary transition-colors"
+        >
+          <TrendingUp className={`w-5 h-5 ${showStats ? 'text-primary' : 'text-muted-foreground'}`} />
+        </button>
       </div>
 
       {/* Workout Selector */}
@@ -328,8 +335,8 @@ export function GymScreen() {
         </div>
       </div>
 
-      {/* Progression Stats — always visible */}
-      {exerciseProgression.length > 0 && (
+      {/* Progression Stats */}
+      {showStats && exerciseProgression.length > 0 && (
         <div className="bg-card rounded-2xl p-4 mb-4">
           <div className="flex items-center gap-2 mb-3">
             <TrendingUp className="w-5 h-5 text-primary" />
