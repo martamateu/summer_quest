@@ -73,3 +73,34 @@ export const AREA_LABELS: Record<HabitArea, string> = {
   career: 'Carrera',
   wellness: 'Bienestar',
 }
+
+// ── Gym types ──
+
+export interface GymSet {
+  weight: number
+  reps: number
+}
+
+export interface GymExerciseLog {
+  exerciseId: string
+  sets: GymSet[]
+}
+
+export interface GymSessionLog {
+  date: string // YYYY-MM-DD
+  workoutId: string // 'A' | 'B' | 'C'
+  exercises: GymExerciseLog[]
+}
+
+export interface GymExercise {
+  id: string
+  name: string
+  setsReps: string // e.g. "3x10-12"
+  notes?: string
+}
+
+export interface GymWorkout {
+  id: string // 'A' | 'B' | 'C'
+  name: string
+  exercises: GymExercise[]
+}

@@ -7,7 +7,7 @@ import { HabitEditor } from '@/components/habit-editor'
 import { TodayDashboard } from '@/components/screens/today-dashboard'
 import { QuestsScreen } from '@/components/screens/quests-screen'
 import { FinanzasScreen } from '@/components/screens/finanzas-screen'
-import { CarreraScreen } from '@/components/screens/carrera-screen'
+import { GymScreen } from '@/components/screens/gym-screen'
 import { StatsScreen } from '@/components/screens/stats-screen'
 import { INITIAL_HABITS, INITIAL_METRICS } from '@/lib/data'
 import type { Habit, DailyMetrics } from '@/lib/types'
@@ -85,7 +85,7 @@ function getWeeklyData(): number[] {
   } catch { return [0,0,0,0,0,0,0] }
 }
 
-type Tab = 'hoy' | 'quests' | 'finanzas' | 'carrera' | 'stats'
+type Tab = 'hoy' | 'quests' | 'finanzas' | 'gym' | 'stats'
 
 export default function Page() {
   const [activeTab, setActiveTab] = useState<Tab>('hoy')
@@ -152,6 +152,14 @@ export default function Page() {
             ...prev,
             steps: { ...prev.steps, current: data.steps },
           }))
+          // Persist to steps history for Stats screen
+          try {
+            const key = 'sq_steps_history'
+            const history = JSON.parse(localStorage.getItem(key) || '{}')
+            const today = new Date().toISOString().split('T')[0]
+            history[today] = { steps: data.steps, calories: data.calories || 0 }
+            localStorage.setItem(key, JSON.stringify(history))
+          } catch {}
           if (data.steps >= 15000) {
             setHabits((prev) =>
               prev.map((h) => h.id === '10' ? { ...h, completed: true } : h)
@@ -233,16 +241,10 @@ export default function Page() {
         return <QuestsScreen habits={habits} onToggleHabit={handleToggleHabit} onEditHabits={() => setShowHabitEditor(true)} />
       case 'finanzas':
         return <FinanzasScreen />
-      case 'carrera':
-        return (
-          <CarreraScreen
-            habits={habits}
-            onToggleHabit={handleToggleHabit}
-            onEditHabits={() => setShowHabitEditor(true)}
-          />
-        )
+      case 'gym':
+        return <GymScreen />
       case 'stats':
-        return <StatsScreen habits={habits} streak={streak} bestStreak={bestStreak} weeklyData={weeklyData} />
+        return <StatsScreen habits={habits} streak={streak} bestStreak={bestStreak} weeklyData={weeklyData} metrics={metrics} />
       default:
         return null
     }
