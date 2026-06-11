@@ -8,6 +8,8 @@ export type ExpenseCategory =
   | 'salud'
   | 'ropa'
   | 'suscripciones'
+  | 'hipoteca'
+  | 'seguros'
   | 'otros'
 
 export interface Expense {
@@ -28,6 +30,8 @@ export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   salud: 'Salud',
   ropa: 'Ropa',
   suscripciones: 'Suscripciones',
+  hipoteca: 'Hipoteca',
+  seguros: 'Seguros',
   otros: 'Otros',
 }
 
@@ -39,6 +43,8 @@ export const EXPENSE_CATEGORY_ICONS: Record<ExpenseCategory, string> = {
   salud: 'heart',
   ropa: 'shirt',
   suscripciones: 'credit-card',
+  hipoteca: 'landmark',
+  seguros: 'shield',
   otros: 'circle',
 }
 

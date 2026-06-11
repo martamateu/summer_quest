@@ -13,6 +13,8 @@ const ExpenseItemSchema = z.object({
     'salud',
     'ropa',
     'suscripciones',
+    'hipoteca',
+    'seguros',
     'otros',
   ]).describe('Categoria del gasto o ingreso'),
   confidence: z.enum(['high', 'low']).describe('Nivel de confianza en la categoria asignada'),
@@ -70,6 +72,8 @@ export async function POST(request: Request) {
               - salud: farmacia, medico, gimnasio
               - ropa: tiendas de ropa, zapatos, accesorios
               - suscripciones: netflix, spotify, gimnasio mensual, apps
+              - hipoteca: cuota hipotecaria, prestamo hipotecario, amortizacion hipoteca
+              - seguros: seguro coche, seguro hogar, seguro vida, seguro medico, mutua
               - otros: nomina, transferencias, cualquier cosa que no encaje
               
               Si no estas seguro de la categoria, pon confidence: "low".
