@@ -179,7 +179,7 @@ export function PomodoroTimer({ onClose, currentDeepWork, onDeepWorkUpdate }: Po
               cy={size / 2}
               r={radius}
               strokeWidth={strokeWidth}
-              stroke={isWorkPhase ? '#4F7BE8' : '#3B82F6'}
+              stroke={isWorkPhase ? '#6B8EC7' : '#3B82F6'}
               fill="none"
               strokeLinecap="round"
               strokeDasharray={circumference}
