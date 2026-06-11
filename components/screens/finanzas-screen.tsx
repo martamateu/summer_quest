@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo, useRef } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import { Camera, Plus, X, Check, Loader2, Flame, Receipt, TrendingDown, TrendingUp, Trash2, ChevronLeft, ChevronRight, ArrowDownCircle, ArrowUpCircle, Lightbulb } from 'lucide-react'
 import type { Expense, ExpenseCategory } from '@/lib/types'
 import { EXPENSE_CATEGORY_LABELS } from '@/lib/types'
@@ -70,7 +70,6 @@ function categoryTotals(expenses: Expense[]) {
 
 export function FinanzasScreen() {
   const [expenses, setExpenses] = useState<Expense[]>([])
-  const loaded = useRef(false)
   const [financeStartDate, setFinanceStartDate] = useState<string | null>(null)
   const [isScanning, setIsScanning] = useState(false)
   const [pendingItems, setPendingItems] = useState<PendingItem[]>([])
@@ -85,7 +84,13 @@ export function FinanzasScreen() {
   const [monthOffset, setMonthOffset] = useState(0)
   const [filterCategory, setFilterCategory] = useState<ExpenseCategory | 'all'>('all')
 
-  // Load from localStorage on mount
+  // Save helper — saves to localStorage immediately
+  const saveExpenses = useCallback((newExpenses: Expense[]) => {
+    setExpenses(newExpenses)
+    localStorage.setItem(EXPENSES_STORAGE_KEY, JSON.stringify(newExpenses))
+  }, [])
+
+  // Load from localStorage on mount (no save effect needed)
   useEffect(() => {
     try {
       const stored = localStorage.getItem(EXPENSES_STORAGE_KEY)
@@ -97,14 +102,7 @@ export function FinanzasScreen() {
     } catch {
       setFinanceStartDate(getTodayStr())
     }
-    loaded.current = true
   }, [])
-
-  // Save to localStorage on every change (but not on initial mount)
-  useEffect(() => {
-    if (!loaded.current) return
-    localStorage.setItem(EXPENSES_STORAGE_KEY, JSON.stringify(expenses))
-  }, [expenses])
 
   const onlyExpenses = (list: Expense[]) => list.filter(e => !e.isIncome)
   const onlyIncome = (list: Expense[]) => list.filter(e => e.isIncome)
@@ -256,7 +254,7 @@ export function FinanzasScreen() {
       date: item.date,
       isIncome: item.isIncome,
     }
-    setExpenses(prev => [newExpense, ...prev])
+    saveExpenses([newExpense, ...expenses])
     setPendingItems(prev => prev.filter((_, i) => i !== index))
   }
 
@@ -269,7 +267,7 @@ export function FinanzasScreen() {
       date: item.date,
       isIncome: item.isIncome,
     }))
-    setExpenses(prev => [...newExpenses, ...prev])
+    saveExpenses([...newExpenses, ...expenses])
     setPendingItems([])
   }
 
@@ -287,7 +285,7 @@ export function FinanzasScreen() {
       date: manualDate,
       isIncome: manualIsIncome,
     }
-    setExpenses(prev => [newExpense, ...prev])
+    saveExpenses([newExpense, ...expenses])
     setManualDescription('')
     setManualAmount('')
     setManualCategory('otros')
@@ -297,7 +295,7 @@ export function FinanzasScreen() {
   }
 
   const deleteExpense = (id: string) => {
-    setExpenses(prev => prev.filter(e => e.id !== id))
+    saveExpenses(expenses.filter(e => e.id !== id))
   }
 
   // Current view items
