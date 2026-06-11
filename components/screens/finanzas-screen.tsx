@@ -104,7 +104,9 @@ export function FinanzasScreen() {
 
   // Load on mount
   useEffect(() => {
-    setExpenses(readExpenses())
+    const loaded = readExpenses()
+    console.log('[FINANZAS] mount load:', loaded.length, 'expenses')
+    setExpenses(loaded)
     try {
       const storedStartDate = localStorage.getItem(FINANCE_START_STORAGE_KEY)
       const startDate = storedStartDate || getTodayStr()
@@ -267,8 +269,13 @@ export function FinanzasScreen() {
     }
     // Read fresh from localStorage to avoid stale state
     const current = readExpenses()
-    saveExpenses([newExpense, ...current])
+    const updated = [newExpense, ...current]
+    writeExpenses(updated)
+    setExpenses(updated)
     setPendingItems(prev => prev.filter((_, i) => i !== index))
+    // Debug: verify save
+    const verify = readExpenses()
+    console.log('[FINANZAS] confirmItem saved', newExpense.description, 'total:', verify.length, 'verified:', verify[0]?.id === newExpense.id)
   }
 
   const confirmAllItems = () => {
