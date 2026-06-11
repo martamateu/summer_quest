@@ -15,6 +15,7 @@ interface PendingItem {
   amount: number
   suggestedCategory: ExpenseCategory | null
   confidence: string
+  date: string
 }
 
 const categories: ExpenseCategory[] = ['comida', 'transporte', 'ocio', 'hogar', 'salud', 'ropa', 'suscripciones', 'otros']
@@ -66,7 +67,6 @@ export function FinanzasScreen() {
   const [financeStartDate, setFinanceStartDate] = useState<string | null>(null)
   const [isScanning, setIsScanning] = useState(false)
   const [pendingItems, setPendingItems] = useState<PendingItem[]>([])
-  const [pendingDate, setPendingDate] = useState<string>(getTodayStr())
   const [showManualAdd, setShowManualAdd] = useState(false)
   const [manualDescription, setManualDescription] = useState('')
   const [manualAmount, setManualAmount] = useState('')
@@ -202,14 +202,13 @@ export function FinanzasScreen() {
       if (!response.ok) throw new Error('Failed to analyze')
       const result = await response.json()
       if (result.items && Array.isArray(result.items)) {
-        setPendingItems(result.items.map((item: { description: string; amount: number; category: ExpenseCategory; confidence: string }) => ({
+        setPendingItems(result.items.map((item: { description: string; amount: number; category: ExpenseCategory; confidence: string; date?: string }) => ({
           description: item.description,
           amount: item.amount,
           suggestedCategory: item.confidence === 'low' ? null : item.category,
           confidence: item.confidence,
+          date: item.date || getTodayStr(),
         })))
-        if (result.date) setPendingDate(result.date)
-        else setPendingDate(getTodayStr())
       }
     } catch (error) {
       console.error('Error scanning receipt:', error)
@@ -228,7 +227,7 @@ export function FinanzasScreen() {
       description: item.description,
       amount: item.amount,
       category: finalCat,
-      date: pendingDate,
+      date: item.date,
     }
     setExpenses(prev => [newExpense, ...prev])
     setPendingItems(prev => prev.filter((_, i) => i !== index))
@@ -240,7 +239,7 @@ export function FinanzasScreen() {
       description: item.description,
       amount: item.amount,
       category: item.suggestedCategory || 'otros' as ExpenseCategory,
-      date: pendingDate,
+      date: item.date,
     }))
     setExpenses(prev => [...newExpenses, ...prev])
     setPendingItems([])
@@ -430,22 +429,14 @@ export function FinanzasScreen() {
             <p className="text-sm font-medium text-foreground">
               {pendingItems.length} cargo{pendingItems.length > 1 ? 's' : ''} detectado{pendingItems.length > 1 ? 's' : ''}
             </p>
-            <div className="flex items-center gap-2">
-              <input
-                type="date"
-                value={pendingDate}
-                onChange={e => setPendingDate(e.target.value)}
-                className="text-xs px-2 py-1 rounded-lg bg-secondary text-foreground outline-none"
-              />
-              {pendingItems.every(p => p.suggestedCategory) && (
-                <button
-                  onClick={confirmAllItems}
-                  className="text-xs px-3 py-1 rounded-full bg-primary text-primary-foreground"
-                >
-                  Aceptar todos
-                </button>
-              )}
-            </div>
+            {pendingItems.every(p => p.suggestedCategory) && (
+              <button
+                onClick={confirmAllItems}
+                className="text-xs px-3 py-1 rounded-full bg-primary text-primary-foreground"
+              >
+                Aceptar todos
+              </button>
+            )}
           </div>
           <div className="space-y-3">
             {pendingItems.map((item, index) => (
@@ -453,6 +444,17 @@ export function FinanzasScreen() {
                 <div className="flex items-center justify-between mb-1">
                   <p className="text-sm font-medium text-foreground">{item.description}</p>
                   <p className="text-sm font-bold text-primary">{item.amount.toFixed(2)}€</p>
+                </div>
+                <div className="flex items-center gap-2 mb-2">
+                  <input
+                    type="date"
+                    value={item.date}
+                    onChange={e => {
+                      const newDate = e.target.value
+                      setPendingItems(prev => prev.map((p, i) => i === index ? { ...p, date: newDate } : p))
+                    }}
+                    className="text-xs px-2 py-0.5 rounded-lg bg-secondary text-foreground outline-none"
+                  />
                 </div>
                 {item.suggestedCategory && item.confidence !== 'low' ? (
                   <div className="flex items-center gap-2">

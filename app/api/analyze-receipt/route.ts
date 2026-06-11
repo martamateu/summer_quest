@@ -16,11 +16,11 @@ const ExpenseItemSchema = z.object({
     'otros',
   ]).describe('Categoria del gasto'),
   confidence: z.enum(['high', 'low']).describe('Nivel de confianza en la categoria asignada'),
+  date: z.string().optional().describe('Fecha de este cargo en formato YYYY-MM-DD. Si cada linea tiene su propia fecha usala, sino usa la fecha general del ticket'),
 })
 
 const ReceiptSchema = z.object({
-  items: z.array(ExpenseItemSchema).describe('Lista de todos los cargos/lineas del ticket o extracto'),
-  date: z.string().optional().describe('Fecha del ticket en formato YYYY-MM-DD si es visible, sino omitir'),
+  items: z.array(ExpenseItemSchema).describe('Lista de todos los cargos/lineas del ticket o extracto, cada uno con su fecha si es visible'),
 })
 
 export async function POST(request: Request) {
@@ -67,7 +67,12 @@ export async function POST(request: Request) {
               
               Si no estas seguro de la categoria, pon confidence: "low".
               Cada amount debe ser un numero decimal positivo en euros.
-              Si ves una fecha en el ticket, incluyela en formato YYYY-MM-DD.`,
+              
+              IMPORTANTE sobre fechas:
+              - Si cada cargo/movimiento tiene su propia fecha (ej: extracto bancario), pon la fecha de cada uno en su campo "date".
+              - Si el ticket tiene una sola fecha global, pon esa misma fecha en todos los items.
+              - Formato siempre YYYY-MM-DD.
+              - Si no hay fecha visible, omite el campo date.`,
             },
           ],
         },
