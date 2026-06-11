@@ -46,14 +46,29 @@ function getWeekNumber(sessionDate: string): number {
 
 function formatSets(sets: { weight: number; reps: number }[]): string {
   if (sets.length === 0) return ''
-  // If all same weight, use compact format: "33 x 12 x 3"
   const allSameWeight = sets.every(s => s.weight === sets[0].weight)
   const allSameReps = sets.every(s => s.reps === sets[0].reps)
   if (allSameWeight && allSameReps) {
     return `${sets[0].weight} x ${sets[0].reps} x ${sets.length}`
   }
-  // Otherwise: "47 x 10 // 40 x 12 // 42,5 x 12"
   return sets.map(s => `${s.weight} x ${s.reps}`).join(' // ')
+}
+
+// GET /api/sync-sheet — debug: read column A to check exercise matching
+export async function GET() {
+  try {
+    const auth = getAuth()
+    const sheets = google.sheets({ version: 'v4', auth })
+    const readRes = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'A1:A50',
+    })
+    const colA = readRes.data.values?.map((r, i) => ({ row: i + 1, value: r[0] || '(empty)' })) || []
+    return Response.json({ colA })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return Response.json({ error: message }, { status: 500 })
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -74,45 +89,52 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: `Week ${weekNum} out of range (1-8)` }, { status: 400 })
     }
 
-    const colIndex = WEEK1_COL + (weekNum - 1) // G=6 for week 1, H=7 for week 2, etc.
-    const colLetter = String.fromCharCode(65 + colIndex) // A=65
+    const colIndex = WEEK1_COL + (weekNum - 1)
+    const colLetter = String.fromCharCode(65 + colIndex)
 
     const auth = getAuth()
     const sheets = google.sheets({ version: 'v4', auth })
 
-    // Read column A to find exercise rows
+    // Read columns A-B to find exercise rows (some sheets have data in B)
     const readRes = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'A1:A100',
+      range: 'A1:B100',
     })
-    const colA = readRes.data.values?.map(r => r[0] || '') || []
+    const rows = readRes.data.values || []
 
-    // Find row for each exercise and build update requests
+    // Build a searchable list combining A and B columns
+    const rowTexts = rows.map((r, i) => ({
+      row: i + 1,
+      text: ((r[0] || '') + ' ' + (r[1] || '')).toLowerCase(),
+    }))
+
     const updates: { range: string; values: string[][] }[] = []
+    const matched: string[] = []
+    const unmatched: string[] = []
 
     for (const ex of exercises) {
       const searchTerm = EXERCISE_NAMES[ex.exerciseId]
-      if (!searchTerm) continue
+      if (!searchTerm) { unmatched.push(ex.exerciseId); continue }
 
-      // Find row (1-indexed in Sheets)
-      const rowIndex = colA.findIndex(cell =>
-        cell && cell.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-      if (rowIndex === -1) continue
+      const found = rowTexts.find(r => r.text.includes(searchTerm.toLowerCase()))
+      if (!found) { unmatched.push(`${ex.exerciseId}:${searchTerm}`); continue }
 
-      const sheetRow = rowIndex + 1 // 1-indexed
       const formatted = formatSets(ex.sets)
       updates.push({
-        range: `${colLetter}${sheetRow}`,
+        range: `${colLetter}${found.row}`,
         values: [[formatted]],
       })
+      matched.push(`${searchTerm} → ${colLetter}${found.row}`)
     }
 
     if (updates.length === 0) {
-      return Response.json({ error: 'No exercises matched in sheet' }, { status: 404 })
+      return Response.json({
+        error: 'No exercises matched in sheet',
+        unmatched,
+        rowSample: rowTexts.slice(0, 20),
+      }, { status: 404 })
     }
 
-    // Batch update
     await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: SPREADSHEET_ID,
       requestBody: {
@@ -126,6 +148,8 @@ export async function POST(request: NextRequest) {
       week: weekNum,
       column: colLetter,
       updated: updates.length,
+      matched,
+      unmatched,
     })
   } catch (error) {
     console.error('Error syncing to sheet:', error)

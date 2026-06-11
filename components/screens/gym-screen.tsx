@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { Dumbbell, Plus, Check, X, TrendingUp, ChevronDown, ChevronUp, Info } from 'lucide-react'
+import { Dumbbell, Plus, Check, X, TrendingUp, ChevronDown, ChevronUp, Info, Trash2 } from 'lucide-react'
 import type { GymSessionLog, GymExerciseLog, GymSet, GymWorkout, GymExercise } from '@/lib/types'
 import { WORKOUTS, SEED_GYM_LOGS } from '@/lib/gym-data'
 
@@ -37,6 +37,7 @@ export function GymScreen() {
   const [currentSets, setCurrentSets] = useState<Record<string, GymSet[]>>({})
   const [expandedExercise, setExpandedExercise] = useState<string | null>(null)
   const [showStats, setShowStats] = useState(false)
+  const [syncStatus, setSyncStatus] = useState<string | null>(null)
 
   useEffect(() => { setLogs(loadLogs()) }, [])
 
@@ -112,12 +113,34 @@ export function GymScreen() {
     setActiveSession(false)
     setCurrentSets({})
 
-    // Sync to Google Sheet in background
+    // Sync to Google Sheet with feedback
+    setSyncStatus('Sincronizando con Google Sheet...')
     fetch('/api/sync-sheet', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(session),
-    }).catch(() => {})
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok) {
+          setSyncStatus(`✓ Sincronizado (Semana ${data.week}, ${data.updated} ejercicios)`)
+        } else {
+          setSyncStatus(`✗ Error: ${data.error}`)
+          console.error('Sheet sync error:', data)
+        }
+        setTimeout(() => setSyncStatus(null), 5000)
+      })
+      .catch(err => {
+        setSyncStatus('✗ Error de conexión con Google Sheet')
+        console.error('Sheet sync failed:', err)
+        setTimeout(() => setSyncStatus(null), 5000)
+      })
+  }
+
+  const deleteSession = (index: number) => {
+    const updated = logs.filter((_, i) => i !== index)
+    setLogs(updated)
+    saveLogs(updated)
   }
 
   // Per-exercise progression across all sessions for the selected workout
@@ -289,6 +312,13 @@ export function GymScreen() {
         </button>
       </div>
 
+      {/* Sync status */}
+      {syncStatus && (
+        <div className={`rounded-xl p-3 mb-4 text-sm ${syncStatus.startsWith('✓') ? 'bg-green-50 text-green-700' : syncStatus.startsWith('✗') ? 'bg-red-50 text-red-700' : 'bg-accent text-foreground'}`}>
+          {syncStatus}
+        </div>
+      )}
+
       {/* Workout Selector */}
       <div className="flex gap-2 mb-4">
         {WORKOUTS.map(w => (
@@ -409,14 +439,23 @@ export function GymScreen() {
         ) : (
           <div className="space-y-3">
             {logs
+              .map((l, i) => ({ ...l, originalIndex: i }))
               .filter(l => l.workoutId === selectedWorkout)
               .slice(-5)
               .reverse()
-              .map((session, si) => (
-                <div key={si} className="py-2 border-b border-border/50 last:border-0">
-                  <p className="text-xs text-muted-foreground mb-1.5">
-                    {new Date(session.date).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })}
-                  </p>
+              .map((session) => (
+                <div key={session.originalIndex} className="py-2 border-b border-border/50 last:border-0">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(session.date).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })}
+                    </p>
+                    <button
+                      onClick={() => deleteSession(session.originalIndex)}
+                      className="p-1 rounded-full hover:bg-secondary transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
+                    </button>
+                  </div>
                   <div className="space-y-1">
                     {session.exercises.map(ex => {
                       const exerciseDef = workout.exercises.find(e => e.id === ex.exerciseId)
