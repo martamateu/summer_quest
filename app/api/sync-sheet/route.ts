@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: `Week ${weekNum} out of range (1-8)` }, { status: 400 })
     }
 
-    const colIndex = WEEK1_COL + (weekNum - 1)
+    const colIndex = WEEK1_COL + (weekNum - 1) * 2 // G=6 for week 1, I=8 for week 2, K=10 for week 3, etc.
     const colLetter = String.fromCharCode(65 + colIndex)
 
     const auth = getAuth()
