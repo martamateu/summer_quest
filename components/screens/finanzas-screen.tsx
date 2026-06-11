@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { Camera, Plus, X, Check, Loader2, Flame, Receipt, TrendingDown, TrendingUp, Trash2, ChevronLeft, ChevronRight, ArrowDownCircle, ArrowUpCircle, Lightbulb } from 'lucide-react'
 import type { Expense, ExpenseCategory } from '@/lib/types'
 import { EXPENSE_CATEGORY_LABELS } from '@/lib/types'
@@ -68,6 +68,18 @@ function categoryTotals(expenses: Expense[]) {
   }, {} as Partial<Record<ExpenseCategory, number>>)
 }
 
+// Direct localStorage helpers — no effects, no race conditions
+function readExpenses(): Expense[] {
+  try {
+    const stored = localStorage.getItem(EXPENSES_STORAGE_KEY)
+    return stored ? JSON.parse(stored) as Expense[] : []
+  } catch { return [] }
+}
+
+function writeExpenses(data: Expense[]) {
+  localStorage.setItem(EXPENSES_STORAGE_KEY, JSON.stringify(data))
+}
+
 export function FinanzasScreen() {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [financeStartDate, setFinanceStartDate] = useState<string | null>(null)
@@ -84,17 +96,16 @@ export function FinanzasScreen() {
   const [monthOffset, setMonthOffset] = useState(0)
   const [filterCategory, setFilterCategory] = useState<ExpenseCategory | 'all'>('all')
 
-  // Save helper — saves to localStorage immediately
-  const saveExpenses = useCallback((newExpenses: Expense[]) => {
-    setExpenses(newExpenses)
-    localStorage.setItem(EXPENSES_STORAGE_KEY, JSON.stringify(newExpenses))
-  }, [])
+  // Always read from localStorage and sync to React state
+  const saveExpenses = (updated: Expense[]) => {
+    writeExpenses(updated)
+    setExpenses(updated)
+  }
 
-  // Load from localStorage on mount (no save effect needed)
+  // Load on mount
   useEffect(() => {
+    setExpenses(readExpenses())
     try {
-      const stored = localStorage.getItem(EXPENSES_STORAGE_KEY)
-      if (stored) setExpenses(JSON.parse(stored) as Expense[])
       const storedStartDate = localStorage.getItem(FINANCE_START_STORAGE_KEY)
       const startDate = storedStartDate || getTodayStr()
       if (!storedStartDate) localStorage.setItem(FINANCE_START_STORAGE_KEY, startDate)
@@ -254,7 +265,9 @@ export function FinanzasScreen() {
       date: item.date,
       isIncome: item.isIncome,
     }
-    saveExpenses([newExpense, ...expenses])
+    // Read fresh from localStorage to avoid stale state
+    const current = readExpenses()
+    saveExpenses([newExpense, ...current])
     setPendingItems(prev => prev.filter((_, i) => i !== index))
   }
 
@@ -267,7 +280,8 @@ export function FinanzasScreen() {
       date: item.date,
       isIncome: item.isIncome,
     }))
-    saveExpenses([...newExpenses, ...expenses])
+    const current = readExpenses()
+    saveExpenses([...newExpenses, ...current])
     setPendingItems([])
   }
 
@@ -285,7 +299,8 @@ export function FinanzasScreen() {
       date: manualDate,
       isIncome: manualIsIncome,
     }
-    saveExpenses([newExpense, ...expenses])
+    const current = readExpenses()
+    saveExpenses([newExpense, ...current])
     setManualDescription('')
     setManualAmount('')
     setManualCategory('otros')
@@ -295,7 +310,8 @@ export function FinanzasScreen() {
   }
 
   const deleteExpense = (id: string) => {
-    saveExpenses(expenses.filter(e => e.id !== id))
+    const current = readExpenses()
+    saveExpenses(current.filter(e => e.id !== id))
   }
 
   // Current view items
