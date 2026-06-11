@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { Camera, Plus, X, Check, Loader2, Flame, Receipt, TrendingDown, TrendingUp, Trash2, ChevronLeft, ChevronRight, ArrowDownCircle, ArrowUpCircle, Lightbulb } from 'lucide-react'
 import type { Expense, ExpenseCategory } from '@/lib/types'
 import { EXPENSE_CATEGORY_LABELS } from '@/lib/types'
@@ -69,8 +69,14 @@ function categoryTotals(expenses: Expense[]) {
 }
 
 export function FinanzasScreen() {
-  const [expenses, setExpenses] = useState<Expense[]>([])
-  const [loaded, setLoaded] = useState(false)
+  const [expenses, setExpenses] = useState<Expense[]>(() => {
+    if (typeof window === 'undefined') return []
+    try {
+      const stored = localStorage.getItem(EXPENSES_STORAGE_KEY)
+      return stored ? JSON.parse(stored) as Expense[] : []
+    } catch { return [] }
+  })
+  const isInitialMount = useRef(true)
   const [financeStartDate, setFinanceStartDate] = useState<string | null>(null)
   const [isScanning, setIsScanning] = useState(false)
   const [pendingItems, setPendingItems] = useState<PendingItem[]>([])
@@ -87,24 +93,22 @@ export function FinanzasScreen() {
 
   useEffect(() => {
     try {
-      const storedExpenses = localStorage.getItem(EXPENSES_STORAGE_KEY)
-      if (storedExpenses) setExpenses(JSON.parse(storedExpenses) as Expense[])
       const storedStartDate = localStorage.getItem(FINANCE_START_STORAGE_KEY)
       const startDate = storedStartDate || getTodayStr()
       if (!storedStartDate) localStorage.setItem(FINANCE_START_STORAGE_KEY, startDate)
       setFinanceStartDate(startDate)
-      setLoaded(true)
     } catch {
       setFinanceStartDate(getTodayStr())
-      setLoaded(true)
     }
   }, [])
 
   useEffect(() => {
-    if (loaded) {
-      localStorage.setItem(EXPENSES_STORAGE_KEY, JSON.stringify(expenses))
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      return
     }
-  }, [expenses, loaded])
+    localStorage.setItem(EXPENSES_STORAGE_KEY, JSON.stringify(expenses))
+  }, [expenses])
 
   const onlyExpenses = (list: Expense[]) => list.filter(e => !e.isIncome)
   const onlyIncome = (list: Expense[]) => list.filter(e => e.isIncome)
