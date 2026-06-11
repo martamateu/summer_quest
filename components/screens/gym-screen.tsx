@@ -111,6 +111,13 @@ export function GymScreen() {
     saveLogs(updated)
     setActiveSession(false)
     setCurrentSets({})
+
+    // Sync to Google Sheet in background
+    fetch('/api/sync-sheet', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(session),
+    }).catch(() => {})
   }
 
   // Per-exercise progression across all sessions for the selected workout
