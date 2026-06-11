@@ -69,6 +69,7 @@ function categoryTotals(expenses: Expense[]) {
 
 export function FinanzasScreen() {
   const [expenses, setExpenses] = useState<Expense[]>([])
+  const [loaded, setLoaded] = useState(false)
   const [financeStartDate, setFinanceStartDate] = useState<string | null>(null)
   const [isScanning, setIsScanning] = useState(false)
   const [pendingItems, setPendingItems] = useState<PendingItem[]>([])
@@ -90,16 +91,18 @@ export function FinanzasScreen() {
       const startDate = storedStartDate || getTodayStr()
       if (!storedStartDate) localStorage.setItem(FINANCE_START_STORAGE_KEY, startDate)
       setFinanceStartDate(startDate)
+      setLoaded(true)
     } catch {
       setFinanceStartDate(getTodayStr())
+      setLoaded(true)
     }
   }, [])
 
   useEffect(() => {
-    if (expenses.length > 0 || localStorage.getItem(EXPENSES_STORAGE_KEY)) {
+    if (loaded) {
       localStorage.setItem(EXPENSES_STORAGE_KEY, JSON.stringify(expenses))
     }
-  }, [expenses])
+  }, [expenses, loaded])
 
   const onlyExpenses = (list: Expense[]) => list.filter(e => !e.isIncome)
   const onlyIncome = (list: Expense[]) => list.filter(e => e.isIncome)
