@@ -22,7 +22,7 @@ interface PendingItem {
 
 type FinanceView = 'dia' | 'semana' | 'mes'
 
-const categories: ExpenseCategory[] = ['comida', 'transporte', 'ocio', 'hogar', 'salud', 'ropa', 'suscripciones', 'hipoteca', 'seguros', 'otros']
+const categories: ExpenseCategory[] = ['comida', 'transporte', 'ocio', 'hogar', 'salud', 'ropa', 'suscripciones', 'hipoteca', 'seguros', 'viajes', 'otros']
 
 const CATEGORY_COLORS: Record<ExpenseCategory, string> = {
   comida: '#f97316',
@@ -34,6 +34,7 @@ const CATEGORY_COLORS: Record<ExpenseCategory, string> = {
   suscripciones: '#06b6d4',
   hipoteca: '#7c3aed',
   seguros: '#0d9488',
+  viajes: '#e11d48',
   otros: '#6b7280',
 }
 
@@ -82,6 +83,7 @@ export function FinanzasScreen() {
   const [view, setView] = useState<FinanceView>('dia')
   const [weekOffset, setWeekOffset] = useState(0)
   const [monthOffset, setMonthOffset] = useState(0)
+  const [filterCategory, setFilterCategory] = useState<ExpenseCategory | 'all'>('all')
 
   useEffect(() => {
     try {
@@ -299,11 +301,15 @@ export function FinanzasScreen() {
   }
 
   // Current view items
-  const viewItems = view === 'dia'
+  const viewItemsUnfiltered = view === 'dia'
     ? expenses.filter(e => e.date === todayStr)
     : view === 'semana'
       ? thisWeekItems
       : thisMonthItems
+
+  const viewItems = filterCategory === 'all'
+    ? viewItemsUnfiltered
+    : viewItemsUnfiltered.filter(e => e.category === filterCategory)
 
   const weekLabel = (() => {
     const m = thisWeek.monday
@@ -566,12 +572,17 @@ export function FinanzasScreen() {
                   </button>
                 </div>
                 {item.suggestedCategory && item.confidence !== 'low' ? (
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded-full text-xs bg-secondary text-foreground">
-                      {EXPENSE_CATEGORY_LABELS[item.suggestedCategory]}
-                    </span>
-                    <button onClick={() => confirmItem(index)} className="ml-auto p-1.5 rounded-full bg-primary text-primary-foreground"><Check className="w-4 h-4" /></button>
-                    <button onClick={() => dismissItem(index)} className="p-1.5 rounded-full bg-secondary text-foreground"><X className="w-4 h-4" /></button>
+                  <div>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <button
+                        onClick={() => setPendingItems(prev => prev.map((p, i) => i === index ? { ...p, confidence: 'low' } : p))}
+                        className="px-2 py-0.5 rounded-full text-xs bg-secondary text-foreground hover:bg-secondary/80 transition-colors"
+                      >
+                        {EXPENSE_CATEGORY_LABELS[item.suggestedCategory]} ✎
+                      </button>
+                      <button onClick={() => confirmItem(index)} className="ml-auto p-1.5 rounded-full bg-primary text-primary-foreground"><Check className="w-4 h-4" /></button>
+                      <button onClick={() => dismissItem(index)} className="p-1.5 rounded-full bg-secondary text-foreground"><X className="w-4 h-4" /></button>
+                    </div>
                   </div>
                 ) : (
                   <div className="grid grid-cols-4 gap-1.5 mt-1">
@@ -631,6 +642,36 @@ export function FinanzasScreen() {
         <h2 className="text-base font-semibold text-foreground mb-3">
           {view === 'dia' ? 'Movimientos de hoy' : view === 'semana' ? 'Movimientos de la semana' : 'Movimientos del mes'}
         </h2>
+
+        {/* Category filter */}
+        <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 -mx-1 px-1">
+          <button
+            onClick={() => setFilterCategory('all')}
+            className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all ${
+              filterCategory === 'all' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
+            }`}
+          >
+            Todos
+          </button>
+          {categories.map(cat => {
+            const count = viewItemsUnfiltered.filter(e => e.category === cat).length
+            if (count === 0) return null
+            return (
+              <button
+                key={cat}
+                onClick={() => setFilterCategory(filterCategory === cat ? 'all' : cat)}
+                className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all flex items-center gap-1 ${
+                  filterCategory === cat ? 'text-white' : 'bg-secondary text-muted-foreground'
+                }`}
+                style={filterCategory === cat ? { backgroundColor: CATEGORY_COLORS[cat] } : undefined}
+              >
+                {EXPENSE_CATEGORY_LABELS[cat]}
+                <span className={`text-[10px] ${filterCategory === cat ? 'opacity-80' : 'opacity-60'}`}>{count}</span>
+              </button>
+            )
+          })}
+        </div>
+
         <div className="space-y-3">
           {viewItems.length === 0 && (
             <p className="text-sm text-muted-foreground text-center py-4">Sin movimientos</p>

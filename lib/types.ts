@@ -10,6 +10,7 @@ export type ExpenseCategory =
   | 'suscripciones'
   | 'hipoteca'
   | 'seguros'
+  | 'viajes'
   | 'otros'
 
 export interface Expense {
@@ -32,6 +33,7 @@ export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   suscripciones: 'Suscripciones',
   hipoteca: 'Hipoteca',
   seguros: 'Seguros',
+  viajes: 'Viajes',
   otros: 'Otros',
 }
 
@@ -45,6 +47,7 @@ export const EXPENSE_CATEGORY_ICONS: Record<ExpenseCategory, string> = {
   suscripciones: 'credit-card',
   hipoteca: 'landmark',
   seguros: 'shield',
+  viajes: 'plane',
   otros: 'circle',
 }
 
