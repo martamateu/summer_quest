@@ -258,7 +258,10 @@ export function FinanzasScreen() {
 
   const confirmItem = (index: number, category?: ExpenseCategory) => {
     const item = pendingItems[index]
-    if (!item) return
+    if (!item) {
+      alert('DEBUG: item es null en index ' + index)
+      return
+    }
     const newExpense: Expense = {
       id: Date.now().toString() + index,
       description: item.description,
@@ -267,15 +270,13 @@ export function FinanzasScreen() {
       date: item.date,
       isIncome: item.isIncome,
     }
-    // Read fresh from localStorage to avoid stale state
-    const current = readExpenses()
-    const updated = [newExpense, ...current]
+    const before = readExpenses()
+    const updated = [newExpense, ...before]
     writeExpenses(updated)
     setExpenses(updated)
     setPendingItems(prev => prev.filter((_, i) => i !== index))
-    // Debug: verify save
-    const verify = readExpenses()
-    console.log('[FINANZAS] confirmItem saved', newExpense.description, 'total:', verify.length, 'verified:', verify[0]?.id === newExpense.id)
+    const after = readExpenses()
+    alert('GUARDADO: ' + newExpense.description + ' (' + newExpense.amount + '€)\nAntes: ' + before.length + ' → Ahora: ' + after.length)
   }
 
   const confirmAllItems = () => {
