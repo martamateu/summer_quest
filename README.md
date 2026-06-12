@@ -8,7 +8,7 @@ Personal all-in-one productivity app that gamifies daily habits, finances, nutri
 
 ## Architecture
 
-![Summer Quest Architecture](public/architecture-diagram.svg)
+![Summer Quest Architecture](public/architecture-diagram.png)
 
 ---
 
