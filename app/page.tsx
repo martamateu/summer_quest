@@ -252,10 +252,6 @@ export default function Page() {
         )
       case 'quests':
         return <QuestsScreen habits={habits} onToggleHabit={handleToggleHabit} onEditHabits={() => setShowHabitEditor(true)} />
-      case 'finanzas':
-        return <FinanzasScreen />
-      case 'gym':
-        return <GymScreen />
       case 'stats':
         return <StatsScreen habits={habits} streak={streak} bestStreak={bestStreak} weeklyData={weeklyData} metrics={metrics} />
       default:
@@ -280,6 +276,13 @@ export default function Page() {
       ) : (
         <>
           {renderScreen()}
+          {/* Keep FinanzasScreen and GymScreen always mounted to preserve state */}
+          <div style={{ display: activeTab === 'finanzas' ? 'block' : 'none' }}>
+            <FinanzasScreen />
+          </div>
+          <div style={{ display: activeTab === 'gym' ? 'block' : 'none' }}>
+            <GymScreen />
+          </div>
           <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
         </>
       )}
