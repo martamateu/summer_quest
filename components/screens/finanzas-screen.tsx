@@ -95,17 +95,13 @@ export function FinanzasScreen() {
   const [weekOffset, setWeekOffset] = useState(0)
   const [monthOffset, setMonthOffset] = useState(0)
   const [filterCategory, setFilterCategory] = useState<ExpenseCategory | 'all'>('all')
-  const [toast, setToast] = useState<string | null>(null)
-
-  const showToast = (msg: string) => {
-    setToast(msg)
-    setTimeout(() => setToast(null), 3000)
-  }
 
   // Always read from localStorage and sync to React state
   const saveExpenses = (updated: Expense[]) => {
     writeExpenses(updated)
     setExpenses(updated)
+    // Notify parent to sync to cloud
+    window.dispatchEvent(new Event('sq-data-changed'))
   }
 
   // Load on mount
@@ -264,10 +260,7 @@ export function FinanzasScreen() {
 
   const confirmItem = (index: number, category?: ExpenseCategory) => {
     const item = pendingItems[index]
-    if (!item) {
-      showToast(`❌ Error: no hay item en index ${index}`)
-      return
-    }
+    if (!item) return
     const newExpense: Expense = {
       id: Date.now().toString() + index,
       description: item.description,
@@ -276,21 +269,15 @@ export function FinanzasScreen() {
       date: item.date,
       isIncome: item.isIncome,
     }
-    try {
-      const current = readExpenses()
-      const updated = [newExpense, ...current]
-      writeExpenses(updated)
-      setExpenses(updated)
-      const remaining = pendingItems.filter((_, i) => i !== index)
-      setPendingItems(remaining)
-      // Verify it actually saved
-      const verify = readExpenses()
-      showToast(`✅ ${newExpense.description} (${verify.length} total en storage)`)
-      if (newExpense.date !== getTodayStr()) {
-        setView('semana')
-      }
-    } catch (err) {
-      showToast(`❌ Error guardando: ${err}`)
+    const current = readExpenses()
+    const updated = [newExpense, ...current]
+    writeExpenses(updated)
+    setExpenses(updated)
+    window.dispatchEvent(new Event('sq-data-changed'))
+    const remaining = pendingItems.filter((_, i) => i !== index)
+    setPendingItems(remaining)
+    if (newExpense.date !== getTodayStr()) {
+      setView('semana')
     }
   }
 
@@ -308,6 +295,7 @@ export function FinanzasScreen() {
     const updated = [...newExpenses, ...current]
     writeExpenses(updated)
     setExpenses(updated)
+    window.dispatchEvent(new Event('sq-data-changed'))
     setPendingItems([])
     if (newExpenses.some(e => e.date !== today)) {
       setView('semana')
@@ -364,12 +352,6 @@ export function FinanzasScreen() {
 
   return (
     <div className="px-4 pt-6 pb-24">
-      {/* Debug toast */}
-      {toast && (
-        <div className="fixed top-4 left-4 right-4 z-50 bg-card border border-primary rounded-xl p-3 shadow-lg text-sm text-foreground text-center">
-          {toast}
-        </div>
-      )}
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold text-foreground">Finanzas</h1>

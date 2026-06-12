@@ -5,10 +5,10 @@ import { BottomNav } from '@/components/bottom-nav'
 import { PomodoroTimer } from '@/components/pomodoro-timer'
 import { HabitEditor } from '@/components/habit-editor'
 import { TodayDashboard } from '@/components/screens/today-dashboard'
-import { QuestsScreen } from '@/components/screens/quests-screen'
 import { FinanzasScreen } from '@/components/screens/finanzas-screen'
 import { GymScreen } from '@/components/screens/gym-screen'
 import { StatsScreen } from '@/components/screens/stats-screen'
+import { FoodScreen } from '@/components/screens/food-screen'
 import { INITIAL_HABITS, INITIAL_METRICS } from '@/lib/data'
 import type { Habit, DailyMetrics } from '@/lib/types'
 
@@ -85,7 +85,7 @@ function getWeeklyData(): number[] {
   } catch { return [0,0,0,0,0,0,0] }
 }
 
-type Tab = 'hoy' | 'quests' | 'finanzas' | 'gym' | 'stats'
+type Tab = 'hoy' | 'food' | 'finanzas' | 'gym' | 'stats'
 
 export default function Page() {
   const [activeTab, setActiveTab] = useState<Tab>('hoy')
@@ -137,6 +137,7 @@ export default function Page() {
     if (!habitsLoaded) return
     const completions = Object.fromEntries(habits.map(h => [h.id, h.completed]))
     localStorage.setItem('sq_today', JSON.stringify({ date: getTodayStr(), completions }))
+    uploadToCloud()
   }, [habits, habitsLoaded])
 
   const { streak, bestStreak } = useMemo(() => getStreaks(habits), [habits])
@@ -200,17 +201,62 @@ export default function Page() {
       .catch(() => {})
   }
 
+  // ── Cloud backup: sync localStorage ↔ Redis ──
+  const SYNC_KEYS = ['sq_habits', 'sq_today', 'sq_history', 'sq_expenses', 'sq_finance_started_at', 'sq_gym_logs', 'sq_gym_seeded', 'sq_steps_history', 'sq_food_log']
+
+  const uploadToCloud = () => {
+    const data: Record<string, string> = {}
+    for (const key of SYNC_KEYS) {
+      const val = localStorage.getItem(key)
+      if (val) data[key] = val
+    }
+    fetch('/api/sync-data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data }),
+    }).catch(() => {})
+  }
+
+  const downloadFromCloud = async () => {
+    try {
+      const res = await fetch('/api/sync-data')
+      if (!res.ok) return false
+      const { data } = await res.json()
+      if (!data || Object.keys(data).length === 0) return false
+      let restored = false
+      for (const key of SYNC_KEYS) {
+        if (data[key] && !localStorage.getItem(key)) {
+          localStorage.setItem(key, data[key])
+          restored = true
+        }
+      }
+      return restored
+    } catch { return false }
+  }
+
   useEffect(() => {
     fetchSteps() // show cached data immediately
     triggerAndroidSync() // ping Android, then re-fetch after 5s
+
+    // Restore from cloud if localStorage is empty, then upload
+    downloadFromCloud().then((restored) => {
+      if (restored) window.location.reload()
+      else uploadToCloud()
+    })
+
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
         fetchSteps()
         triggerAndroidSync()
       }
     }
+    const handleDataChanged = () => uploadToCloud()
     document.addEventListener('visibilitychange', handleVisibility)
-    return () => document.removeEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('sq-data-changed', handleDataChanged)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('sq-data-changed', handleDataChanged)
+    }
   }, [])
 
   const handleToggleHabit = (id: string) => {
@@ -250,8 +296,6 @@ export default function Page() {
             onEditHabits={() => setShowHabitEditor(true)}
           />
         )
-      case 'quests':
-        return <QuestsScreen habits={habits} onToggleHabit={handleToggleHabit} onEditHabits={() => setShowHabitEditor(true)} />
       case 'stats':
         return <StatsScreen habits={habits} streak={streak} bestStreak={bestStreak} weeklyData={weeklyData} metrics={metrics} />
       default:
@@ -276,7 +320,10 @@ export default function Page() {
       ) : (
         <>
           {renderScreen()}
-          {/* Keep FinanzasScreen and GymScreen always mounted to preserve state */}
+          {/* Keep these screens always mounted to preserve state */}
+          <div style={{ display: activeTab === 'food' ? 'block' : 'none' }}>
+            <FoodScreen />
+          </div>
           <div style={{ display: activeTab === 'finanzas' ? 'block' : 'none' }}>
             <FinanzasScreen />
           </div>

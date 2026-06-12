@@ -13,6 +13,8 @@ export default auth((req) => {
     pathname.startsWith('/api/trigger-sync') ||
     pathname.startsWith('/api/fcm-token') ||
     pathname.startsWith('/api/sync-sheet') ||
+    pathname.startsWith('/api/sync-data') ||
+    pathname.startsWith('/api/recipe-suggest') ||
     pathname.startsWith('/_next') ||
     pathname.includes('.')
   ) {
