@@ -12,7 +12,7 @@ export async function POST(request: Request) {
     }
 
     const { text } = await generateText({
-      model: google('gemini-2.5-flash'),
+      model: google('gemini-2.0-flash'),
       prompt: `Eres un nutricionista deportivo. Sugiere UNA receta alternativa para "${mealLabel}" (${dayType === 'entreno' ? 'día de entreno' : 'día de descanso'}).
 
 La comida base del plan es: ${baseMeal}

@@ -205,6 +205,8 @@ export function FoodScreen() {
         carbs: target.carbs - eatenMacros.carbs,
         fat: target.fat - eatenMacros.fat,
       }
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 15000)
       const res = await fetch('/api/recipe-suggest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -214,7 +216,9 @@ export function FoodScreen() {
           targetMacros: { kcal: mealData.kcal, protein: mealData.protein, carbs: mealData.carbs, fat: mealData.fat },
           dayType: todayLog.dayType,
         }),
+        signal: controller.signal,
       })
+      clearTimeout(timeout)
       if (!res.ok) throw new Error('API error')
       const data = await res.json()
       setAiSuggestion({ mealId, text: data.suggestion || 'No se pudo generar sugerencia' })
