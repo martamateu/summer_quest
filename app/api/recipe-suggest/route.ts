@@ -1,43 +1,53 @@
-import { generateText } from 'ai'
-import { google } from '@ai-sdk/google'
+const SPOONACULAR_BASE = 'https://api.spoonacular.com/recipes'
 
 export async function POST(request: Request) {
+  const apiKey = process.env.SPOONACULAR_API_KEY
+  if (!apiKey) {
+    return Response.json({ error: 'Spoonacular API key not configured' }, { status: 500 })
+  }
+
   try {
     const body = await request.json()
-    const { mealLabel, baseMeal, targetMacros, dayType } = body as {
-      mealLabel: string
-      baseMeal: string
-      targetMacros: { kcal: number; protein: number; carbs: number; fat: number }
-      dayType: 'entreno' | 'descanso'
+    const { minProtein, maxCalories, maxFat, maxCarbs, number = 3 } = body as {
+      minProtein?: number
+      maxCalories?: number
+      maxFat?: number
+      maxCarbs?: number
+      number?: number
     }
 
-    const { text } = await generateText({
-      model: google('gemini-2.0-flash'),
-      prompt: `Eres un nutricionista deportivo. Sugiere UNA receta alternativa para "${mealLabel}" (${dayType === 'entreno' ? 'día de entreno' : 'día de descanso'}).
-
-La comida base del plan es: ${baseMeal}
-
-Los macros objetivo para esta comida son:
-- ${targetMacros.kcal} kcal
-- ${targetMacros.protein}g proteína
-- ${targetMacros.carbs}g carbohidratos  
-- ${targetMacros.fat}g grasa
-
-Reglas:
-- La receta debe cumplir EXACTAMENTE estos macros (±10%)
-- Ingredientes accesibles en un supermercado español (Mercadona, Lidl)
-- Puede ser creativa pero saludable
-- NO freír, usar plancha/horno/freidora de aire
-- Salsas solo si son <100kcal/100g
-- Incluir gramos exactos de cada ingrediente
-
-Responde SOLO con la receta en 2-3 líneas. Sin títulos ni explicaciones extra. Formato:
-[Ingredientes con gramos] → [Preparación breve]`,
+    const params = new URLSearchParams({
+      apiKey,
+      number: String(number),
     })
 
-    return Response.json({ suggestion: text })
+    if (minProtein) params.set('minProtein', String(minProtein))
+    if (maxCalories) params.set('maxCalories', String(maxCalories))
+    if (maxFat) params.set('maxFat', String(maxFat))
+    if (maxCarbs) params.set('maxCarbs', String(maxCarbs))
+
+    const res = await fetch(`${SPOONACULAR_BASE}/findByNutrients?${params}`)
+    if (!res.ok) {
+      const errText = await res.text()
+      console.error('Spoonacular error:', res.status, errText)
+      return Response.json({ error: 'Spoonacular API error' }, { status: res.status })
+    }
+
+    const recipes = await res.json()
+
+    const simplified = recipes.map((r: { id: number; title: string; image: string; calories: number; protein: string; carbs: string; fat: string }) => ({
+      id: r.id,
+      title: r.title,
+      image: r.image,
+      calories: r.calories,
+      protein: r.protein,
+      carbs: r.carbs,
+      fat: r.fat,
+    }))
+
+    return Response.json({ recipes: simplified })
   } catch (error) {
-    console.error('Error generating recipe:', error)
-    return Response.json({ error: 'Failed to generate recipe' }, { status: 500 })
+    console.error('Error fetching recipes:', error)
+    return Response.json({ error: 'Failed to fetch recipes' }, { status: 500 })
   }
 }

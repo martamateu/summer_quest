@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { Dumbbell, Moon, Check, ChevronLeft, ChevronRight, Sparkles, Loader2, UtensilsCrossed, Flame, Beef, Wheat, Droplets } from 'lucide-react'
+import { Dumbbell, Moon, Check, ChevronLeft, ChevronRight, Sparkles, Loader2, Flame, Beef, Wheat, Droplets } from 'lucide-react'
 
 const FOOD_STORAGE_KEY = 'sq_food_log'
 
@@ -82,7 +82,7 @@ export function FoodScreen() {
   const [view, setView] = useState<FoodView>('hoy')
   const [weekOffset, setWeekOffset] = useState(0)
   const [aiLoading, setAiLoading] = useState<MealId | null>(null)
-  const [aiSuggestion, setAiSuggestion] = useState<{ mealId: MealId; text: string } | null>(null)
+  const [recipeSuggestions, setRecipeSuggestions] = useState<{ mealId: MealId; recipes: { id: number; title: string; image: string; calories: number; protein: string; carbs: string; fat: string }[] } | null>(null)
 
   useEffect(() => {
     setFoodLog(readFoodLog())
@@ -192,38 +192,33 @@ export function FoodScreen() {
     return avg
   }, [weekStats])
 
-  // AI recipe suggestion
-  const getAiSuggestion = async (mealId: MealId) => {
+  // Recipe suggestions from Spoonacular
+  const getRecipeSuggestions = async (mealId: MealId) => {
     setAiLoading(mealId)
-    setAiSuggestion(null)
+    setRecipeSuggestions(null)
     try {
       const meal = MEALS.find(m => m.id === mealId)!
       const mealData = meal[todayLog.dayType]
-      const remaining = {
-        kcal: target.kcal - eatenMacros.kcal,
-        protein: target.protein - eatenMacros.protein,
-        carbs: target.carbs - eatenMacros.carbs,
-        fat: target.fat - eatenMacros.fat,
-      }
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), 15000)
       const res = await fetch('/api/recipe-suggest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mealLabel: meal.label,
-          baseMeal: mealData.description,
-          targetMacros: { kcal: mealData.kcal, protein: mealData.protein, carbs: mealData.carbs, fat: mealData.fat },
-          dayType: todayLog.dayType,
+          minProtein: Math.max(0, mealData.protein - 5),
+          maxCalories: mealData.kcal + 50,
+          maxFat: mealData.fat + 5,
+          maxCarbs: mealData.carbs + 15,
+          number: 3,
         }),
         signal: controller.signal,
       })
       clearTimeout(timeout)
       if (!res.ok) throw new Error('API error')
       const data = await res.json()
-      setAiSuggestion({ mealId, text: data.suggestion || 'No se pudo generar sugerencia' })
+      setRecipeSuggestions({ mealId, recipes: data.recipes || [] })
     } catch {
-      setAiSuggestion({ mealId, text: 'Error generando sugerencia. Intenta de nuevo.' })
+      setRecipeSuggestions({ mealId, recipes: [] })
     } finally {
       setAiLoading(null)
     }
@@ -313,7 +308,7 @@ export function FoodScreen() {
                         <span className="text-[10px] text-amber-500">C:{mealData.carbs}g</span>
                         <span className="text-[10px] text-blue-500">G:{mealData.fat}g</span>
                         <button
-                          onClick={() => getAiSuggestion(meal.id)}
+                          onClick={() => getRecipeSuggestions(meal.id)}
                           disabled={aiLoading !== null}
                           className="ml-auto text-[10px] text-primary flex items-center gap-0.5 hover:underline disabled:opacity-50"
                         >
@@ -323,21 +318,38 @@ export function FoodScreen() {
                       </div>
                     </div>
                   </div>
-                  {/* AI suggestion */}
-                  {aiSuggestion?.mealId === meal.id && (
-                    <div className="mt-2 ml-9 p-2 bg-accent rounded-lg text-xs text-foreground leading-relaxed">
-                      <div className="flex items-center gap-1 mb-1 text-primary font-medium">
-                        <Sparkles className="w-3 h-3" /> Sugerencia IA
-                      </div>
-                      {aiSuggestion.text}
-                      <button
-                        onClick={() => {
-                          saveCustomMeal(meal.id, aiSuggestion.text)
-                          setAiSuggestion(null)
-                        }}
-                        className="mt-1 text-primary text-[10px] hover:underline block"
-                      >
-                        Usar esta receta →
+                  {/* Recipe suggestions */}
+                  {recipeSuggestions?.mealId === meal.id && (
+                    <div className="mt-2 ml-9 space-y-2">
+                      {recipeSuggestions.recipes.length === 0 ? (
+                        <p className="text-xs text-muted-foreground p-2 bg-accent rounded-lg">No se encontraron recetas. Intenta de nuevo.</p>
+                      ) : (
+                        recipeSuggestions.recipes.map(recipe => (
+                          <div key={recipe.id} className="flex gap-2 p-2 bg-accent rounded-lg">
+                            <img src={recipe.image} alt={recipe.title} className="w-14 h-14 rounded-lg object-cover shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-foreground leading-tight">{recipe.title}</p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="text-[9px] text-muted-foreground">{recipe.calories} kcal</span>
+                                <span className="text-[9px] text-red-500">{recipe.protein}</span>
+                                <span className="text-[9px] text-amber-500">{recipe.carbs}</span>
+                                <span className="text-[9px] text-blue-500">{recipe.fat}</span>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  saveCustomMeal(meal.id, recipe.title)
+                                  setRecipeSuggestions(null)
+                                }}
+                                className="mt-1 text-primary text-[10px] hover:underline"
+                              >
+                                Usar esta →
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                      <button onClick={() => setRecipeSuggestions(null)} className="text-[10px] text-muted-foreground hover:underline">
+                        Cerrar
                       </button>
                     </div>
                   )}
