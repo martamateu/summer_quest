@@ -10,6 +10,20 @@ Personal all-in-one productivity app that gamifies daily habits, finances, nutri
 
 ![Summer Quest Architecture](public/architecture-diagram.png)
 
+### System Overview
+
+The application follows a three-tier architecture with clear separation of concerns:
+
+![System Overview](public/system-overview.png)
+
+**User Layer** — Web browser (desktop + mobile PWA-ready) with offline-first localStorage + Android companion app for health data sync
+
+**Vercel Platform** — Next.js 16 App Router with 9 API routes, NextAuth v5 middleware protection, and cross-device sync via sendBeacon
+
+**External Services** — AI-powered receipt OCR (Gemini 2.5 Flash), recipe search (Spoonacular), gym sync (Google Sheets), silent push notifications (Firebase FCM), and cloud persistence (Upstash Redis)
+
+**Data Flow** — Synchronous API calls for real-time operations (solid arrows) and asynchronous background jobs for health sync and push triggers (dashed arrows)
+
 ---
 
 ## Screens
