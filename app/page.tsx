@@ -258,6 +258,21 @@ export default function Page() {
     }, 300)
   }
 
+  // Keys that contain arrays of items with `id` fields — need merge by ID
+  const ARRAY_KEYS = new Set(['sq_expenses', 'sq_gym_logs'])
+
+  // Merge two JSON arrays by `id`, keeping all unique items
+  const mergeArraysById = (localJson: string, cloudJson: string): string => {
+    try {
+      const local = JSON.parse(localJson) as { id: string }[]
+      const cloud = JSON.parse(cloudJson) as { id: string }[]
+      if (!Array.isArray(local) || !Array.isArray(cloud)) return cloudJson
+      const ids = new Set(local.map(i => i.id))
+      const merged = [...local, ...cloud.filter(i => !ids.has(i.id))]
+      return JSON.stringify(merged)
+    } catch { return cloudJson }
+  }
+
   const downloadFromCloud = async () => {
     try {
       const res = await fetch('/api/sync-data')
@@ -275,12 +290,23 @@ export default function Page() {
       for (const key of SYNC_KEYS) {
         const cloudVal = data[key]
         const localVal = localStorage.getItem(key)
-        // Restore from cloud if local is missing or empty ([], {})
-        if (cloudVal && (!localVal || localVal === '[]' || localVal === '{}')) {
+        if (!cloudVal) continue
+
+        if (!localVal || localVal === '[]' || localVal === '{}') {
+          // Local is empty — restore from cloud
           console.log('[sync] restoring', key, 'from cloud')
           localStorage.setItem(key, cloudVal)
           restored = true
+        } else if (ARRAY_KEYS.has(key)) {
+          // Both have data — merge arrays by ID
+          const merged = mergeArraysById(localVal, cloudVal)
+          if (merged !== localVal) {
+            console.log('[sync] merging', key, 'with cloud data')
+            localStorage.setItem(key, merged)
+            restored = true
+          }
         }
+        // For non-array keys (sq_today, sq_habits, etc.), local wins — don't overwrite
       }
       return restored
     } catch (e) {
@@ -308,6 +334,10 @@ export default function Page() {
       if (document.visibilityState === 'visible') {
         fetchSteps()
         triggerAndroidSync()
+        // Merge any changes from other devices
+        downloadFromCloud().then(restored => {
+          if (restored) window.location.reload()
+        })
       } else {
         // Page going to background — flush data immediately
         flushToCloud()
