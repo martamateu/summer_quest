@@ -279,6 +279,7 @@ export default function Page() {
     // Persist habit config separately so it survives day resets
     const config = updatedHabits.map(h => ({ ...h, completed: false }))
     localStorage.setItem('sq_habits', JSON.stringify(config))
+    uploadToCloud()
   }
 
   const renderScreen = () => {
