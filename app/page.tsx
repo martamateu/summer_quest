@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { BottomNav } from '@/components/bottom-nav'
 import { PomodoroTimer } from '@/components/pomodoro-timer'
 import { HabitEditor } from '@/components/habit-editor'
@@ -204,25 +204,33 @@ export default function Page() {
   // ── Cloud backup: sync localStorage ↔ Redis ──
   const SYNC_KEYS = ['sq_habits', 'sq_today', 'sq_history', 'sq_expenses', 'sq_finance_started_at', 'sq_gym_logs', 'sq_gym_seeded', 'sq_steps_history', 'sq_food_log']
 
+  // Debounced upload: cancel previous pending upload so only the latest data is sent
+  const uploadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const uploadToCloud = () => {
-    const data: Record<string, string> = {}
-    for (const key of SYNC_KEYS) {
-      const val = localStorage.getItem(key)
-      if (val) data[key] = val
-    }
-    const keyCount = Object.keys(data).length
-    if (keyCount === 0) return
-    console.log('[sync] uploading', keyCount, 'keys to cloud')
-    fetch('/api/sync-data', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data }),
-    })
-      .then(r => {
-        if (!r.ok) console.error('[sync] upload failed:', r.status)
-        else console.log('[sync] upload ok')
+    if (uploadTimerRef.current) clearTimeout(uploadTimerRef.current)
+    uploadTimerRef.current = setTimeout(() => {
+      if (!syncReadyRef.current) return // don't upload before first download completes
+      const data: Record<string, string> = {}
+      for (const key of SYNC_KEYS) {
+        const val = localStorage.getItem(key)
+        if (val) data[key] = val
+      }
+      const keyCount = Object.keys(data).length
+      if (keyCount === 0) return
+      console.log('[sync] uploading', keyCount, 'keys to cloud')
+      fetch('/api/sync-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data }),
+        keepalive: true, // survive page close on mobile
       })
-      .catch(e => console.error('[sync] upload error:', e))
+        .then(r => {
+          if (!r.ok) console.error('[sync] upload failed:', r.status)
+          else console.log('[sync] upload ok')
+        })
+        .catch(e => console.error('[sync] upload error:', e))
+    }, 500) // wait 500ms to batch rapid changes
   }
 
   const downloadFromCloud = async () => {
@@ -256,6 +264,8 @@ export default function Page() {
     }
   }
 
+  const syncReadyRef = useRef(false)
+
   useEffect(() => {
     fetchSteps() // show cached data immediately
     triggerAndroidSync() // ping Android, then re-fetch after 5s
@@ -263,7 +273,10 @@ export default function Page() {
     // Restore from cloud if localStorage is empty, then upload
     downloadFromCloud().then((restored) => {
       if (restored) window.location.reload()
-      else uploadToCloud()
+      else {
+        syncReadyRef.current = true
+        uploadToCloud()
+      }
     })
 
     const handleVisibility = () => {
