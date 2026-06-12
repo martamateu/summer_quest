@@ -207,6 +207,31 @@ export default function Page() {
   // Debounced upload: cancel previous pending upload so only the latest data is sent
   const uploadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Immediate upload (no debounce) — used when page is closing/hiding
+  const flushToCloud = () => {
+    if (uploadTimerRef.current) clearTimeout(uploadTimerRef.current)
+    if (!syncReadyRef.current) return
+    const data: Record<string, string> = {}
+    for (const key of SYNC_KEYS) {
+      const val = localStorage.getItem(key)
+      if (val) data[key] = val
+    }
+    if (Object.keys(data).length === 0) return
+    console.log('[sync] flush uploading to cloud')
+    // Use sendBeacon for reliability on page close, fallback to fetch
+    const payload = JSON.stringify({ data })
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon('/api/sync-data', new Blob([payload], { type: 'application/json' }))
+    } else {
+      fetch('/api/sync-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+        keepalive: true,
+      }).catch(() => {})
+    }
+  }
+
   const uploadToCloud = () => {
     if (uploadTimerRef.current) clearTimeout(uploadTimerRef.current)
     uploadTimerRef.current = setTimeout(() => {
@@ -223,14 +248,14 @@ export default function Page() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ data }),
-        keepalive: true, // survive page close on mobile
+        keepalive: true,
       })
         .then(r => {
           if (!r.ok) console.error('[sync] upload failed:', r.status)
           else console.log('[sync] upload ok')
         })
         .catch(e => console.error('[sync] upload error:', e))
-    }, 500) // wait 500ms to batch rapid changes
+    }, 300)
   }
 
   const downloadFromCloud = async () => {
@@ -283,13 +308,19 @@ export default function Page() {
       if (document.visibilityState === 'visible') {
         fetchSteps()
         triggerAndroidSync()
+      } else {
+        // Page going to background — flush data immediately
+        flushToCloud()
       }
     }
+    const handlePageHide = () => flushToCloud()
     const handleDataChanged = () => uploadToCloud()
     document.addEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('pagehide', handlePageHide)
     window.addEventListener('sq-data-changed', handleDataChanged)
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('pagehide', handlePageHide)
       window.removeEventListener('sq-data-changed', handleDataChanged)
     }
   }, [])
