@@ -267,14 +267,27 @@ export function FinanzasScreen() {
       const result = await response.json()
       console.log('OCR result:', JSON.stringify(result))
       if (result.items && Array.isArray(result.items)) {
-        setPendingItems(result.items.map((item: { description: string; amount: number; category: ExpenseCategory; confidence: string; date?: string; isIncome?: boolean }) => ({
-          description: item.description,
-          amount: item.amount,
-          suggestedCategory: item.confidence === 'low' ? null : item.category,
-          confidence: item.confidence,
-          date: item.date || getTodayStr(),
-          isIncome: item.isIncome || false,
-        })))
+        const today = getTodayStr()
+        const currentYear = new Date().getFullYear()
+        setPendingItems(result.items.map((item: { description: string; amount: number; category: ExpenseCategory; confidence: string; date?: string; isIncome?: boolean }) => {
+          // Sanitize date: extract YYYY-MM-DD, always use current year, fallback to today
+          let date = today
+          if (item.date) {
+            const match = item.date.match(/^(\d{4})-(\d{2})-(\d{2})/)
+            if (match) {
+              const [, , month, day] = match
+              date = `${currentYear}-${month}-${day}`
+            }
+          }
+          return {
+            description: item.description,
+            amount: item.amount,
+            suggestedCategory: item.confidence === 'low' ? null : item.category,
+            confidence: item.confidence,
+            date,
+            isIncome: item.isIncome || false,
+          }
+        }))
       }
     } catch (error) {
       console.error('Error scanning receipt:', error)
