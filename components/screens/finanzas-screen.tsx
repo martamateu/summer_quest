@@ -104,7 +104,7 @@ export function FinanzasScreen() {
     window.dispatchEvent(new Event('sq-data-changed'))
   }
 
-  // Load on mount
+  // Load on mount + re-read on visibility change (e.g. after cloud restore)
   useEffect(() => {
     setExpenses(readExpenses())
     try {
@@ -115,6 +115,13 @@ export function FinanzasScreen() {
     } catch {
       setFinanceStartDate(getTodayStr())
     }
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        setExpenses(readExpenses())
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
   }, [])
 
   const onlyExpenses = (list: Expense[]) => list.filter(e => !e.isIncome)

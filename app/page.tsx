@@ -210,31 +210,50 @@ export default function Page() {
       const val = localStorage.getItem(key)
       if (val) data[key] = val
     }
+    const keyCount = Object.keys(data).length
+    if (keyCount === 0) return
+    console.log('[sync] uploading', keyCount, 'keys to cloud')
     fetch('/api/sync-data', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ data }),
-    }).catch(() => {})
+    })
+      .then(r => {
+        if (!r.ok) console.error('[sync] upload failed:', r.status)
+        else console.log('[sync] upload ok')
+      })
+      .catch(e => console.error('[sync] upload error:', e))
   }
 
   const downloadFromCloud = async () => {
     try {
       const res = await fetch('/api/sync-data')
-      if (!res.ok) return false
+      if (!res.ok) {
+        console.error('[sync] download failed:', res.status)
+        return false
+      }
       const { data } = await res.json()
-      if (!data || Object.keys(data).length === 0) return false
+      if (!data || Object.keys(data).length === 0) {
+        console.log('[sync] cloud is empty')
+        return false
+      }
+      console.log('[sync] cloud has', Object.keys(data).length, 'keys')
       let restored = false
       for (const key of SYNC_KEYS) {
         const cloudVal = data[key]
         const localVal = localStorage.getItem(key)
         // Restore from cloud if local is missing or empty ([], {})
         if (cloudVal && (!localVal || localVal === '[]' || localVal === '{}')) {
+          console.log('[sync] restoring', key, 'from cloud')
           localStorage.setItem(key, cloudVal)
           restored = true
         }
       }
       return restored
-    } catch { return false }
+    } catch (e) {
+      console.error('[sync] download error:', e)
+      return false
+    }
   }
 
   useEffect(() => {
