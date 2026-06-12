@@ -8,12 +8,16 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json()
-    const { minProtein, maxCalories, maxFat, maxCarbs, number = 3 } = body as {
+    const { minProtein, maxProtein, minCalories, maxCalories, maxFat, minCarbs, maxCarbs, number = 3, random = false } = body as {
       minProtein?: number
+      maxProtein?: number
+      minCalories?: number
       maxCalories?: number
       maxFat?: number
+      minCarbs?: number
       maxCarbs?: number
       number?: number
+      random?: boolean
     }
 
     const params = new URLSearchParams({
@@ -22,9 +26,13 @@ export async function POST(request: Request) {
     })
 
     if (minProtein) params.set('minProtein', String(minProtein))
+    if (maxProtein) params.set('maxProtein', String(maxProtein))
+    if (minCalories) params.set('minCalories', String(minCalories))
     if (maxCalories) params.set('maxCalories', String(maxCalories))
     if (maxFat) params.set('maxFat', String(maxFat))
+    if (minCarbs) params.set('minCarbs', String(minCarbs))
     if (maxCarbs) params.set('maxCarbs', String(maxCarbs))
+    if (random) params.set('random', 'true')
 
     const res = await fetch(`${SPOONACULAR_BASE}/findByNutrients?${params}`)
     if (!res.ok) {

@@ -206,10 +206,14 @@ export function FoodScreen() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           minProtein: Math.max(0, mealData.protein - 5),
+          maxProtein: mealData.protein + 10,
+          minCalories: Math.max(0, mealData.kcal - 100),
           maxCalories: mealData.kcal + 50,
-          maxFat: mealData.fat + 5,
+          minCarbs: Math.max(0, mealData.carbs - 10),
           maxCarbs: mealData.carbs + 15,
+          maxFat: mealData.fat + 5,
           number: 3,
+          random: true,
         }),
         signal: controller.signal,
       })
@@ -307,14 +311,16 @@ export function FoodScreen() {
                         <span className="text-[10px] text-red-500">P:{mealData.protein}g</span>
                         <span className="text-[10px] text-amber-500">C:{mealData.carbs}g</span>
                         <span className="text-[10px] text-blue-500">G:{mealData.fat}g</span>
-                        <button
-                          onClick={() => getRecipeSuggestions(meal.id)}
-                          disabled={aiLoading !== null}
-                          className="ml-auto text-[10px] text-primary flex items-center gap-0.5 hover:underline disabled:opacity-50"
-                        >
-                          {aiLoading === meal.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                          Ideas
-                        </button>
+                        {(meal.id === 'comida' || meal.id === 'cena') && (
+                          <button
+                            onClick={() => getRecipeSuggestions(meal.id)}
+                            disabled={aiLoading !== null}
+                            className="ml-auto text-[10px] text-primary flex items-center gap-0.5 hover:underline disabled:opacity-50"
+                          >
+                            {aiLoading === meal.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                            Ideas
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -331,9 +337,9 @@ export function FoodScreen() {
                               <p className="text-xs font-medium text-foreground leading-tight">{recipe.title}</p>
                               <div className="flex items-center gap-2 mt-1">
                                 <span className="text-[9px] text-muted-foreground">{recipe.calories} kcal</span>
-                                <span className="text-[9px] text-red-500">{recipe.protein}</span>
-                                <span className="text-[9px] text-amber-500">{recipe.carbs}</span>
-                                <span className="text-[9px] text-blue-500">{recipe.fat}</span>
+                                <span className="text-[9px] text-red-500">P: {recipe.protein}</span>
+                                <span className="text-[9px] text-amber-500">C: {recipe.carbs}</span>
+                                <span className="text-[9px] text-blue-500">G: {recipe.fat}</span>
                               </div>
                               <button
                                 onClick={() => {
