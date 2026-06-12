@@ -2,7 +2,6 @@
 
 Personal all-in-one productivity app that gamifies daily habits, finances, nutrition, gym training and health metrics into a single mobile-first dashboard.
 
-**Live**: [summer-quest-self.vercel.app](https://summer-quest-self.vercel.app)
 
 ---
 
