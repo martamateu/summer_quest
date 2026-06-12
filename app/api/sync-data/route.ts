@@ -29,7 +29,9 @@ export async function POST(request: Request) {
   if (!data || typeof data !== 'object') {
     return Response.json({ error: 'Invalid data' }, { status: 400 })
   }
-  // Store with no TTL — persistent backup
-  await redis.set(REDIS_KEY, data)
-  return Response.json({ ok: true, keys: Object.keys(data).length })
+  // Merge with existing data so partial uploads don't erase other keys
+  const existing = await redis.get<Record<string, string>>(REDIS_KEY) || {}
+  const merged = { ...existing, ...data }
+  await redis.set(REDIS_KEY, merged)
+  return Response.json({ ok: true, keys: Object.keys(merged).length })
 }

@@ -225,8 +225,11 @@ export default function Page() {
       if (!data || Object.keys(data).length === 0) return false
       let restored = false
       for (const key of SYNC_KEYS) {
-        if (data[key] && !localStorage.getItem(key)) {
-          localStorage.setItem(key, data[key])
+        const cloudVal = data[key]
+        const localVal = localStorage.getItem(key)
+        // Restore from cloud if local is missing or empty ([], {})
+        if (cloudVal && (!localVal || localVal === '[]' || localVal === '{}')) {
+          localStorage.setItem(key, cloudVal)
           restored = true
         }
       }
