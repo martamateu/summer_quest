@@ -117,11 +117,25 @@ export function FinanzasScreen() {
     }
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
-        setExpenses(readExpenses())
+        const fresh = readExpenses()
+        console.log('[finanzas] visibility change → re-read', fresh.length, 'expenses')
+        setExpenses(fresh)
+      }
+    }
+    // Also listen for storage changes from other tabs or cloud restore
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === EXPENSES_STORAGE_KEY) {
+        const fresh = readExpenses()
+        console.log('[finanzas] storage event → re-read', fresh.length, 'expenses')
+        setExpenses(fresh)
       }
     }
     document.addEventListener('visibilitychange', handleVisibility)
-    return () => document.removeEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('storage', handleStorage)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('storage', handleStorage)
+    }
   }, [])
 
   const onlyExpenses = (list: Expense[]) => list.filter(e => !e.isIncome)
@@ -274,7 +288,7 @@ export function FinanzasScreen() {
     const item = pendingItems[index]
     if (!item) return
     const newExpense: Expense = {
-      id: Date.now().toString() + index,
+      id: Date.now().toString() + '_' + Math.random().toString(36).slice(2, 6),
       description: item.description,
       amount: item.amount,
       category: category || item.suggestedCategory || 'otros',
@@ -285,6 +299,7 @@ export function FinanzasScreen() {
     const updated = [newExpense, ...current]
     writeExpenses(updated)
     setExpenses(updated)
+    console.log('[finanzas] confirmed item:', newExpense.description, newExpense.amount, '→ total expenses:', updated.length)
     window.dispatchEvent(new Event('sq-data-changed'))
     const remaining = pendingItems.filter((_, i) => i !== index)
     setPendingItems(remaining)
@@ -296,7 +311,7 @@ export function FinanzasScreen() {
   const confirmAllItems = () => {
     const today = getTodayStr()
     const newExpenses = pendingItems.map((item, i) => ({
-      id: Date.now().toString() + i,
+      id: Date.now().toString() + '_' + i + '_' + Math.random().toString(36).slice(2, 6),
       description: item.description,
       amount: item.amount,
       category: item.suggestedCategory || 'otros' as ExpenseCategory,
@@ -307,6 +322,7 @@ export function FinanzasScreen() {
     const updated = [...newExpenses, ...current]
     writeExpenses(updated)
     setExpenses(updated)
+    console.log('[finanzas] confirmed ALL', newExpenses.length, 'items → total expenses:', updated.length)
     window.dispatchEvent(new Event('sq-data-changed'))
     setPendingItems([])
     if (newExpenses.some(e => e.date !== today)) {

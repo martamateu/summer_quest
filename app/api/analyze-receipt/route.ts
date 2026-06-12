@@ -2,6 +2,8 @@ import { generateObject } from 'ai'
 import { google } from '@ai-sdk/google'
 import { z } from 'zod'
 
+export const maxDuration = 60 // allow up to 60s for OCR processing
+
 const ExpenseItemSchema = z.object({
   description: z.string().describe('Breve descripcion del cargo o linea del ticket'),
   amount: z.number().describe('Cantidad en euros (siempre positivo)'),
