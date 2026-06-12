@@ -104,9 +104,7 @@ export function FinanzasScreen() {
 
   // Load on mount
   useEffect(() => {
-    const loaded = readExpenses()
-    console.log('[FINANZAS] mount load:', loaded.length, 'expenses')
-    setExpenses(loaded)
+    setExpenses(readExpenses())
     try {
       const storedStartDate = localStorage.getItem(FINANCE_START_STORAGE_KEY)
       const startDate = storedStartDate || getTodayStr()
@@ -258,10 +256,7 @@ export function FinanzasScreen() {
 
   const confirmItem = (index: number, category?: ExpenseCategory) => {
     const item = pendingItems[index]
-    if (!item) {
-      alert('DEBUG: item es null en index ' + index)
-      return
-    }
+    if (!item) return
     const newExpense: Expense = {
       id: Date.now().toString() + index,
       description: item.description,
@@ -270,16 +265,20 @@ export function FinanzasScreen() {
       date: item.date,
       isIncome: item.isIncome,
     }
-    const before = readExpenses()
-    const updated = [newExpense, ...before]
+    const current = readExpenses()
+    const updated = [newExpense, ...current]
     writeExpenses(updated)
     setExpenses(updated)
-    setPendingItems(prev => prev.filter((_, i) => i !== index))
-    const after = readExpenses()
-    alert('GUARDADO: ' + newExpense.description + ' (' + newExpense.amount + '€)\nAntes: ' + before.length + ' → Ahora: ' + after.length)
+    const remaining = pendingItems.filter((_, i) => i !== index)
+    setPendingItems(remaining)
+    // If no more pending items and any had a non-today date, switch to week view
+    if (remaining.length === 0 && newExpense.date !== getTodayStr()) {
+      setView('semana')
+    }
   }
 
   const confirmAllItems = () => {
+    const today = getTodayStr()
     const newExpenses = pendingItems.map((item, i) => ({
       id: Date.now().toString() + i,
       description: item.description,
@@ -289,8 +288,13 @@ export function FinanzasScreen() {
       isIncome: item.isIncome,
     }))
     const current = readExpenses()
-    saveExpenses([...newExpenses, ...current])
+    const updated = [...newExpenses, ...current]
+    writeExpenses(updated)
+    setExpenses(updated)
     setPendingItems([])
+    if (newExpenses.some(e => e.date !== today)) {
+      setView('semana')
+    }
   }
 
   const dismissItem = (index: number) => {
