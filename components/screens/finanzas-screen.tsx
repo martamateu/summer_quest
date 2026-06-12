@@ -228,6 +228,8 @@ export function FinanzasScreen() {
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+    // Reset input so the same file can be selected again
+    e.target.value = ''
     setIsScanning(true)
     setPendingItems([])
     try {
@@ -271,8 +273,8 @@ export function FinanzasScreen() {
     setExpenses(updated)
     const remaining = pendingItems.filter((_, i) => i !== index)
     setPendingItems(remaining)
-    // If no more pending items and any had a non-today date, switch to week view
-    if (remaining.length === 0 && newExpense.date !== getTodayStr()) {
+    // Switch to week view immediately when confirming a non-today expense
+    if (newExpense.date !== getTodayStr()) {
       setView('semana')
     }
   }
