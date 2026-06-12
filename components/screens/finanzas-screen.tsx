@@ -238,8 +238,13 @@ export function FinanzasScreen() {
       const formData = new FormData()
       formData.append('image', file)
       const response = await fetch('/api/analyze-receipt', { method: 'POST', body: formData })
-      if (!response.ok) throw new Error('Failed to analyze')
+      if (!response.ok) {
+        const errText = await response.text()
+        console.error('OCR API error:', response.status, errText)
+        throw new Error(`API ${response.status}`)
+      }
       const result = await response.json()
+      console.log('OCR result:', JSON.stringify(result))
       if (result.items && Array.isArray(result.items)) {
         setPendingItems(result.items.map((item: { description: string; amount: number; category: ExpenseCategory; confidence: string; date?: string; isIncome?: boolean }) => ({
           description: item.description,
