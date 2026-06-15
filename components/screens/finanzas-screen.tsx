@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { Camera, Plus, X, Check, Loader2, Flame, Receipt, TrendingDown, TrendingUp, Trash2, ChevronLeft, ChevronRight, ArrowDownCircle, ArrowUpCircle, Lightbulb } from 'lucide-react'
+import { Camera, Plus, X, Check, Loader2, Flame, Receipt, TrendingDown, TrendingUp, Trash2, ChevronLeft, ChevronRight, ArrowDownCircle, ArrowUpCircle, Lightbulb, Pencil } from 'lucide-react'
 import type { Expense, ExpenseCategory } from '@/lib/types'
 import { EXPENSE_CATEGORY_LABELS } from '@/lib/types'
 
@@ -100,6 +100,12 @@ export function FinanzasScreen() {
   const [weekOffset, setWeekOffset] = useState(0)
   const [monthOffset, setMonthOffset] = useState(0)
   const [filterCategory, setFilterCategory] = useState<ExpenseCategory | 'all'>('all')
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null)
+  const [editDescription, setEditDescription] = useState('')
+  const [editAmount, setEditAmount] = useState('')
+  const [editCategory, setEditCategory] = useState<ExpenseCategory>('otros')
+  const [editDate, setEditDate] = useState('')
+  const [editIsIncome, setEditIsIncome] = useState(false)
 
   // Always read from localStorage and sync to React state
   const saveExpenses = (updated: Expense[]) => {
@@ -375,6 +381,43 @@ export function FinanzasScreen() {
   const deleteExpense = (id: string) => {
     const current = readExpenses()
     saveExpenses(current.filter(e => e.id !== id))
+  }
+
+  const openEditExpense = (expense: Expense) => {
+    setEditingExpenseId(expense.id)
+    setEditDescription(expense.description)
+    setEditAmount(expense.amount.toString())
+    setEditCategory(expense.category)
+    setEditDate(expense.date)
+    setEditIsIncome(expense.isIncome ?? false)
+  }
+
+  const cancelEditExpense = () => {
+    setEditingExpenseId(null)
+    setEditDescription('')
+    setEditAmount('')
+    setEditCategory('otros')
+    setEditDate('')
+    setEditIsIncome(false)
+  }
+
+  const saveEditExpense = () => {
+    if (!editingExpenseId || !editDescription || !editAmount) return
+    const current = readExpenses()
+    const updated = current.map(e =>
+      e.id === editingExpenseId
+        ? {
+            ...e,
+            description: editDescription,
+            amount: parseFloat(editAmount),
+            category: editCategory,
+            date: editDate,
+            isIncome: editIsIncome,
+          }
+        : e
+    )
+    saveExpenses(updated)
+    cancelEditExpense()
   }
 
   // Current view items
@@ -783,6 +826,9 @@ export function FinanzasScreen() {
               <p className={`text-sm font-bold mr-3 ${expense.isIncome ? 'text-green-600' : 'text-foreground'}`}>
                 {expense.isIncome ? '+' : ''}{expense.amount.toFixed(2)}€
               </p>
+              <button onClick={() => openEditExpense(expense)} className="p-1 rounded-full hover:bg-secondary transition-colors">
+                <Pencil className="w-4 h-4 text-muted-foreground" />
+              </button>
               <button onClick={() => deleteExpense(expense.id)} className="p-1 rounded-full hover:bg-secondary transition-colors">
                 <Trash2 className="w-4 h-4 text-muted-foreground" />
               </button>
@@ -790,6 +836,49 @@ export function FinanzasScreen() {
           ))}
         </div>
       </div>
+
+      {/* ────── EDIT EXPENSE MODAL ────── */}
+      {editingExpenseId && (
+        <div className="bg-card rounded-2xl p-4 mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="font-medium text-foreground">Editar movimiento</p>
+            <button onClick={cancelEditExpense}><X className="w-5 h-5 text-muted-foreground" /></button>
+          </div>
+          {/* Income/Expense toggle */}
+          <div className="flex gap-2 mb-3">
+            <button
+              onClick={() => setEditIsIncome(false)}
+              className={`flex-1 py-2 rounded-xl text-sm font-medium transition-all ${!editIsIncome ? 'bg-red-100 text-red-700' : 'bg-secondary text-muted-foreground'}`}
+            >
+              Gasto
+            </button>
+            <button
+              onClick={() => setEditIsIncome(true)}
+              className={`flex-1 py-2 rounded-xl text-sm font-medium transition-all ${editIsIncome ? 'bg-green-100 text-green-700' : 'bg-secondary text-muted-foreground'}`}
+            >
+              Ingreso
+            </button>
+          </div>
+          <input type="text" placeholder="Descripción" value={editDescription} onChange={e => setEditDescription(e.target.value)} className="w-full p-3 rounded-xl bg-secondary text-foreground mb-2 outline-none focus:ring-2 focus:ring-primary" />
+          <input type="number" placeholder="Cantidad (EUR)" value={editAmount} onChange={e => setEditAmount(e.target.value)} className="w-full p-3 rounded-xl bg-secondary text-foreground mb-2 outline-none focus:ring-2 focus:ring-primary" />
+          <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="w-full p-3 rounded-xl bg-secondary text-foreground mb-3 outline-none focus:ring-2 focus:ring-primary" />
+          <div className="grid grid-cols-4 gap-2 mb-3">
+            {categories.map(cat => (
+              <button key={cat} onClick={() => setEditCategory(cat)} className={`p-2 rounded-xl text-xs transition-all ${editCategory === cat ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}>
+                {EXPENSE_CATEGORY_LABELS[cat]}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={cancelEditExpense} className="flex-1 py-3 rounded-xl bg-secondary text-foreground font-medium">
+              Cancelar
+            </button>
+            <button onClick={saveEditExpense} disabled={!editDescription || !editAmount} className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-medium disabled:opacity-50">
+              Guardar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
