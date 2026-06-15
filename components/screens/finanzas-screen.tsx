@@ -241,7 +241,9 @@ export function FinanzasScreen() {
     .filter(e => FIXED_EXPENSE_CATEGORIES.includes(e.category))
     .reduce((s, e) => s + e.amount, 0)
   const monthlyVariableTotal = monthlyTotal - monthlyFixedTotal
-  const incomeBase = monthlyIncome + prevMonthPayrollIncome
+  // Base fórmula: otros ingresos del mes actual (excluida nómina) + nómina del mes anterior
+  const thisMonthOtherIncome = thisMonthIncome.filter(e => !isPayrollIncome(e)).reduce((s, e) => s + e.amount, 0)
+  const incomeBase = thisMonthOtherIncome + prevMonthPayrollIncome
   const monthlyFixedPct = incomeBase > 0 ? (monthlyFixedTotal / incomeBase) * 100 : 0
   const monthlyVariablePct = incomeBase > 0 ? (monthlyVariableTotal / incomeBase) * 100 : 0
   const monthlySavingsRatePct = incomeBase > 0 ? 100 - (monthlyFixedPct + monthlyVariablePct) : 0
@@ -704,7 +706,7 @@ export function FinanzasScreen() {
                     <span className={`${monthlySavingsRatePct >= 0 ? 'text-green-600' : 'text-red-600'} font-medium`}>{monthlySavingsRatePct.toFixed(1)}%</span>
                   </div>
                   <p className="text-[10px] text-muted-foreground">
-                    Base usada por fórmula: ingresos del mes + nómina del mes anterior ({incomeBase.toFixed(0)}€)
+                    Base: otros ingresos este mes ({thisMonthOtherIncome.toFixed(0)}€) + nómina mes anterior ({prevMonthPayrollIncome.toFixed(0)}€) = {incomeBase.toFixed(0)}€
                   </p>
                 </div>
 
