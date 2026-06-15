@@ -25,6 +25,8 @@ type FinanceView = 'dia' | 'semana' | 'mes'
 
 const categories: ExpenseCategory[] = ['comida', 'supermercado', 'transporte', 'ocio', 'hogar', 'salud', 'ropa', 'suscripciones', 'hipoteca', 'seguros', 'viajes', 'nails', 'skincare', 'hair', 'ai', 'investments', 'otros']
 
+const FIXED_EXPENSE_CATEGORIES: ExpenseCategory[] = ['hipoteca', 'seguros', 'suscripciones']
+
 const SUPERMARKET_KEYWORDS = [
   'mercadona', 'condis', 'dia', 'lidl', 'aldi', 'carrefour', 'alcampo',
   'eroski', 'supersol', 'consum', 'bon preu', 'bonpreu', 'caprabo',
@@ -235,6 +237,13 @@ export function FinanzasScreen() {
   const prevMonthTotal = prevMonthExpenses.reduce((s, e) => s + e.amount, 0)
   const monthlySavings = monthlyIncome - monthlyTotal
   const thisMonthCats = categoryTotals(thisMonthExpenses)
+  const monthlyFixedTotal = thisMonthExpenses
+    .filter(e => FIXED_EXPENSE_CATEGORIES.includes(e.category))
+    .reduce((s, e) => s + e.amount, 0)
+  const monthlyVariableTotal = monthlyTotal - monthlyFixedTotal
+  const monthlyFixedPct = monthlyIncome > 0 ? (monthlyFixedTotal / monthlyIncome) * 100 : 0
+  const monthlyVariablePct = monthlyIncome > 0 ? (monthlyVariableTotal / monthlyIncome) * 100 : 0
+  const monthlySavingsRatePct = monthlyIncome > 0 ? 100 - (monthlyFixedPct + monthlyVariablePct) : 0
 
   // Insights
   const insights = useMemo(() => {
@@ -637,6 +646,36 @@ export function FinanzasScreen() {
                 <p className="text-[10px] text-muted-foreground">{Math.round((monthlySavings / monthlyIncome) * 100)}%</p>
               )}
             </div>
+          </div>
+
+          {/* Financial pie (percentages over net income) */}
+          <div className="bg-card rounded-2xl p-4 mb-4">
+            <h2 className="text-sm font-semibold text-foreground mb-3">Tarta financiera (sobre ingreso neto)</h2>
+            {monthlyIncome > 0 ? (
+              <>
+                <div className="w-full h-3 bg-secondary rounded-full overflow-hidden mb-3 flex">
+                  <div className="h-full bg-violet-500" style={{ width: `${Math.max(Math.min(monthlyFixedPct, 100), 0)}%` }} />
+                  <div className="h-full bg-orange-400" style={{ width: `${Math.max(Math.min(monthlyVariablePct, 100 - Math.max(Math.min(monthlyFixedPct, 100), 0)), 0)}%` }} />
+                  <div className="h-full bg-green-500" style={{ width: `${Math.max(Math.min(monthlySavingsRatePct, 100), 0)}%` }} />
+                </div>
+                <div className="space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-foreground">Gastos fijos</span>
+                    <span className="text-muted-foreground">{monthlyFixedPct.toFixed(1)}% · {monthlyFixedTotal.toFixed(0)}€</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-foreground">Gastos variables</span>
+                    <span className="text-muted-foreground">{monthlyVariablePct.toFixed(1)}% · {monthlyVariableTotal.toFixed(0)}€</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-foreground">Tasa de ahorro</span>
+                    <span className={`${monthlySavingsRatePct >= 0 ? 'text-green-600' : 'text-red-600'} font-medium`}>{monthlySavingsRatePct.toFixed(1)}%</span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">Añade ingresos este mes para calcular la tarta financiera.</p>
+            )}
           </div>
 
           {/* Budget goal widget */}
