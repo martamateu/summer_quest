@@ -7,7 +7,6 @@ import { EXPENSE_CATEGORY_LABELS } from '@/lib/types'
 
 const EXPENSES_STORAGE_KEY = 'sq_expenses'
 const FINANCE_START_STORAGE_KEY = 'sq_finance_started_at'
-const FIXED_INCOME_STORAGE_KEY = 'sq_fixed_income'
 
 const toDateStr = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 const getTodayStr = () => toDateStr(new Date())
@@ -83,6 +82,12 @@ function categoryTotals(expenses: Expense[]) {
   }, {} as Partial<Record<ExpenseCategory, number>>)
 }
 
+function isPayrollIncome(entry: Expense) {
+  if (!entry.isIncome) return false
+  const text = entry.description.toLowerCase()
+  return text.includes('nomina') || text.includes('nómina') || text.includes('sueldo') || text.includes('salary') || text.includes('payroll')
+}
+
 // Direct localStorage helpers — no effects, no race conditions
 function readExpenses(): Expense[] {
   try {
@@ -116,9 +121,6 @@ export function FinanzasScreen() {
   const [editCategory, setEditCategory] = useState<ExpenseCategory>('otros')
   const [editDate, setEditDate] = useState('')
   const [editIsIncome, setEditIsIncome] = useState(false)
-  const [fixedIncome, setFixedIncome] = useState(0)
-  const [editingFixedIncome, setEditingFixedIncome] = useState(false)
-  const [fixedIncomeInput, setFixedIncomeInput] = useState('')
 
   // Always read from localStorage and sync to React state
   const saveExpenses = (updated: Expense[]) => {
@@ -148,10 +150,6 @@ export function FinanzasScreen() {
     }
     setExpenses(changed ? migrated : current)
     try {
-      const storedFixedIncome = localStorage.getItem(FIXED_INCOME_STORAGE_KEY)
-      if (storedFixedIncome) setFixedIncome(parseFloat(storedFixedIncome))
-    } catch { /* ignore */ }
-    try {
       const storedStartDate = localStorage.getItem(FINANCE_START_STORAGE_KEY)
       const startDate = storedStartDate || getTodayStr()
       if (!storedStartDate) localStorage.setItem(FINANCE_START_STORAGE_KEY, startDate)
@@ -172,9 +170,6 @@ export function FinanzasScreen() {
         const fresh = readExpenses()
         console.log('[finanzas] storage event → re-read', fresh.length, 'expenses')
         setExpenses(fresh)
-      }
-      if (e.key === FIXED_INCOME_STORAGE_KEY) {
-        setFixedIncome(e.newValue ? parseFloat(e.newValue) : 0)
       }
     }
     document.addEventListener('visibilitychange', handleVisibility)
@@ -234,9 +229,11 @@ export function FinanzasScreen() {
   const thisMonthItems = filterByRange(expenses, thisMonth.start, thisMonth.end)
   const thisMonthExpenses = onlyExpenses(thisMonthItems)
   const thisMonthIncome = onlyIncome(thisMonthItems)
+  const prevMonthIncome = onlyIncome(filterByRange(expenses, prevMonth.start, prevMonth.end))
   const prevMonthExpenses = onlyExpenses(filterByRange(expenses, prevMonth.start, prevMonth.end))
   const monthlyTotal = thisMonthExpenses.reduce((s, e) => s + e.amount, 0)
   const monthlyIncome = thisMonthIncome.reduce((s, e) => s + e.amount, 0)
+  const prevMonthPayrollIncome = prevMonthIncome.filter(isPayrollIncome).reduce((s, e) => s + e.amount, 0)
   const prevMonthTotal = prevMonthExpenses.reduce((s, e) => s + e.amount, 0)
   const monthlySavings = monthlyIncome - monthlyTotal
   const thisMonthCats = categoryTotals(thisMonthExpenses)
@@ -244,7 +241,7 @@ export function FinanzasScreen() {
     .filter(e => FIXED_EXPENSE_CATEGORIES.includes(e.category))
     .reduce((s, e) => s + e.amount, 0)
   const monthlyVariableTotal = monthlyTotal - monthlyFixedTotal
-  const incomeBase = fixedIncome > 0 ? fixedIncome : monthlyIncome
+  const incomeBase = monthlyIncome + prevMonthPayrollIncome
   const monthlyFixedPct = incomeBase > 0 ? (monthlyFixedTotal / incomeBase) * 100 : 0
   const monthlyVariablePct = incomeBase > 0 ? (monthlyVariableTotal / incomeBase) * 100 : 0
   const monthlySavingsRatePct = incomeBase > 0 ? 100 - (monthlyFixedPct + monthlyVariablePct) : 0
@@ -432,16 +429,6 @@ export function FinanzasScreen() {
   const deleteExpense = (id: string) => {
     const current = readExpenses()
     saveExpenses(current.filter(e => e.id !== id))
-  }
-
-  const saveFixedIncome = () => {
-    const val = parseFloat(fixedIncomeInput)
-    if (isNaN(val) || val <= 0) return
-    localStorage.setItem(FIXED_INCOME_STORAGE_KEY, val.toString())
-    setFixedIncome(val)
-    setEditingFixedIncome(false)
-    setFixedIncomeInput('')
-    window.dispatchEvent(new Event('sq-data-changed'))
   }
 
   const openEditExpense = (expense: Expense) => {
@@ -662,33 +649,7 @@ export function FinanzasScreen() {
 
           {/* Financial pie (percentages over net income) */}
           <div className="bg-card rounded-2xl p-4 mb-4">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-foreground">Tarta financiera</h2>
-              <button
-                onClick={() => {
-                  setEditingFixedIncome(!editingFixedIncome)
-                  setFixedIncomeInput(fixedIncome > 0 ? fixedIncome.toString() : '')
-                }}
-                className="text-[10px] text-primary hover:underline"
-              >
-                {fixedIncome > 0 ? 'Ingreso fijo: cambiar' : 'Definir ingreso fijo'}
-              </button>
-            </div>
-
-            {editingFixedIncome && (
-              <div className="flex gap-2 mb-3">
-                <input
-                  type="number"
-                  placeholder="Ingreso fijo mensual (€)"
-                  value={fixedIncomeInput}
-                  onChange={e => setFixedIncomeInput(e.target.value)}
-                  className="flex-1 p-2.5 rounded-xl bg-secondary text-foreground text-sm outline-none focus:ring-2 focus:ring-primary"
-                />
-                <button onClick={saveFixedIncome} className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium">OK</button>
-                <button onClick={() => setEditingFixedIncome(false)} className="px-3 py-2 rounded-xl bg-secondary text-foreground text-sm"><X className="w-4 h-4" /></button>
-              </div>
-            )}
-
+            <h2 className="text-sm font-semibold text-foreground mb-3">Tarta financiera</h2>
             {incomeBase > 0 ? (
               <>
                 <div className="flex items-center gap-4 mb-3">
@@ -714,6 +675,21 @@ export function FinanzasScreen() {
                   </div>
                 </div>
 
+                <div className="flex flex-wrap gap-3 mb-3 text-[11px]">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-violet-500" />
+                    <span className="text-muted-foreground">Gastos fijos</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-orange-400" />
+                    <span className="text-muted-foreground">Gastos variables</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
+                    <span className="text-muted-foreground">Ingresos base</span>
+                  </div>
+                </div>
+
                 <div className="space-y-2 text-xs">
                   <div className="flex items-center justify-between">
                     <span className="text-foreground">% gastos fijos (sobre ingreso)</span>
@@ -728,12 +704,29 @@ export function FinanzasScreen() {
                     <span className={`${monthlySavingsRatePct >= 0 ? 'text-green-600' : 'text-red-600'} font-medium`}>{monthlySavingsRatePct.toFixed(1)}%</span>
                   </div>
                   <p className="text-[10px] text-muted-foreground">
-                    Base usada: {fixedIncome > 0 ? 'ingreso fijo configurado' : 'ingresos registrados del mes'} ({incomeBase.toFixed(0)}€)
+                    Base usada por fórmula: ingresos del mes + nómina del mes anterior ({incomeBase.toFixed(0)}€)
                   </p>
+                </div>
+
+                {monthlySavingsRatePct < 0 && (
+                  <div className="mt-3 rounded-xl bg-red-50 p-2.5 text-xs text-red-700">
+                    Alerta: te estás pasando de la fórmula. Tus gastos superan la base de ingresos en {Math.abs(monthlySavingsRatePct).toFixed(1)} puntos.
+                  </div>
+                )}
+
+                <div className="mt-3 rounded-xl bg-accent p-3">
+                  <p className="text-xs font-semibold text-foreground mb-1">IA Insights</p>
+                  <div className="space-y-1 text-xs text-muted-foreground">
+                    {monthlySavingsRatePct >= 20 && <p>• Muy bien: mantienes una tasa de ahorro sólida para inversión.</p>}
+                    {monthlySavingsRatePct >= 0 && monthlySavingsRatePct < 20 && <p>• Puedes mejorar: intenta bajar gastos variables para subir tu tasa de ahorro.</p>}
+                    {monthlySavingsRatePct < 0 && <p>• Riesgo: primero reduce gastos variables y revisa fijos antes de invertir más.</p>}
+                    {monthlyFixedPct > 55 && <p>• Tus gastos fijos pesan mucho; optimizar suscripciones/seguros te dará margen rápido.</p>}
+                    {monthlyVariablePct > 45 && <p>• Tus gastos variables están altos; revisa ocio, transporte y compras semanales.</p>}
+                  </div>
                 </div>
               </>
             ) : (
-              <p className="text-sm text-muted-foreground">Define un ingreso fijo o añade ingresos este mes para calcular la tarta financiera.</p>
+              <p className="text-sm text-muted-foreground">No hay base suficiente para la tarta. Registra ingresos del mes o una nómina en el mes anterior.</p>
             )}
           </div>
 
