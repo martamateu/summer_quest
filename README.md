@@ -30,8 +30,8 @@ The application follows a three-tier architecture with clear separation of conce
 | Tab | Screen | Description |
 |-----|--------|-------------|
 | 🏠 **Hoy** | Today Dashboard | Daily non-negotiable habits (20 habits across 6 areas), streaks, steps counter, screen time, Pomodoro deep work timer |
-| 🍽️ **Food** | Nutrition Tracker | 5 meals/day with pre-configured macros for training vs rest days. Recipe suggestions via Spoonacular API (comida & cena only) |
-| 💰 **Finanzas** | Finance Tracker | OCR receipt scanner (Gemini AI), manual entry, 11 expense categories, income tracking, daily/weekly/monthly views, streak of days under 10€ |
+| 🍽️ **Food** | Nutrition Tracker | 5 meals/day with pre-configured macros for training vs rest days. Recipe suggestions via Spoonacular API, saved favorite recipes |
+| 💰 **Finanzas** | Finance Tracker | OCR receipt scanner (Gemini AI), manual entry, 17 expense categories, saved expense editing, supermarket auto-categorization, income tracking, monthly budget goal, daily/weekly/monthly views |
 | 🏋️ **Gym** | Strength Training | 3-workout A/B/C rotation, weight×reps tracking, progression analytics, auto-sync to Google Sheets |
 | 📊 **Stats** | Analytics | Habit completion %, streaks, daily/weekly/monthly steps, weekly bar charts, per-area breakdowns |
 
@@ -145,26 +145,30 @@ npm run dev          # http://localhost:3000
 ## Feature Roadmap
 
 ### Priority Features
-- [ ] **Top 3 habits widget** — Display the 3 most important habits of the day with prominent visual emphasis
+- [x] **Top 3 habits widget** — Display the 3 most important habits of the day with prominent visual emphasis
 - [ ] **Gym rest timer** — Configurable countdown between sets with sound notification and vibration
-- [ ] **Improved habit editor** — Redesign habit editing interface for easier management and better UX
+- [x] **Improved habit editor** — Inline habit name editing with pencil action and keyboard shortcuts
 
 ### Stats & Analytics
 - [ ] **Daily/weekly exercise summary** — Detailed workout analytics in Stats screen with volume, frequency, and progression tracking
 - [ ] **Workout check-in with screenshots** — Upload training screenshots with class name and date for visual workout journal
 
 ### Finance Enhancements
-- [ ] **Edit saved expenses** — Modify description, amount, category and date of already saved expenses
-- [ ] **Financial areas for expenses** — Separate expense tracking by financial areas (Nails, Skin Care, Hair, AI, Investments)
-- [ ] **Budget goals** — Set monthly savings targets with visual progress, alerts when exceeding limit
+- [x] **Edit saved expenses** — Modify description, amount, category, date and income/expense type of already saved expenses
+- [x] **Financial areas for expenses** — Added Nails, Skin Care, Hair, AI, Investments and Supermercado expense categories
+- [x] **Supermarket auto-categorization** — Automatically moves Condis, Mercadona, DIA, Lidl, Aldi, Carrefour and similar merchants into Supermercado
+- [x] **Budget goals** — Set monthly spending targets with visual progress
+- [ ] **Budget alerts** — Alerts when approaching or exceeding monthly budget goal
 
 ### Habits & Productivity
-- [ ] **New habit areas** — Add Nails, Skin Care, Hair, AI and Investments with specific habits per area
 - [ ] **Link habits to Pomodoro** — Associate specific habits with Pomodoro timer (e.g., "Study AI 25min" counts towards AI habit)
 - [ ] **Sleep tracker** — Log sleep hours, quality (1-5), bedtime/wake time, streak of 8h+ nights
 
+> Clarified scope: Nails, Skin Care, Hair, AI and Investments are expense categories, not habit areas.
+
 ### Food & Nutrition
-- [ ] **Recipe favorites** — Save favorite recipes, filter by cooking time, create weekly meal prep plans
+- [x] **Recipe favorites** — Save favorite recipes from Spoonacular suggestions
+- [ ] **Recipe filters and meal prep** — Filter favorite recipes by cooking time and create weekly meal prep plans
 - [ ] **Food photo calorie counter** — Scan food photo with AI to estimate calories and macros automatically (similar to receipt OCR)
 
 ### Infrastructure
