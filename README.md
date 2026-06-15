@@ -144,14 +144,30 @@ npm run dev          # http://localhost:3000
 
 ## Feature Roadmap
 
+### Priority Features
+- [ ] **Top 3 habits widget** — Display the 3 most important habits of the day with prominent visual emphasis
 - [ ] **Gym rest timer** — Configurable countdown between sets with sound notification and vibration
+- [ ] **Improved habit editor** — Redesign habit editing interface for easier management and better UX
+
+### Stats & Analytics
+- [ ] **Daily/weekly exercise summary** — Detailed workout analytics in Stats screen with volume, frequency, and progression tracking
+- [ ] **Workout check-in with screenshots** — Upload training screenshots with class name and date for visual workout journal
+
+### Finance Enhancements
 - [ ] **Edit saved expenses** — Modify description, amount, category and date of already saved expenses
+- [ ] **Financial areas for expenses** — Separate expense tracking by financial areas (Nails, Skin Care, Hair, AI, Investments)
+- [ ] **Budget goals** — Set monthly savings targets with visual progress, alerts when exceeding limit
+
+### Habits & Productivity
 - [ ] **New habit areas** — Add Nails, Skin Care, Hair, AI and Investments with specific habits per area
-- [ ] **Food photo calorie counter** — Scan food photo with AI to estimate calories and macros automatically (similar to receipt OCR)
 - [ ] **Link habits to Pomodoro** — Associate specific habits with Pomodoro timer (e.g., "Study AI 25min" counts towards AI habit)
 - [ ] **Sleep tracker** — Log sleep hours, quality (1-5), bedtime/wake time, streak of 8h+ nights
+
+### Food & Nutrition
 - [ ] **Recipe favorites** — Save favorite recipes, filter by cooking time, create weekly meal prep plans
-- [ ] **Budget goals** — Set monthly savings targets with visual progress, alerts when exceeding limit
+- [ ] **Food photo calorie counter** — Scan food photo with AI to estimate calories and macros automatically (similar to receipt OCR)
+
+### Infrastructure
 - [ ] **PWA offline mode** — Service worker to function without connection, sync when internet returns
 
 ---
