@@ -22,7 +22,7 @@ interface PendingItem {
 
 type FinanceView = 'dia' | 'semana' | 'mes'
 
-const categories: ExpenseCategory[] = ['comida', 'supermercado', 'transporte', 'ocio', 'hogar', 'salud', 'ropa', 'suscripciones', 'hipoteca', 'seguros', 'viajes', 'nails', 'skincare', 'hair', 'ai', 'investments', 'otros']
+const categories: ExpenseCategory[] = ['nomina', 'comida', 'supermercado', 'transporte', 'ocio', 'hogar', 'salud', 'ropa', 'suscripciones', 'hipoteca', 'seguros', 'viajes', 'nails', 'skincare', 'hair', 'ai', 'investments', 'otros']
 
 const FIXED_EXPENSE_CATEGORIES: ExpenseCategory[] = ['hogar', 'suscripciones', 'hipoteca', 'seguros', 'ai', 'investments']
 
@@ -33,6 +33,7 @@ const SUPERMARKET_KEYWORDS = [
 ]
 
 const CATEGORY_COLORS: Record<ExpenseCategory, string> = {
+  nomina: '#16a34a',
   comida: '#f97316',
   transporte: '#3b82f6',
   ocio: '#a855f7',
@@ -84,6 +85,7 @@ function categoryTotals(expenses: Expense[]) {
 
 function isPayrollIncome(entry: Expense) {
   if (!entry.isIncome) return false
+  if (entry.category === 'nomina') return true
   const text = entry.description.toLowerCase()
   return text.includes('nomina') || text.includes('nómina') || text.includes('sueldo') || text.includes('salary') || text.includes('payroll')
 }
@@ -133,9 +135,16 @@ export function FinanzasScreen() {
   // Load on mount + re-read on visibility change (e.g. after cloud restore)
   useEffect(() => {
     // Auto-migrate expenses with supermarket keywords to 'supermercado' category
+    // Auto-migrate payroll income entries to 'nomina' category
     const current = readExpenses()
     const migrated = current.map(e => {
-      if (e.category !== 'supermercado') {
+      if (e.isIncome && e.category !== 'nomina') {
+        const desc = e.description.toLowerCase()
+        if (desc.includes('nomina') || desc.includes('nómina') || desc.includes('sueldo') || desc.includes('salary') || desc.includes('payroll')) {
+          return { ...e, category: 'nomina' as ExpenseCategory }
+        }
+      }
+      if (!e.isIncome && e.category !== 'supermercado') {
         const desc = e.description.toLowerCase()
         if (SUPERMARKET_KEYWORDS.some(kw => desc.includes(kw))) {
           return { ...e, category: 'supermercado' as ExpenseCategory }
@@ -717,13 +726,35 @@ export function FinanzasScreen() {
                 )}
 
                 <div className="mt-3 rounded-xl bg-accent p-3">
-                  <p className="text-xs font-semibold text-foreground mb-1">IA Insights</p>
-                  <div className="space-y-1 text-xs text-muted-foreground">
-                    {monthlySavingsRatePct >= 20 && <p>• Muy bien: mantienes una tasa de ahorro sólida para inversión.</p>}
-                    {monthlySavingsRatePct >= 0 && monthlySavingsRatePct < 20 && <p>• Puedes mejorar: intenta bajar gastos variables para subir tu tasa de ahorro.</p>}
-                    {monthlySavingsRatePct < 0 && <p>• Riesgo: primero reduce gastos variables y revisa fijos antes de invertir más.</p>}
-                    {monthlyFixedPct > 55 && <p>• Tus gastos fijos pesan mucho; optimizar suscripciones/seguros te dará margen rápido.</p>}
-                    {monthlyVariablePct > 45 && <p>• Tus gastos variables están altos; revisa ocio, transporte y compras semanales.</p>}
+                  <p className="text-xs font-semibold text-foreground mb-2">IA Insights</p>
+                  <div className="space-y-1.5 text-xs text-muted-foreground">
+                    {monthlySavingsRatePct >= 30 && (
+                      <p>• Excelente tasa de ahorro ({monthlySavingsRatePct.toFixed(0)}%). Puedes destinar parte a inversión en ETF o cuenta remunerada.</p>
+                    )}
+                    {monthlySavingsRatePct >= 20 && monthlySavingsRatePct < 30 && (
+                      <p>• Buena tasa de ahorro ({monthlySavingsRatePct.toFixed(0)}%). Estás en camino — intenta llegar al 30% bajando gastos variables.</p>
+                    )}
+                    {monthlySavingsRatePct >= 10 && monthlySavingsRatePct < 20 && (
+                      <p>• Tasa de ahorro mejorable ({monthlySavingsRatePct.toFixed(0)}%). Deberías ahorrar al menos un 20% de tu base de ingresos.</p>
+                    )}
+                    {monthlySavingsRatePct >= 0 && monthlySavingsRatePct < 10 && (
+                      <p>• Tasa de ahorro baja ({monthlySavingsRatePct.toFixed(0)}%). Revisa gastos variables: si bajas {(incomeBase * 0.1 - incomeBase * (monthlySavingsRatePct / 100)).toFixed(0)}€ llegarías al 10%.</p>
+                    )}
+                    {monthlySavingsRatePct < 0 && (
+                      <p>• 🚨 Estás gastando más de tu base de ingresos. Reduce gastos antes de plantearte invertir.</p>
+                    )}
+                    {monthlyFixedPct > 55 && (
+                      <p>• Gastos fijos altos ({monthlyFixedPct.toFixed(0)}% del ingreso). Revisa suscripciones o seguros para ganar margen.</p>
+                    )}
+                    {monthlyFixedPct >= 40 && monthlyFixedPct <= 55 && (
+                      <p>• Gastos fijos razonables ({monthlyFixedPct.toFixed(0)}%). Podrías optimizar si quieres más margen de ahorro.</p>
+                    )}
+                    {monthlyVariablePct > 40 && (
+                      <p>• Gastos variables altos ({monthlyVariablePct.toFixed(0)}%). Revisa ocio, ropa y compras para liberar dinero.</p>
+                    )}
+                    {incomeBase > 0 && monthlySavingsRatePct > 0 && (
+                      <p>• Ahorro estimado este mes: {(incomeBase * monthlySavingsRatePct / 100).toFixed(0)}€ — {monthlySavingsRatePct >= 20 ? 'lógica para invertir parte' : 'acumula hasta tener 3 meses de fondo de emergencia'}.</p>
+                    )}
                   </div>
                 </div>
               </>

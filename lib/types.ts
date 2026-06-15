@@ -17,6 +17,7 @@ export type ExpenseCategory =
   | 'ai'
   | 'investments'
   | 'supermercado'
+  | 'nomina'
   | 'otros'
 
 export interface Expense {
@@ -46,6 +47,7 @@ export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   ai: 'IA',
   investments: 'Inversiones',
   supermercado: 'Supermercado',
+  nomina: 'Nómina',
   otros: 'Otros',
 }
 
@@ -66,6 +68,7 @@ export const EXPENSE_CATEGORY_ICONS: Record<ExpenseCategory, string> = {
   ai: 'bot',
   investments: 'trending-up',
   supermercado: 'shopping-cart',
+  nomina: 'banknote',
   otros: 'circle',
 }
 
