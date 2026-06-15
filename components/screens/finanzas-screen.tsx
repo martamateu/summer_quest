@@ -23,7 +23,7 @@ interface PendingItem {
 
 type FinanceView = 'dia' | 'semana' | 'mes'
 
-const categories: ExpenseCategory[] = ['comida', 'transporte', 'ocio', 'hogar', 'salud', 'ropa', 'suscripciones', 'hipoteca', 'seguros', 'viajes', 'nails', 'skincare', 'hair', 'ai', 'investments', 'otros']
+const categories: ExpenseCategory[] = ['comida', 'supermercado', 'transporte', 'ocio', 'hogar', 'salud', 'ropa', 'suscripciones', 'hipoteca', 'seguros', 'viajes', 'nails', 'skincare', 'hair', 'ai', 'investments', 'otros']
 
 const CATEGORY_COLORS: Record<ExpenseCategory, string> = {
   comida: '#f97316',
@@ -41,6 +41,7 @@ const CATEGORY_COLORS: Record<ExpenseCategory, string> = {
   hair: '#a78bfa',
   ai: '#34d399',
   investments: '#60a5fa',
+  supermercado: '#10b981',
   otros: '#6b7280',
 }
 
