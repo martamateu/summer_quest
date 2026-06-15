@@ -11,6 +11,11 @@ export type ExpenseCategory =
   | 'hipoteca'
   | 'seguros'
   | 'viajes'
+  | 'nails'
+  | 'skincare'
+  | 'hair'
+  | 'ai'
+  | 'investments'
   | 'otros'
 
 export interface Expense {
@@ -34,6 +39,11 @@ export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   hipoteca: 'Hipoteca',
   seguros: 'Seguros',
   viajes: 'Viajes',
+  nails: 'Uñas',
+  skincare: 'Skin Care',
+  hair: 'Pelo',
+  ai: 'IA',
+  investments: 'Inversiones',
   otros: 'Otros',
 }
 
@@ -48,6 +58,11 @@ export const EXPENSE_CATEGORY_ICONS: Record<ExpenseCategory, string> = {
   hipoteca: 'landmark',
   seguros: 'shield',
   viajes: 'plane',
+  nails: 'sparkles',
+  skincare: 'sparkles',
+  hair: 'scissors',
+  ai: 'bot',
+  investments: 'trending-up',
   otros: 'circle',
 }
 
