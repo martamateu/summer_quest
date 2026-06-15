@@ -25,6 +25,12 @@ type FinanceView = 'dia' | 'semana' | 'mes'
 
 const categories: ExpenseCategory[] = ['comida', 'supermercado', 'transporte', 'ocio', 'hogar', 'salud', 'ropa', 'suscripciones', 'hipoteca', 'seguros', 'viajes', 'nails', 'skincare', 'hair', 'ai', 'investments', 'otros']
 
+const SUPERMARKET_KEYWORDS = [
+  'mercadona', 'condis', 'dia', 'lidl', 'aldi', 'carrefour', 'alcampo',
+  'eroski', 'supersol', 'consum', 'bon preu', 'bonpreu', 'caprabo',
+  'supercor', 'el corte inglés alimentación', 'simply', "maxi's",
+]
+
 const CATEGORY_COLORS: Record<ExpenseCategory, string> = {
   comida: '#f97316',
   transporte: '#3b82f6',
@@ -122,7 +128,23 @@ export function FinanzasScreen() {
 
   // Load on mount + re-read on visibility change (e.g. after cloud restore)
   useEffect(() => {
-    setExpenses(readExpenses())
+    // Auto-migrate expenses with supermarket keywords to 'supermercado' category
+    const current = readExpenses()
+    const migrated = current.map(e => {
+      if (e.category !== 'supermercado') {
+        const desc = e.description.toLowerCase()
+        if (SUPERMARKET_KEYWORDS.some(kw => desc.includes(kw))) {
+          return { ...e, category: 'supermercado' as ExpenseCategory }
+        }
+      }
+      return e
+    })
+    const changed = migrated.some((e, i) => e.category !== current[i].category)
+    if (changed) {
+      writeExpenses(migrated)
+      window.dispatchEvent(new Event('sq-data-changed'))
+    }
+    setExpenses(changed ? migrated : current)
     try {
       const storedGoal = localStorage.getItem(BUDGET_GOAL_STORAGE_KEY)
       if (storedGoal) setBudgetGoal(parseFloat(storedGoal))
