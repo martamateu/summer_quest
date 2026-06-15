@@ -256,6 +256,9 @@ export function FinanzasScreen() {
   const monthlyFixedPct = incomeBase > 0 ? (monthlyFixedTotal / incomeBase) * 100 : 0
   const monthlyVariablePct = incomeBase > 0 ? (monthlyVariableTotal / incomeBase) * 100 : 0
   const monthlySavingsRatePct = incomeBase > 0 ? 100 - (monthlyFixedPct + monthlyVariablePct) : 0
+  const needsDeltaPct = monthlyFixedPct - 50
+  const wantsDeltaPct = monthlyVariablePct - 30
+  const savingsDeltaPct = monthlySavingsRatePct - 20
   const pieTotal = monthlyFixedTotal + monthlyVariableTotal + incomeBase
   const pieFixedPct = pieTotal > 0 ? (monthlyFixedTotal / pieTotal) * 100 : 0
   const pieVariablePct = pieTotal > 0 ? (monthlyVariableTotal / pieTotal) * 100 : 0
@@ -719,15 +722,54 @@ export function FinanzasScreen() {
                   </p>
                 </div>
 
+                <div className="mt-3 rounded-xl border border-border/60 p-3">
+                  <p className="text-xs font-semibold text-foreground mb-2">Regla 50 / 30 / 20</p>
+                  <div className="space-y-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-foreground">Necesidades</span>
+                      <span className={needsDeltaPct <= 0 ? 'text-green-600' : 'text-red-600'}>
+                        {monthlyFixedPct.toFixed(1)}% / 50% {needsDeltaPct <= 0 ? `(${Math.abs(needsDeltaPct).toFixed(1)} pts por debajo)` : `(${needsDeltaPct.toFixed(1)} pts por encima)`}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-foreground">Deseos</span>
+                      <span className={wantsDeltaPct <= 0 ? 'text-green-600' : 'text-red-600'}>
+                        {monthlyVariablePct.toFixed(1)}% / 30% {wantsDeltaPct <= 0 ? `(${Math.abs(wantsDeltaPct).toFixed(1)} pts por debajo)` : `(${wantsDeltaPct.toFixed(1)} pts por encima)`}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-foreground">Ahorro e inversión</span>
+                      <span className={savingsDeltaPct >= 0 ? 'text-green-600' : 'text-red-600'}>
+                        {monthlySavingsRatePct.toFixed(1)}% / 20% {savingsDeltaPct >= 0 ? `(${savingsDeltaPct.toFixed(1)} pts por encima)` : `(${Math.abs(savingsDeltaPct).toFixed(1)} pts por debajo)`}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
                 {monthlySavingsRatePct < 0 && (
                   <div className="mt-3 rounded-xl bg-red-50 p-2.5 text-xs text-red-700">
                     Alerta: te estás pasando de la fórmula. Tus gastos superan la base de ingresos en {Math.abs(monthlySavingsRatePct).toFixed(1)} puntos.
                   </div>
                 )}
 
+                {monthlySavingsRatePct >= 0 && savingsDeltaPct < 0 && (
+                  <div className="mt-3 rounded-xl bg-amber-50 p-2.5 text-xs text-amber-700">
+                    Aviso 50/30/20: podrías ahorrar o invertir {(incomeBase * Math.abs(savingsDeltaPct) / 100).toFixed(0)}€ más este mes para llegar al 20%.
+                  </div>
+                )}
+
                 <div className="mt-3 rounded-xl bg-accent p-3">
                   <p className="text-xs font-semibold text-foreground mb-2">IA Insights</p>
                   <div className="space-y-1.5 text-xs text-muted-foreground">
+                    {needsDeltaPct > 0 && (
+                      <p>• Según la regla 50/30/20, tus necesidades están {needsDeltaPct.toFixed(1)} puntos por encima. Hogar, hipoteca, seguros o suscripciones están consumiendo demasiado margen.</p>
+                    )}
+                    {wantsDeltaPct > 0 && (
+                      <p>• Tus deseos están {wantsDeltaPct.toFixed(1)} puntos por encima del 30%. Aquí es donde más fácil puedes recortar.</p>
+                    )}
+                    {savingsDeltaPct < 0 && (
+                      <p>• Estás {Math.abs(savingsDeltaPct).toFixed(1)} puntos por debajo del objetivo de ahorro/inversión del 20%.</p>
+                    )}
                     {monthlySavingsRatePct >= 30 && (
                       <p>• Excelente tasa de ahorro ({monthlySavingsRatePct.toFixed(0)}%). Puedes destinar parte a inversión en ETF o cuenta remunerada.</p>
                     )}
