@@ -66,11 +66,12 @@ interface FavoriteRecipe {
   carbs: string
   fat: string
 }
-}
+
 interface DayLog {
   dayType: DayType
   meals: Record<MealId, boolean>
   customMeals?: Record<MealId, string> // custom recipe descriptions
+}
 
 type FoodLog = Record<string, DayLog> // keyed by date string
 
