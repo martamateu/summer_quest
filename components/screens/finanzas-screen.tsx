@@ -244,7 +244,6 @@ export function FinanzasScreen() {
   const monthlyIncome = thisMonthIncome.reduce((s, e) => s + e.amount, 0)
   const prevMonthPayrollIncome = prevMonthIncome.filter(isPayrollIncome).reduce((s, e) => s + e.amount, 0)
   const prevMonthTotal = prevMonthExpenses.reduce((s, e) => s + e.amount, 0)
-  const monthlySavings = monthlyIncome - monthlyTotal
   const thisMonthCats = categoryTotals(thisMonthExpenses)
   const monthlyFixedTotal = thisMonthExpenses
     .filter(e => FIXED_EXPENSE_CATEGORIES.includes(e.category))
@@ -253,6 +252,7 @@ export function FinanzasScreen() {
   // Base fórmula: otros ingresos del mes actual (excluida nómina) + nómina del mes anterior
   const thisMonthOtherIncome = thisMonthIncome.filter(e => !isPayrollIncome(e)).reduce((s, e) => s + e.amount, 0)
   const incomeBase = thisMonthOtherIncome + prevMonthPayrollIncome
+  const monthlySavings = incomeBase - monthlyTotal
   const monthlyFixedPct = incomeBase > 0 ? (monthlyFixedTotal / incomeBase) * 100 : 0
   const monthlyVariablePct = incomeBase > 0 ? (monthlyVariableTotal / incomeBase) * 100 : 0
   const monthlySavingsRatePct = incomeBase > 0 ? 100 - (monthlyFixedPct + monthlyVariablePct) : 0
@@ -642,8 +642,8 @@ export function FinanzasScreen() {
           <div className="grid grid-cols-3 gap-2 mb-4">
             <div className="bg-card rounded-2xl p-3 text-center">
               <ArrowDownCircle className="w-5 h-5 text-green-500 mx-auto mb-1" />
-              <p className="text-[10px] text-muted-foreground">Ingresos</p>
-              <p className="text-lg font-bold text-green-600">{monthlyIncome.toFixed(0)}€</p>
+              <p className="text-[10px] text-muted-foreground">Ingresos base</p>
+              <p className="text-lg font-bold text-green-600">{incomeBase.toFixed(0)}€</p>
             </div>
             <div className="bg-card rounded-2xl p-3 text-center">
               <ArrowUpCircle className="w-5 h-5 text-red-500 mx-auto mb-1" />
@@ -655,8 +655,8 @@ export function FinanzasScreen() {
               <p className={`text-lg font-bold ${monthlySavings >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                 {monthlySavings >= 0 ? '+' : ''}{monthlySavings.toFixed(0)}€
               </p>
-              {monthlyIncome > 0 && (
-                <p className="text-[10px] text-muted-foreground">{Math.round((monthlySavings / monthlyIncome) * 100)}%</p>
+              {incomeBase > 0 && (
+                <p className="text-[10px] text-muted-foreground">{Math.round((monthlySavings / incomeBase) * 100)}%</p>
               )}
             </div>
           </div>
