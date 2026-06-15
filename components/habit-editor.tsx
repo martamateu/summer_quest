@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { X, Plus, Trash2, GripVertical, Star } from 'lucide-react'
+import { X, Plus, Trash2, GripVertical, Star, Pencil, Check, Ban, SlidersHorizontal } from 'lucide-react'
 import { AREA_COLORS, AREA_LABELS, type Habit, type HabitArea } from '@/lib/types'
 
 interface HabitEditorProps {
@@ -22,6 +22,8 @@ export function HabitEditor({ habits, onClose, onSave }: HabitEditorProps) {
   const [newHabitNonNeg, setNewHabitNonNeg] = useState(false)
   const [newHabitDays, setNewHabitDays] = useState<number[]>([])
   const [showAddForm, setShowAddForm] = useState(false)
+  const [inlineEditingId, setInlineEditingId] = useState<string | null>(null)
+  const [inlineTitle, setInlineTitle] = useState('')
 
   const handleDeleteHabit = (id: string) => {
     setEditedHabits((prev) => prev.filter((h) => h.id !== id))
@@ -56,6 +58,26 @@ export function HabitEditor({ habits, onClose, onSave }: HabitEditorProps) {
       const days = h.scheduledDays ?? []
       return { ...h, scheduledDays: days.includes(day) ? days.filter(d => d !== day) : [...days, day] }
     }))
+  }
+
+  const startInlineEdit = (habit: Habit) => {
+    setInlineEditingId(habit.id)
+    setInlineTitle(habit.title)
+  }
+
+  const cancelInlineEdit = () => {
+    setInlineEditingId(null)
+    setInlineTitle('')
+  }
+
+  const saveInlineEdit = () => {
+    if (!inlineEditingId || !inlineTitle.trim()) return
+    setEditedHabits((prev) =>
+      prev.map((h) =>
+        h.id === inlineEditingId ? { ...h, title: inlineTitle.trim() } : h
+      )
+    )
+    cancelInlineEdit()
   }
 
   const handleAddHabit = () => {
@@ -144,16 +166,56 @@ export function HabitEditor({ habits, onClose, onSave }: HabitEditorProps) {
                 {areaHabits.map((habit) => (
                   <div
                     key={habit.id}
-                    className="py-2 px-2 bg-background rounded-xl cursor-pointer"
-                    onClick={() => openEditHabit(habit)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => e.key === 'Enter' && openEditHabit(habit)}
+                    className="py-2 px-2 bg-background rounded-xl"
                   >
                     <div className="flex items-center gap-3">
                       <GripVertical className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                      <span className="flex-1 text-sm text-foreground">{habit.title}</span>
+
+                      {inlineEditingId === habit.id ? (
+                        <input
+                          autoFocus
+                          value={inlineTitle}
+                          onChange={(e) => setInlineTitle(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') saveInlineEdit()
+                            if (e.key === 'Escape') cancelInlineEdit()
+                          }}
+                          className="flex-1 text-sm bg-card border border-border rounded-lg px-2 py-1 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                          aria-label="Editar nombre del hábito"
+                        />
+                      ) : (
+                        <span className="flex-1 text-sm text-foreground">{habit.title}</span>
+                      )}
+
                       <span className="text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">{habit.frequency}</span>
+
+                      {inlineEditingId === habit.id ? (
+                        <>
+                          <button
+                            onClick={saveInlineEdit}
+                            className="p-1.5 rounded-full hover:bg-green-100 transition-colors"
+                            aria-label="Guardar nombre"
+                          >
+                            <Check className="w-4 h-4 text-green-600" />
+                          </button>
+                          <button
+                            onClick={cancelInlineEdit}
+                            className="p-1.5 rounded-full hover:bg-secondary transition-colors"
+                            aria-label="Cancelar edición"
+                          >
+                            <Ban className="w-4 h-4 text-muted-foreground" />
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => startInlineEdit(habit)}
+                          className="p-1.5 rounded-full hover:bg-secondary transition-colors"
+                          aria-label={`Editar nombre de ${habit.title}`}
+                        >
+                          <Pencil className="w-4 h-4 text-muted-foreground" />
+                        </button>
+                      )}
+
                       {/* Non-negotiable star toggle */}
                       <button
                         onClick={(e) => {
@@ -174,6 +236,14 @@ export function HabitEditor({ habits, onClose, onSave }: HabitEditorProps) {
                         aria-label={`Eliminar ${habit.title}`}
                       >
                         <Trash2 className="w-4 h-4 text-destructive" />
+                      </button>
+
+                      <button
+                        onClick={() => openEditHabit(habit)}
+                        className="p-1.5 rounded-full hover:bg-secondary transition-colors"
+                        aria-label={`Editar opciones de ${habit.title}`}
+                      >
+                        <SlidersHorizontal className="w-4 h-4 text-muted-foreground" />
                       </button>
                     </div>
                     {/* Scheduled days selector for weekly habits */}
