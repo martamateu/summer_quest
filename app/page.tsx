@@ -202,7 +202,7 @@ export default function Page() {
   }
 
   // ── Cloud backup: sync localStorage ↔ Redis ──
-  const SYNC_KEYS = ['sq_habits', 'sq_today', 'sq_history', 'sq_expenses', 'sq_finance_started_at', 'sq_gym_logs', 'sq_gym_seeded', 'sq_steps_history', 'sq_food_log', 'sq_budget_goal', 'sq_favorite_recipes']
+  const SYNC_KEYS = ['sq_habits', 'sq_today', 'sq_history', 'sq_expenses', 'sq_finance_started_at', 'sq_gym_logs', 'sq_gym_seeded', 'sq_steps_history', 'sq_food_log', 'sq_favorite_recipes']
 
   // Debounced upload: cancel previous pending upload so only the latest data is sent
   const uploadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)

@@ -7,7 +7,6 @@ import { EXPENSE_CATEGORY_LABELS } from '@/lib/types'
 
 const EXPENSES_STORAGE_KEY = 'sq_expenses'
 const FINANCE_START_STORAGE_KEY = 'sq_finance_started_at'
-const BUDGET_GOAL_STORAGE_KEY = 'sq_budget_goal'
 
 const toDateStr = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 const getTodayStr = () => toDateStr(new Date())
@@ -116,9 +115,6 @@ export function FinanzasScreen() {
   const [editCategory, setEditCategory] = useState<ExpenseCategory>('otros')
   const [editDate, setEditDate] = useState('')
   const [editIsIncome, setEditIsIncome] = useState(false)
-  const [budgetGoal, setBudgetGoal] = useState(0)
-  const [editingBudgetGoal, setEditingBudgetGoal] = useState(false)
-  const [budgetGoalInput, setBudgetGoalInput] = useState('')
 
   // Always read from localStorage and sync to React state
   const saveExpenses = (updated: Expense[]) => {
@@ -147,10 +143,6 @@ export function FinanzasScreen() {
       window.dispatchEvent(new Event('sq-data-changed'))
     }
     setExpenses(changed ? migrated : current)
-    try {
-      const storedGoal = localStorage.getItem(BUDGET_GOAL_STORAGE_KEY)
-      if (storedGoal) setBudgetGoal(parseFloat(storedGoal))
-    } catch { /* ignore */ }
     try {
       const storedStartDate = localStorage.getItem(FINANCE_START_STORAGE_KEY)
       const startDate = storedStartDate || getTodayStr()
@@ -423,15 +415,6 @@ export function FinanzasScreen() {
     saveExpenses(current.filter(e => e.id !== id))
   }
 
-  const saveBudgetGoal = () => {
-    const val = parseFloat(budgetGoalInput)
-    if (isNaN(val) || val <= 0) return
-    localStorage.setItem(BUDGET_GOAL_STORAGE_KEY, val.toString())
-    setBudgetGoal(val)
-    setEditingBudgetGoal(false)
-    setBudgetGoalInput('')
-  }
-
   const openEditExpense = (expense: Expense) => {
     setEditingExpenseId(expense.id)
     setEditDescription(expense.description)
@@ -675,55 +658,6 @@ export function FinanzasScreen() {
               </>
             ) : (
               <p className="text-sm text-muted-foreground">Añade ingresos este mes para calcular la tarta financiera.</p>
-            )}
-          </div>
-
-          {/* Budget goal widget */}
-          <div className="bg-card rounded-2xl p-4 mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-sm font-semibold text-foreground">Meta de gasto mensual</h2>
-              <button
-                onClick={() => { setEditingBudgetGoal(!editingBudgetGoal); setBudgetGoalInput(budgetGoal > 0 ? budgetGoal.toString() : '') }}
-                className="text-[10px] text-primary hover:underline"
-              >
-                {budgetGoal > 0 ? 'Cambiar' : 'Configurar'}
-              </button>
-            </div>
-            {editingBudgetGoal ? (
-              <div className="flex gap-2 mt-2">
-                <input
-                  type="number"
-                  placeholder="Límite en €"
-                  value={budgetGoalInput}
-                  onChange={e => setBudgetGoalInput(e.target.value)}
-                  className="flex-1 p-2.5 rounded-xl bg-secondary text-foreground text-sm outline-none focus:ring-2 focus:ring-primary"
-                />
-                <button onClick={saveBudgetGoal} className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium">OK</button>
-                <button onClick={() => setEditingBudgetGoal(false)} className="px-3 py-2 rounded-xl bg-secondary text-foreground text-sm"><X className="w-4 h-4" /></button>
-              </div>
-            ) : budgetGoal > 0 ? (
-              <>
-                <div className="flex items-end justify-between mb-1">
-                  <span className="text-2xl font-bold text-foreground">{monthlyTotal.toFixed(0)}€</span>
-                  <span className="text-sm text-muted-foreground">/ {budgetGoal.toFixed(0)}€</span>
-                </div>
-                <div className="w-full h-3 bg-secondary rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${monthlyTotal > budgetGoal ? 'bg-red-500' : monthlyTotal > budgetGoal * 0.8 ? 'bg-amber-500' : 'bg-green-500'}`}
-                    style={{ width: `${Math.min((monthlyTotal / budgetGoal) * 100, 100)}%` }}
-                  />
-                </div>
-                <div className="flex justify-between mt-1">
-                  <span className={`text-xs font-medium ${monthlyTotal > budgetGoal ? 'text-red-600' : 'text-green-600'}`}>
-                    {monthlyTotal > budgetGoal
-                      ? `${(monthlyTotal - budgetGoal).toFixed(0)}€ sobre límite`
-                      : `${(budgetGoal - monthlyTotal).toFixed(0)}€ restantes`}
-                  </span>
-                  <span className="text-xs text-muted-foreground">{Math.round((monthlyTotal / budgetGoal) * 100)}%</span>
-                </div>
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground mt-1">Define un presupuesto mensual para ver tu progreso.</p>
             )}
           </div>
 
