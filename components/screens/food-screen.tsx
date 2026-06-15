@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { Dumbbell, Moon, Check, ChevronLeft, ChevronRight, Sparkles, Loader2, Flame, Beef, Wheat, Droplets } from 'lucide-react'
+import { Dumbbell, Moon, Check, ChevronLeft, ChevronRight, Sparkles, Loader2, Flame, Beef, Wheat, Droplets, Heart } from 'lucide-react'
 
 const FOOD_STORAGE_KEY = 'sq_food_log'
+const FAVORITE_RECIPES_STORAGE_KEY = 'sq_favorite_recipes'
 
 const toDateStr = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 const getTodayStr = () => toDateStr(new Date())
@@ -56,11 +57,20 @@ const TARGETS = {
   descanso: { kcal: 1659, protein: 95, carbs: 199, fat: 50 },
 }
 
+interface FavoriteRecipe {
+  id: number
+  title: string
+  image: string
+  calories: number
+  protein: string
+  carbs: string
+  fat: string
+}
+}
 interface DayLog {
   dayType: DayType
   meals: Record<MealId, boolean>
   customMeals?: Record<MealId, string> // custom recipe descriptions
-}
 
 type FoodLog = Record<string, DayLog> // keyed by date string
 
@@ -75,6 +85,17 @@ function writeFoodLog(log: FoodLog) {
   localStorage.setItem(FOOD_STORAGE_KEY, JSON.stringify(log))
 }
 
+function readFavoriteRecipes(): FavoriteRecipe[] {
+  try {
+    const stored = localStorage.getItem(FAVORITE_RECIPES_STORAGE_KEY)
+    return stored ? JSON.parse(stored) as FavoriteRecipe[] : []
+  } catch { return [] }
+}
+
+function writeFavoriteRecipes(recipes: FavoriteRecipe[]) {
+  localStorage.setItem(FAVORITE_RECIPES_STORAGE_KEY, JSON.stringify(recipes))
+}
+
 type FoodView = 'hoy' | 'semana'
 
 export function FoodScreen() {
@@ -83,9 +104,12 @@ export function FoodScreen() {
   const [weekOffset, setWeekOffset] = useState(0)
   const [aiLoading, setAiLoading] = useState<MealId | null>(null)
   const [recipeSuggestions, setRecipeSuggestions] = useState<{ mealId: MealId; recipes: { id: number; title: string; image: string; calories: number; protein: string; carbs: string; fat: string }[] } | null>(null)
+  const [favoriteRecipes, setFavoriteRecipes] = useState<FavoriteRecipe[]>([])
+  const [showFavorites, setShowFavorites] = useState(false)
 
   useEffect(() => {
     setFoodLog(readFoodLog())
+    setFavoriteRecipes(readFavoriteRecipes())
   }, [])
 
   const todayStr = getTodayStr()
@@ -126,6 +150,22 @@ export function FoodScreen() {
       ...current,
       customMeals: { ...current.customMeals, [mealId]: text },
     })
+  }
+
+  const toggleFavoriteRecipe = (recipe: FavoriteRecipe) => {
+    const isFavorite = favoriteRecipes.some(r => r.id === recipe.id)
+    let updated: FavoriteRecipe[]
+    if (isFavorite) {
+      updated = favoriteRecipes.filter(r => r.id !== recipe.id)
+    } else {
+      updated = [...favoriteRecipes, recipe]
+    }
+    writeFavoriteRecipes(updated)
+    setFavoriteRecipes(updated)
+  }
+
+  const isFavoriteRecipe = (recipeId: number): boolean => {
+    return favoriteRecipes.some(r => r.id === recipeId)
   }
 
   // Calculate eaten macros
@@ -241,18 +281,60 @@ export function FoodScreen() {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold text-foreground">Nutrición</h1>
-        <button
-          onClick={toggleDayType}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-            todayLog.dayType === 'entreno'
-              ? 'bg-orange-100 text-orange-700'
-              : 'bg-blue-100 text-blue-700'
-          }`}
-        >
-          {todayLog.dayType === 'entreno' ? <Dumbbell className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
-          {todayLog.dayType === 'entreno' ? 'Día entreno' : 'Día descanso'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowFavorites(!showFavorites)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+              showFavorites
+                ? 'bg-red-100 text-red-700'
+                : 'bg-secondary text-muted-foreground hover:bg-secondary/80'
+            }`}
+          >
+            <Heart className={`w-3.5 h-3.5 ${showFavorites ? 'fill-red-500' : ''}`} />
+            {favoriteRecipes.length}
+          </button>
+          <button
+            onClick={toggleDayType}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+              todayLog.dayType === 'entreno'
+                ? 'bg-orange-100 text-orange-700'
+                : 'bg-blue-100 text-blue-700'
+            }`}
+          >
+            {todayLog.dayType === 'entreno' ? <Dumbbell className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+            {todayLog.dayType === 'entreno' ? 'Día entreno' : 'Día descanso'}
+          </button>
+        </div>
       </div>
+
+      {/* Favorite recipes section */}
+      {showFavorites && favoriteRecipes.length > 0 && (
+        <div className="bg-accent rounded-2xl p-4 mb-4">
+          <h2 className="text-sm font-semibold text-foreground mb-3">Recetas guardadas ({favoriteRecipes.length})</h2>
+          <div className="space-y-2">
+            {favoriteRecipes.map(recipe => (
+              <div key={recipe.id} className="flex gap-2 p-2 bg-card rounded-lg">
+                <img src={recipe.image} alt={recipe.title} className="w-12 h-12 rounded-lg object-cover shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-foreground line-clamp-1">{recipe.title}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[9px] text-muted-foreground">{recipe.calories} kcal</span>
+                    <span className="text-[9px] text-red-500">P: {recipe.protein}</span>
+                    <span className="text-[9px] text-amber-500">C: {recipe.carbs}</span>
+                    <span className="text-[9px] text-blue-500">G: {recipe.fat}</span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => toggleFavoriteRecipe(recipe)}
+                  className="p-1 hover:bg-secondary rounded-lg transition-colors"
+                >
+                  <Heart className="w-4 h-4 text-red-500 fill-red-500" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* View toggle */}
       <div className="flex gap-1 bg-secondary rounded-xl p-1 mb-4">
@@ -334,7 +416,15 @@ export function FoodScreen() {
                           <div key={recipe.id} className="flex gap-2 p-2 bg-accent rounded-lg">
                             <img src={recipe.image} alt={recipe.title} className="w-14 h-14 rounded-lg object-cover shrink-0" />
                             <div className="flex-1 min-w-0">
-                              <p className="text-xs font-medium text-foreground leading-tight">{recipe.title}</p>
+                              <div className="flex items-center justify-between mb-1">
+                                <p className="text-xs font-medium text-foreground leading-tight">{recipe.title}</p>
+                                <button
+                                  onClick={() => toggleFavoriteRecipe(recipe)}
+                                  className="ml-1 p-1 hover:bg-white/20 rounded-lg transition-colors"
+                                >
+                                  <Heart className={`w-3.5 h-3.5 ${isFavoriteRecipe(recipe.id) ? 'text-red-500 fill-red-500' : 'text-muted-foreground'}`} />
+                                </button>
+                              </div>
                               <div className="flex items-center gap-2 mt-1">
                                 <span className="text-[9px] text-muted-foreground">{recipe.calories} kcal</span>
                                 <span className="text-[9px] text-red-500">P: {recipe.protein}</span>
