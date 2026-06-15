@@ -25,7 +25,7 @@ type FinanceView = 'dia' | 'semana' | 'mes'
 
 const categories: ExpenseCategory[] = ['comida', 'supermercado', 'transporte', 'ocio', 'hogar', 'salud', 'ropa', 'suscripciones', 'hipoteca', 'seguros', 'viajes', 'nails', 'skincare', 'hair', 'ai', 'investments', 'otros']
 
-const FIXED_EXPENSE_CATEGORIES: ExpenseCategory[] = ['hipoteca', 'seguros', 'suscripciones']
+const FIXED_EXPENSE_CATEGORIES: ExpenseCategory[] = ['hogar', 'suscripciones', 'hipoteca', 'seguros', 'ai', 'investments']
 
 const SUPERMARKET_KEYWORDS = [
   'mercadona', 'condis', 'dia', 'lidl', 'aldi', 'carrefour', 'alcampo',
