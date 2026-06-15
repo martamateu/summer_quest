@@ -363,6 +363,19 @@ export default function Page() {
     )
   }
 
+  const handleTogglePriority = (id: string) => {
+    setHabits((prev) => {
+      const next = prev.map((habit) =>
+        habit.id === id ? { ...habit, priority: !habit.priority } : habit
+      )
+      // Persist habit config separately so priorities survive day resets
+      const config = next.map(h => ({ ...h, completed: false }))
+      localStorage.setItem('sq_habits', JSON.stringify(config))
+      uploadToCloud()
+      return next
+    })
+  }
+
   const handleDeepWorkUpdate = (minutes: number) => {
     setMetrics((prev) => ({
       ...prev,
@@ -389,6 +402,7 @@ export default function Page() {
             bestStreak={bestStreak}
             yesterdayData={yesterdayData}
             onToggleHabit={handleToggleHabit}
+            onTogglePriority={handleTogglePriority}
             onOpenPomodoro={() => setShowPomodoro(true)}
             onEditHabits={() => setShowHabitEditor(true)}
           />

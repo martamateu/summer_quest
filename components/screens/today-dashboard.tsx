@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Flame, Footprints, Smartphone, Brain, Settings, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Minus, Trophy } from 'lucide-react'
+import { Flame, Footprints, Smartphone, Brain, Settings, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Minus, Trophy, Star } from 'lucide-react'
 import { ProgressRing } from '@/components/progress-ring'
 import { MetricChip } from '@/components/metric-chip'
 import { HabitRow } from '@/components/habit-row'
@@ -22,11 +22,12 @@ interface TodayDashboardProps {
   bestStreak: number
   yesterdayData: DayHistory | null
   onToggleHabit: (id: string) => void
+  onTogglePriority: (id: string) => void
   onOpenPomodoro: () => void
   onEditHabits: () => void
 }
 
-export function TodayDashboard({ habits, metrics, streak, bestStreak, yesterdayData, onToggleHabit, onOpenPomodoro, onEditHabits }: TodayDashboardProps) {
+export function TodayDashboard({ habits, metrics, streak, bestStreak, yesterdayData, onToggleHabit, onTogglePriority, onOpenPomodoro, onEditHabits }: TodayDashboardProps) {
   const [expandedArea, setExpandedArea] = useState<HabitArea | null>(null)
 
   const todayHabits = habits.filter((h) => h.nonNegotiable)
@@ -45,6 +46,11 @@ export function TodayDashboard({ habits, metrics, streak, bestStreak, yesterdayD
       return { area, habits: areaHabits, done, total: areaHabits.length, allDone: done === areaHabits.length }
     })
   }, [activeAreas, todayHabits])
+
+  const priorityHabits = useMemo(
+    () => todayHabits.filter((h) => h.priority).slice(0, 3),
+    [todayHabits]
+  )
 
   // Yesterday comparison
   const yesterdayPct = yesterdayData && yesterdayData.nonNegTotal > 0
@@ -164,6 +170,47 @@ export function TodayDashboard({ habits, metrics, streak, bestStreak, yesterdayD
         />
       </div>
 
+      {/* Top 3 Priority Habits */}
+      {priorityHabits.length > 0 && (
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
+            <h2 className="text-base font-semibold text-foreground">Top 3 prioridades</h2>
+          </div>
+          <div className="space-y-2">
+            {priorityHabits.map((habit, index) => (
+              <button
+                key={habit.id}
+                onClick={() => onToggleHabit(habit.id)}
+                className={`w-full text-left p-4 rounded-2xl border transition-all ${habit.completed ? 'bg-amber-50/70 border-amber-200' : 'bg-card border-amber-300/60'} `}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-7 h-7 rounded-full bg-amber-100 text-amber-700 text-sm font-bold flex items-center justify-center">
+                    {index + 1}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-semibold ${habit.completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                      {habit.title}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{AREA_LABELS[habit.area]} · {habit.frequency}</p>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onTogglePriority(habit.id)
+                    }}
+                    className="p-1.5 rounded-full hover:bg-secondary transition-colors"
+                    aria-label="Quitar prioridad"
+                  >
+                    <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
+                  </button>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Habits by Area (collapsed) */}
       <div className="space-y-2">
         <div className="flex items-center justify-between mb-1">
@@ -213,7 +260,12 @@ export function TodayDashboard({ habits, metrics, streak, bestStreak, yesterdayD
             {expandedArea === area && (
               <div className="px-4 pb-3 divide-y divide-border/50">
                 {areaHabits.map((habit) => (
-                  <HabitRow key={habit.id} habit={habit} onToggle={onToggleHabit} />
+                  <HabitRow
+                    key={habit.id}
+                    habit={habit}
+                    onToggle={onToggleHabit}
+                    onTogglePriority={onTogglePriority}
+                  />
                 ))}
               </div>
             )}
