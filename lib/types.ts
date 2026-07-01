@@ -18,6 +18,7 @@ export type ExpenseCategory =
   | 'investments'
   | 'supermercado'
   | 'cafe'
+  | 'horchata'
   | 'uni'
   | 'cine'
   | 'libros'
@@ -55,6 +56,7 @@ export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   investments: 'Inversiones',
   supermercado: 'Supermercado',
   cafe: 'Café',
+  horchata: 'Horchata',
   uni: 'Universidad',
   cine: 'Cine',
   libros: 'Libros',
@@ -83,6 +85,7 @@ export const EXPENSE_CATEGORY_ICONS: Record<ExpenseCategory, string> = {
   investments: 'trending-up',
   supermercado: 'shopping-cart',
   cafe: 'coffee',
+  horchata: 'ice-cream',
   uni: 'graduation-cap',
   cine: 'clapperboard',
   libros: 'book-open',

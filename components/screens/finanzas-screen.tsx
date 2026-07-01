@@ -22,7 +22,7 @@ interface PendingItem {
 
 type FinanceView = 'dia' | 'semana' | 'mes'
 
-const categories: ExpenseCategory[] = ['nomina', 'comida', 'supermercado', 'cafe', 'transporte', 'ocio', 'cine', 'libros', 'uni', 'hogar', 'salud', 'psicologo', 'entrenador', 'urbansports', 'ropa', 'suscripciones', 'hipoteca', 'seguros', 'viajes', 'nails', 'skincare', 'hair', 'ai', 'investments', 'otros']
+const categories: ExpenseCategory[] = ['nomina', 'comida', 'supermercado', 'cafe', 'horchata', 'transporte', 'ocio', 'cine', 'libros', 'uni', 'hogar', 'salud', 'psicologo', 'entrenador', 'urbansports', 'ropa', 'suscripciones', 'hipoteca', 'seguros', 'viajes', 'nails', 'skincare', 'hair', 'ai', 'investments', 'otros']
 
 const FIXED_EXPENSE_CATEGORIES: ExpenseCategory[] = ['hogar', 'suscripciones', 'hipoteca', 'seguros', 'ai', 'investments', 'urbansports', 'psicologo', 'entrenador']
 
@@ -33,7 +33,11 @@ const SUPERMARKET_KEYWORDS = [
 ]
 
 const CAFE_KEYWORDS = [
-  'cafe', 'café', 'coffee', 'grooffee', 'pepo', 'starbucks',
+  'cafe', 'café', 'coffee', 'grooffee', 'pepo', 'starbucks', 'espiga',
+]
+
+const HORCHATA_KEYWORDS = [
+  'planelles', 'gelato', 'gelats', 'gelat', 'llorens', 'horxata', 'horchata',
 ]
 
 const CATEGORY_COLORS: Record<ExpenseCategory, string> = {
@@ -55,6 +59,7 @@ const CATEGORY_COLORS: Record<ExpenseCategory, string> = {
   investments: '#60a5fa',
   supermercado: '#10b981',
   cafe: '#b45309',
+  horchata: '#eab308',
   uni: '#6366f1',
   cine: '#ef4444',
   libros: '#0ea5e9',
@@ -168,6 +173,12 @@ export function FinanzasScreen() {
         const desc = e.description.toLowerCase()
         if (CAFE_KEYWORDS.some(kw => desc.includes(kw))) {
           return { ...e, category: 'cafe' as ExpenseCategory }
+        }
+      }
+      if (!e.isIncome && e.category !== 'horchata') {
+        const desc = e.description.toLowerCase()
+        if (HORCHATA_KEYWORDS.some(kw => desc.includes(kw))) {
+          return { ...e, category: 'horchata' as ExpenseCategory }
         }
       }
       return e
