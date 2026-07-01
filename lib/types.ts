@@ -25,6 +25,7 @@ export type ExpenseCategory =
   | 'psicologo'
   | 'entrenador'
   | 'urbansports'
+  | 'lentillas'
   | 'nomina'
   | 'otros'
 
@@ -63,6 +64,7 @@ export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   psicologo: 'Psicólogo',
   entrenador: 'Entrenador personal',
   urbansports: 'Urban Sports',
+  lentillas: 'Lentillas',
   nomina: 'Nómina',
   otros: 'Otros',
 }
@@ -92,6 +94,7 @@ export const EXPENSE_CATEGORY_ICONS: Record<ExpenseCategory, string> = {
   psicologo: 'brain',
   entrenador: 'dumbbell',
   urbansports: 'activity',
+  lentillas: 'eye',
   nomina: 'banknote',
   otros: 'circle',
 }
