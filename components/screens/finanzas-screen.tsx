@@ -22,7 +22,7 @@ interface PendingItem {
 
 type FinanceView = 'dia' | 'semana' | 'mes'
 
-const categories: ExpenseCategory[] = ['nomina', 'comida', 'supermercado', 'transporte', 'ocio', 'hogar', 'salud', 'ropa', 'suscripciones', 'hipoteca', 'seguros', 'viajes', 'nails', 'skincare', 'hair', 'ai', 'investments', 'otros']
+const categories: ExpenseCategory[] = ['nomina', 'comida', 'supermercado', 'cafe', 'transporte', 'ocio', 'cine', 'libros', 'uni', 'hogar', 'salud', 'ropa', 'suscripciones', 'hipoteca', 'seguros', 'viajes', 'nails', 'skincare', 'hair', 'ai', 'investments', 'otros']
 
 const FIXED_EXPENSE_CATEGORIES: ExpenseCategory[] = ['hogar', 'suscripciones', 'hipoteca', 'seguros', 'ai', 'investments']
 
@@ -30,6 +30,10 @@ const SUPERMARKET_KEYWORDS = [
   'mercadona', 'condis', 'dia', 'lidl', 'aldi', 'carrefour', 'alcampo',
   'eroski', 'supersol', 'consum', 'bon preu', 'bonpreu', 'caprabo',
   'supercor', 'el corte inglés alimentación', 'simply', "maxi's",
+]
+
+const CAFE_KEYWORDS = [
+  'cafe', 'café', 'coffee', 'grooffee', 'pepo', 'starbucks',
 ]
 
 const CATEGORY_COLORS: Record<ExpenseCategory, string> = {
@@ -50,6 +54,10 @@ const CATEGORY_COLORS: Record<ExpenseCategory, string> = {
   ai: '#34d399',
   investments: '#60a5fa',
   supermercado: '#10b981',
+  cafe: '#b45309',
+  uni: '#6366f1',
+  cine: '#ef4444',
+  libros: '#0ea5e9',
   otros: '#6b7280',
 }
 
@@ -148,6 +156,12 @@ export function FinanzasScreen() {
         const desc = e.description.toLowerCase()
         if (SUPERMARKET_KEYWORDS.some(kw => desc.includes(kw))) {
           return { ...e, category: 'supermercado' as ExpenseCategory }
+        }
+      }
+      if (!e.isIncome && e.category !== 'cafe') {
+        const desc = e.description.toLowerCase()
+        if (CAFE_KEYWORDS.some(kw => desc.includes(kw))) {
+          return { ...e, category: 'cafe' as ExpenseCategory }
         }
       }
       return e
