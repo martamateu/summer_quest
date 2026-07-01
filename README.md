@@ -8,35 +8,9 @@ Built with **Next.js 16 · React 19 · TypeScript · Tailwind 4**. Offline-first
 
 ## Architecture
 
-```mermaid
-flowchart TB
-    subgraph User
-        Web["📱 Web app (PWA)<br/>localStorage offline-first"]
-        Android["🤖 Android companion<br/>Health Connect + UsageStats"]
-    end
+![Summer Quest software architecture](public/13104984850435557546.jpg)
 
-    subgraph Vercel["▲ Vercel — Next.js 16"]
-        UI["App Router UI<br/>7 screens"]
-        API["API routes<br/>+ NextAuth v5 middleware"]
-    end
-
-    subgraph External["External services"]
-        Gemini["Gemini 2.5 Flash<br/>receipt OCR"]
-        Spoon["Spoonacular<br/>recipes"]
-        Sheets["Google Sheets<br/>gym log"]
-        FCM["Firebase FCM<br/>push"]
-        Redis["Upstash Redis<br/>cloud sync"]
-    end
-
-    Web <--> UI
-    UI <--> API
-    API --> Gemini & Spoon & Sheets & Redis
-    API -. silent push .-> FCM
-    FCM -. wake .-> Android
-    Android -. steps / screen time .-> API
-```
-
-**Data flow:** Solid arrows are synchronous requests; dashed arrows are asynchronous background sync (health data + push triggers). The web app works offline and reconciles with Redis on foreground.
+**Data flow:** Solid arrows are synchronous requests; dashed arrows are asynchronous background sync (health data + push triggers). The web app works offline (localStorage) and reconciles with Upstash Redis on foreground.
 
 ---
 
