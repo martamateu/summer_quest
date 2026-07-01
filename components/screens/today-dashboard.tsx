@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Flame, Footprints, Smartphone, Brain, Settings, ChevronDown, ChevronRight, Star } from 'lucide-react'
+import { Flame, Footprints, Smartphone, Brain, Settings, ChevronDown, ChevronRight, Star, Sparkles } from 'lucide-react'
 import { ProgressRing } from '@/components/progress-ring'
 import { MetricChip } from '@/components/metric-chip'
 import { HabitRow } from '@/components/habit-row'
+import { TaskBreakdown } from '@/components/task-breakdown'
 import type { Habit, DailyMetrics, HabitArea } from '@/lib/types'
 import { AREA_LABELS, AREA_COLORS } from '@/lib/types'
 
@@ -20,6 +21,7 @@ interface TodayDashboardProps {
 
 export function TodayDashboard({ habits, metrics, streak, onToggleHabit, onTogglePriority, onOpenPomodoro, onEditHabits }: TodayDashboardProps) {
   const [expandedArea, setExpandedArea] = useState<HabitArea | null>(null)
+  const [showTaskHelp, setShowTaskHelp] = useState(false)
 
   const todayHabits = habits.filter((h) => h.nonNegotiable)
   const completedCount = todayHabits.filter((h) => h.completed).length
@@ -88,6 +90,21 @@ export function TodayDashboard({ habits, metrics, streak, onToggleHabit, onToggl
           onClick={onOpenPomodoro}
         />
       </div>
+
+      {/* Ayuda 2 min */}
+      <button
+        onClick={() => setShowTaskHelp(true)}
+        className="w-full flex items-center gap-3 p-3 rounded-2xl bg-accent mb-6 text-left"
+      >
+        <div className="w-9 h-9 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
+          <Sparkles className="w-4 h-4 text-primary" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-foreground">Ayuda 2 min</p>
+          <p className="text-xs text-muted-foreground">¿Bloqueada? Parto tu tarea en mini-pasos</p>
+        </div>
+        <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+      </button>
 
       {/* Top 3 Priority Habits */}
       {priorityHabits.length > 0 && (
@@ -191,6 +208,8 @@ export function TodayDashboard({ habits, metrics, streak, onToggleHabit, onToggl
           </div>
         ))}
       </div>
+
+      {showTaskHelp && <TaskBreakdown onClose={() => setShowTaskHelp(false)} />}
     </div>
   )
 }
