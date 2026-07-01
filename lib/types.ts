@@ -21,6 +21,9 @@ export type ExpenseCategory =
   | 'uni'
   | 'cine'
   | 'libros'
+  | 'psicologo'
+  | 'entrenador'
+  | 'urbansports'
   | 'nomina'
   | 'otros'
 
@@ -55,6 +58,9 @@ export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   uni: 'Universidad',
   cine: 'Cine',
   libros: 'Libros',
+  psicologo: 'Psicólogo',
+  entrenador: 'Entrenador personal',
+  urbansports: 'Urban Sports',
   nomina: 'Nómina',
   otros: 'Otros',
 }
@@ -80,6 +86,9 @@ export const EXPENSE_CATEGORY_ICONS: Record<ExpenseCategory, string> = {
   uni: 'graduation-cap',
   cine: 'clapperboard',
   libros: 'book-open',
+  psicologo: 'brain',
+  entrenador: 'dumbbell',
+  urbansports: 'activity',
   nomina: 'banknote',
   otros: 'circle',
 }

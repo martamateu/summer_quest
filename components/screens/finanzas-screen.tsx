@@ -22,9 +22,9 @@ interface PendingItem {
 
 type FinanceView = 'dia' | 'semana' | 'mes'
 
-const categories: ExpenseCategory[] = ['nomina', 'comida', 'supermercado', 'cafe', 'transporte', 'ocio', 'cine', 'libros', 'uni', 'hogar', 'salud', 'ropa', 'suscripciones', 'hipoteca', 'seguros', 'viajes', 'nails', 'skincare', 'hair', 'ai', 'investments', 'otros']
+const categories: ExpenseCategory[] = ['nomina', 'comida', 'supermercado', 'cafe', 'transporte', 'ocio', 'cine', 'libros', 'uni', 'hogar', 'salud', 'psicologo', 'entrenador', 'urbansports', 'ropa', 'suscripciones', 'hipoteca', 'seguros', 'viajes', 'nails', 'skincare', 'hair', 'ai', 'investments', 'otros']
 
-const FIXED_EXPENSE_CATEGORIES: ExpenseCategory[] = ['hogar', 'suscripciones', 'hipoteca', 'seguros', 'ai', 'investments']
+const FIXED_EXPENSE_CATEGORIES: ExpenseCategory[] = ['hogar', 'suscripciones', 'hipoteca', 'seguros', 'ai', 'investments', 'urbansports', 'psicologo', 'entrenador']
 
 const SUPERMARKET_KEYWORDS = [
   'mercadona', 'condis', 'dia', 'lidl', 'aldi', 'carrefour', 'alcampo',
@@ -58,6 +58,9 @@ const CATEGORY_COLORS: Record<ExpenseCategory, string> = {
   uni: '#6366f1',
   cine: '#ef4444',
   libros: '#0ea5e9',
+  psicologo: '#d946ef',
+  entrenador: '#0891b2',
+  urbansports: '#4f46e5',
   otros: '#6b7280',
 }
 
