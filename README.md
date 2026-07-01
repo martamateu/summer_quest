@@ -2,38 +2,55 @@
 
 Personal all-in-one productivity app that gamifies daily habits, finances, nutrition, gym training and health metrics into a single mobile-first dashboard.
 
+Built with **Next.js 16 · React 19 · TypeScript · Tailwind 4**. Offline-first (localStorage) with cloud sync (Upstash Redis) and an Android companion for health data.
 
 ---
 
 ## Architecture
 
-![Summer Quest Architecture](public/architecture-diagram.png)
+```mermaid
+flowchart TB
+    subgraph User
+        Web["📱 Web app (PWA)<br/>localStorage offline-first"]
+        Android["🤖 Android companion<br/>Health Connect + UsageStats"]
+    end
 
-### System Overview
+    subgraph Vercel["▲ Vercel — Next.js 16"]
+        UI["App Router UI<br/>7 screens"]
+        API["API routes<br/>+ NextAuth v5 middleware"]
+    end
 
-The application follows a three-tier architecture with clear separation of concerns:
+    subgraph External["External services"]
+        Gemini["Gemini 2.5 Flash<br/>receipt OCR"]
+        Spoon["Spoonacular<br/>recipes"]
+        Sheets["Google Sheets<br/>gym log"]
+        FCM["Firebase FCM<br/>push"]
+        Redis["Upstash Redis<br/>cloud sync"]
+    end
 
-![System Overview](public/system-overview.png)
+    Web <--> UI
+    UI <--> API
+    API --> Gemini & Spoon & Sheets & Redis
+    API -. silent push .-> FCM
+    FCM -. wake .-> Android
+    Android -. steps / screen time .-> API
+```
 
-**User Layer** — Web browser (desktop + mobile PWA-ready) with offline-first localStorage + Android companion app for health data sync
-
-**Vercel Platform** — Next.js 16 App Router with 9 API routes, NextAuth v5 middleware protection, and cross-device sync via sendBeacon
-
-**External Services** — AI-powered receipt OCR (Gemini 2.5 Flash), recipe search (Spoonacular), gym sync (Google Sheets), silent push notifications (Firebase FCM), and cloud persistence (Upstash Redis)
-
-**Data Flow** — Synchronous API calls for real-time operations (solid arrows) and asynchronous background jobs for health sync and push triggers (dashed arrows)
+**Data flow:** Solid arrows are synchronous requests; dashed arrows are asynchronous background sync (health data + push triggers). The web app works offline and reconciles with Redis on foreground.
 
 ---
 
 ## Screens
 
-| Tab | Screen | Description |
-|-----|--------|-------------|
-| 🏠 **Hoy** | Today Dashboard | Daily non-negotiable habits (20 habits across 6 areas), streaks, steps counter, screen time, Pomodoro deep work timer |
-| 🍽️ **Food** | Nutrition Tracker | 5 meals/day with pre-configured macros for training vs rest days. Recipe suggestions via Spoonacular API, saved favorite recipes |
-| 💰 **Finanzas** | Finance Tracker | OCR receipt scanner (Gemini AI), manual entry, 17 expense categories, saved expense editing, supermarket auto-categorization, income tracking, monthly budget goal, daily/weekly/monthly views |
-| 🏋️ **Gym** | Strength Training | 3-workout A/B/C rotation, weight×reps tracking, progression analytics, auto-sync to Google Sheets |
-| 📊 **Stats** | Analytics | Habit completion %, streaks, daily/weekly/monthly steps, weekly bar charts, per-area breakdowns |
+| Tab | Description |
+|-----|-------------|
+| 🏠 **Hoy** | Daily non-negotiable habits (6 areas), progress ring, steps, screen time, Pomodoro timer |
+| 🍽️ **Food** | 5 meals/day with macros for training vs rest days · Spoonacular recipe ideas + saved recipes |
+| 💰 **Finanzas** | Receipt OCR (Gemini), manual entry, 21 categories, auto-categorization (supermarket & café), income tracking, day/week/month views + 50/30/20 insights |
+| 🏋️ **Gym** | A/B/C workout rotation, weight×reps tracking, progression analytics, Google Sheets sync |
+| 📊 **Stats** | Habit completion %, streaks, steps, weekly charts, per-area breakdowns |
+
+Secondary tabs: **Carrera** (career habits) and **Quests** (non-daily habits by area).
 
 ---
 
@@ -41,17 +58,14 @@ The application follows a three-tier architecture with clear separation of conce
 
 | Layer | Technology |
 |-------|------------|
-| **Framework** | Next.js 16 (App Router) + React 19 + TypeScript |
-| **Styling** | Tailwind CSS 4 + shadcn/ui + Lucide icons |
-| **Auth** | NextAuth v5 (beta) with Google OAuth + email whitelist |
-| **Client Storage** | localStorage (habits, expenses, food logs, gym logs) |
-| **Cloud Backup** | Upstash Redis — cross-device sync with merge-by-ID |
-| **Receipt OCR** | Google Gemini 2.5 Flash via `@ai-sdk/google` + Zod structured output |
-| **Recipe AI** | Spoonacular `findByNutrients` API — real recipes with images & macros |
-| **Gym Sync** | Google Sheets API (`googleapis`) — writes workouts to shared spreadsheet |
-| **Push Sync** | Firebase Cloud Messaging — triggers Android companion to upload health data |
-| **Deployment** | Vercel (auto-deploy from `main`) |
-| **Mobile Companion** | Android app (Kotlin) — Health Connect steps + UsageStatsManager screen time |
+| Framework | Next.js 16 (App Router) · React 19 · TypeScript |
+| Styling | Tailwind CSS 4 · shadcn/ui · Lucide icons |
+| Auth | NextAuth v5 (beta) · Google OAuth + email whitelist |
+| Storage | localStorage (offline) + Upstash Redis (merge-by-ID cloud sync) |
+| AI / APIs | Gemini 2.5 Flash (OCR + Zod) · Spoonacular (recipes) · Google Sheets (gym) |
+| Push | Firebase Cloud Messaging → Android companion |
+| Companion | Android (Kotlin) — Health Connect steps + UsageStatsManager screen time |
+| Deploy | Vercel (auto-deploy from `main`) |
 
 ---
 
@@ -59,35 +73,15 @@ The application follows a three-tier architecture with clear separation of conce
 
 | Route | Method | Purpose | Auth |
 |-------|--------|---------|------|
-| `/api/analyze-receipt` | POST | Receipt OCR → structured expense items (Gemini) | Session |
-| `/api/recipe-suggest` | POST | Find recipes by macro constraints (Spoonacular) | Bypass |
-| `/api/sync-data` | GET/POST | Cloud backup & restore all localStorage data (Redis) | Session |
-| `/api/sync-sheet` | POST/GET | Write gym workouts to Google Sheets | Session |
-| `/api/steps` | GET/POST | Steps tracking from Android | Bearer token |
-| `/api/screen-time` | GET/POST | Screen time from Android | Bearer token |
-| `/api/fcm-token` | GET/POST | Store Firebase push token | Bearer token |
-| `/api/trigger-sync` | POST | Send silent FCM push to wake Android app | Bypass |
+| `/api/analyze-receipt` | POST | Receipt OCR → expense items (Gemini) | Session |
+| `/api/recipe-suggest` | POST | Recipes by macro constraints (Spoonacular) | Bypass |
+| `/api/sync-data` | GET/POST | Cloud backup/restore of localStorage (Redis) | Session |
+| `/api/sync-sheet` | GET/POST | Write gym workouts to Google Sheets | Session |
+| `/api/steps` · `/api/screen-time` | GET/POST | Health data from Android | Bearer |
+| `/api/fcm-token` | GET/POST | Store Firebase push token | Bearer |
+| `/api/trigger-sync` | POST | Silent FCM push to wake Android | Bypass |
 
----
-
-## Data Flow
-
-### Cross-Device Sync
-```
-localStorage → POST /api/sync-data → Upstash Redis ← GET /api/sync-data → localStorage
-```
-- **Upload**: Debounced (300ms) + flush via `sendBeacon` on page hide/close
-- **Download**: On mount + on visibility change (app foregrounded)
-- **Merge**: Array keys (`sq_expenses`, `sq_gym_logs`) merged by unique `id` — no duplicates
-- **Non-array keys**: Cloud restores only when local is empty
-
-### Android Health Sync
-```
-Web → POST /api/trigger-sync → FCM → Android wakes up
-→ reads Health Connect + UsageStats
-→ POSTs to /api/steps & /api/screen-time → Redis
-→ Web re-fetches after 5s → UI updates
-```
+**Sync model:** upload debounced (300 ms) + `sendBeacon` on page hide; download on mount/foreground. Array keys (`sq_expenses`, `sq_gym_logs`) merge by `id`; other keys restore only when local is empty.
 
 ---
 
@@ -95,26 +89,26 @@ Web → POST /api/trigger-sync → FCM → Android wakes up
 
 ```env
 # Auth
-AUTH_SECRET=                         # NextAuth secret
-AUTH_GOOGLE_ID=                      # Google OAuth client ID
-AUTH_GOOGLE_SECRET=                  # Google OAuth client secret
-ALLOWED_EMAILS=                      # Comma-separated whitelist
+AUTH_SECRET=
+AUTH_GOOGLE_ID=
+AUTH_GOOGLE_SECRET=
+ALLOWED_EMAILS=                      # comma-separated whitelist
 
 # AI / APIs
-GOOGLE_GENERATIVE_AI_API_KEY=        # Google AI Studio (Gemini OCR)
-SPOONACULAR_API_KEY=                 # Spoonacular food API
+GOOGLE_GENERATIVE_AI_API_KEY=
+SPOONACULAR_API_KEY=
 
-# Cloud Storage
-UPSTASH_REDIS_REST_URL=              # Upstash console
-UPSTASH_REDIS_REST_TOKEN=            # Upstash console
+# Cloud storage
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
 
-# Android Sync
-STEPS_API_TOKEN=                     # Bearer token for Android → API
-FIREBASE_SERVICE_ACCOUNT_JSON=       # Firebase service account (single line JSON)
+# Android sync
+STEPS_API_TOKEN=
+FIREBASE_SERVICE_ACCOUNT_JSON=       # single-line JSON
 
-# Gym Sync
-GOOGLE_SHEETS_CLIENT_EMAIL=          # Service account email
-GOOGLE_SHEETS_PRIVATE_KEY=           # Service account private key
+# Gym sync
+GOOGLE_SHEETS_CLIENT_EMAIL=
+GOOGLE_SHEETS_PRIVATE_KEY=
 ```
 
 ---
@@ -128,54 +122,14 @@ npm run dev          # http://localhost:3000
 
 ---
 
-## Next Steps
+## Roadmap
 
-### Technical Improvements
-- [ ] **Optimize bundle size** — Implement lazy loading for Food/Gym/Stats screens to reduce initial JavaScript
-- [ ] **Error boundaries** — Add React error boundaries in each main screen for better crash UX
-- [ ] **Testing** — Unit tests with Vitest for critical functions (mergeArraysById, date sanitization, macro calculations)
-- [ ] **Loading states** — Add skeletons instead of spinners for better perceived performance
-- [ ] **Accessibility** — Audit ARIA labels, keyboard navigation and color contrast
-- [ ] **Performance monitoring** — Integrate Vercel Analytics and Web Vitals tracking
-- [ ] **Type safety** — Migrate all API calls to tRPC for end-to-end type-safety
-- [ ] **Data validation** — Add Zod schemas to validate localStorage data on load (prevent corruption)
+Actively expanding towards a full life-tracker. Highlights in progress:
 
----
+- **Finanzas** — clearer fixed vs variable split, payroll tracker (PDF), sharper AI insights
+- **Gym** — weight tracking, running tracker, workout OCR diary, AI coach, weekly/monthly stats
+- **Health** — cycle calendar with training insights, food photo OCR, books & study trackers
+- **Home** — day-type routines (energía/calma/productividad/admin) replacing the flat habit list
+- **Admin Life** — to-do + cleaning schedule, voice notes → shopping list
 
-## Feature Roadmap
-
-### Priority Features
-- [x] **Top 3 habits widget** — Display the 3 most important habits of the day with prominent visual emphasis
-- [ ] **Gym rest timer** — Configurable countdown between sets with sound notification and vibration
-- [x] **Improved habit editor** — Inline habit name editing with pencil action and keyboard shortcuts
-
-### Stats & Analytics
-- [ ] **Daily/weekly exercise summary** — Detailed workout analytics in Stats screen with volume, frequency, and progression tracking
-- [ ] **Workout check-in with screenshots** — Upload training screenshots with class name and date for visual workout journal
-
-### Finance Enhancements
-- [x] **Edit saved expenses** — Modify description, amount, category, date and income/expense type of already saved expenses
-- [x] **Financial areas for expenses** — Added Nails, Skin Care, Hair, AI, Investments and Supermercado expense categories
-- [x] **Supermarket auto-categorization** — Automatically moves Condis, Mercadona, DIA, Lidl, Aldi, Carrefour and similar merchants into Supermercado
-- [x] **Budget goals** — Set monthly spending targets with visual progress
-- [ ] **Budget alerts** — Alerts when approaching or exceeding monthly budget goal
-
-### Habits & Productivity
-- [ ] **Link habits to Pomodoro** — Associate specific habits with Pomodoro timer (e.g., "Study AI 25min" counts towards AI habit)
-- [ ] **Sleep tracker** — Log sleep hours, quality (1-5), bedtime/wake time, streak of 8h+ nights
-
-> Clarified scope: Nails, Skin Care, Hair, AI and Investments are expense categories, not habit areas.
-
-### Food & Nutrition
-- [x] **Recipe favorites** — Save favorite recipes from Spoonacular suggestions
-- [ ] **Recipe filters and meal prep** — Filter favorite recipes by cooking time and create weekly meal prep plans
-- [ ] **Food photo calorie counter** — Scan food photo with AI to estimate calories and macros automatically (similar to receipt OCR)
-
-### Infrastructure
-- [ ] **PWA offline mode** — Service worker to function without connection, sync when internet returns
-
----
-
-## License
-
-Private project — not for redistribution.
+This is a private project — not for redistribution.
