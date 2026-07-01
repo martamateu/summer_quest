@@ -1,11 +1,17 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { TrendingUp, Calendar, CheckCircle2, Flame, Footprints } from 'lucide-react'
+import { useEffect, useState, useMemo } from 'react'
+import { TrendingUp, Calendar, CheckCircle2, Flame, Footprints, ChevronLeft, ChevronRight } from 'lucide-react'
 import type { Habit, DailyMetrics } from '@/lib/types'
 import { AREA_COLORS, AREA_LABELS, type HabitArea } from '@/lib/types'
 
 const STEPS_HISTORY_KEY = 'sq_steps_history'
+
+const MONTHS_SHORT = ['E', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D']
+
+// Local YYYY-MM-DD (avoids UTC offset issues)
+const fmtLocal = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
 interface StepsEntry { steps: number; calories: number }
 
@@ -24,6 +30,8 @@ function getStepsHistory(): Record<string, StepsEntry> {
 
 export function StatsScreen({ habits, streak, bestStreak, weeklyData, metrics }: StatsScreenProps) {
   const [stepsHistory, setStepsHistory] = useState<Record<string, StepsEntry>>({})
+  const [stepsPeriod, setStepsPeriod] = useState<'month' | 'year'>('month')
+  const [stepsOffset, setStepsOffset] = useState(0)
 
   useEffect(() => {
     setStepsHistory(getStepsHistory())
@@ -68,16 +76,51 @@ export function StatsScreen({ habits, streak, bestStreak, weeklyData, metrics }:
     weeklySteps += stepsHistory[key]?.steps || 0
   }
 
-  let monthlySteps = 0
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
-  for (let d = new Date(monthStart); d <= monthEnd; d.setDate(d.getDate() + 1)) {
-    const key = d.toISOString().split('T')[0]
-    monthlySteps += stepsHistory[key]?.steps || 0
-  }
+  // Navigable month/year steps explorer
+  const periodSteps = useMemo(() => {
+    const ref = new Date()
+    if (stepsPeriod === 'month') {
+      const base = new Date(ref.getFullYear(), ref.getMonth() + stepsOffset, 1)
+      const y = base.getFullYear()
+      const m = base.getMonth()
+      const daysInMonth = new Date(y, m + 1, 0).getDate()
+      const bars: { label: string; steps: number }[] = []
+      let total = 0, daysWithData = 0, best = 0
+      for (let day = 1; day <= daysInMonth; day++) {
+        const s = stepsHistory[fmtLocal(new Date(y, m, day))]?.steps || 0
+        bars.push({ label: String(day), steps: s })
+        total += s
+        if (s > 0) { daysWithData++; if (s > best) best = s }
+      }
+      return {
+        label: base.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }),
+        total, best, bars,
+        avg: daysWithData ? Math.round(total / daysWithData) : 0,
+        avgLabel: 'Media/día',
+        showLabels: false,
+      }
+    }
+    const y = ref.getFullYear() + stepsOffset
+    const bars: { label: string; steps: number }[] = []
+    let total = 0, monthsWithData = 0, best = 0
+    for (let mo = 0; mo < 12; mo++) {
+      const dim = new Date(y, mo + 1, 0).getDate()
+      let mSteps = 0
+      for (let day = 1; day <= dim; day++) mSteps += stepsHistory[fmtLocal(new Date(y, mo, day))]?.steps || 0
+      bars.push({ label: MONTHS_SHORT[mo], steps: mSteps })
+      total += mSteps
+      if (mSteps > 0) { monthsWithData++; if (mSteps > best) best = mSteps }
+    }
+    return {
+      label: String(y),
+      total, best, bars,
+      avg: monthsWithData ? Math.round(total / monthsWithData) : 0,
+      avgLabel: 'Media/mes',
+      showLabels: true,
+    }
+  }, [stepsHistory, stepsPeriod, stepsOffset])
 
-  const daysIntoMonth = now.getDate()
-  const avgDailySteps = daysIntoMonth > 0 ? Math.round(monthlySteps / daysIntoMonth) : 0
+  const maxBar = Math.max(...periodSteps.bars.map(b => b.steps), 1)
 
   const weekDays = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 
@@ -119,33 +162,93 @@ export function StatsScreen({ habits, streak, bestStreak, weeklyData, metrics }:
 
       {/* Steps Stats */}
       <div className="bg-card rounded-2xl p-4 mb-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Footprints className="w-5 h-5 text-primary" />
-          <h2 className="text-base font-semibold text-foreground">Pasos</h2>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Footprints className="w-5 h-5 text-primary" />
+            <h2 className="text-base font-semibold text-foreground">Pasos</h2>
+          </div>
+          <div className="flex gap-1 bg-secondary rounded-full p-0.5">
+            {(['month', 'year'] as const).map(p => (
+              <button
+                key={p}
+                onClick={() => { setStepsPeriod(p); setStepsOffset(0) }}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                  stepsPeriod === p ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
+                }`}
+              >
+                {p === 'month' ? 'Mes' : 'Año'}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="grid grid-cols-3 gap-3">
+
+        {/* Quick: today + this week */}
+        <div className="grid grid-cols-2 gap-3 mb-4">
           <div>
             <p className="text-xs text-muted-foreground">Hoy</p>
-            <p className="text-lg font-bold text-foreground">
-              {(metrics.steps.current / 1000).toFixed(1)}k
-            </p>
+            <p className="text-lg font-bold text-foreground">{(metrics.steps.current / 1000).toFixed(1)}k</p>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Semana</p>
-            <p className="text-lg font-bold text-foreground">
-              {(weeklySteps / 1000).toFixed(1)}k
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Mes</p>
-            <p className="text-lg font-bold text-foreground">
-              {(monthlySteps / 1000).toFixed(1)}k
-            </p>
+            <p className="text-xs text-muted-foreground">Esta semana</p>
+            <p className="text-lg font-bold text-foreground">{(weeklySteps / 1000).toFixed(1)}k</p>
           </div>
         </div>
-        <p className="text-xs text-muted-foreground mt-2">
-          Media diaria: {(avgDailySteps / 1000).toFixed(1)}k pasos
-        </p>
+
+        {/* Period navigator */}
+        <div className="flex items-center justify-between mb-3">
+          <button onClick={() => setStepsOffset(o => o - 1)} className="p-1.5 rounded-full hover:bg-secondary">
+            <ChevronLeft className="w-4 h-4 text-muted-foreground" />
+          </button>
+          <p className="text-sm font-medium text-foreground capitalize">{periodSteps.label}</p>
+          <button
+            onClick={() => setStepsOffset(o => Math.min(o + 1, 0))}
+            disabled={stepsOffset >= 0}
+            className="p-1.5 rounded-full hover:bg-secondary"
+          >
+            <ChevronRight className={`w-4 h-4 ${stepsOffset >= 0 ? 'text-muted-foreground/30' : 'text-muted-foreground'}`} />
+          </button>
+        </div>
+
+        {/* Period stats */}
+        <div className="grid grid-cols-3 gap-2 mb-3">
+          <div className="bg-secondary rounded-xl p-2.5">
+            <p className="text-[10px] text-muted-foreground uppercase">Total</p>
+            <p className="text-base font-bold text-foreground">{(periodSteps.total / 1000).toFixed(1)}k</p>
+          </div>
+          <div className="bg-secondary rounded-xl p-2.5">
+            <p className="text-[10px] text-muted-foreground uppercase">{periodSteps.avgLabel}</p>
+            <p className="text-base font-bold text-foreground">{(periodSteps.avg / 1000).toFixed(1)}k</p>
+          </div>
+          <div className="bg-secondary rounded-xl p-2.5">
+            <p className="text-[10px] text-muted-foreground uppercase">Mejor</p>
+            <p className="text-base font-bold text-foreground">{(periodSteps.best / 1000).toFixed(1)}k</p>
+          </div>
+        </div>
+
+        {/* Mini bar chart */}
+        {periodSteps.total > 0 ? (
+          <>
+            <div className="flex items-end gap-0.5 h-24">
+              {periodSteps.bars.map((b, i) => (
+                <div
+                  key={i}
+                  className={`flex-1 rounded-t ${b.steps === maxBar ? 'bg-primary' : 'bg-primary/30'}`}
+                  style={{ height: `${b.steps > 0 ? Math.max((b.steps / maxBar) * 100, 4) : 0}%` }}
+                  title={`${b.label}: ${b.steps.toLocaleString('es-ES')}`}
+                />
+              ))}
+            </div>
+            {periodSteps.showLabels && (
+              <div className="flex gap-0.5 mt-1">
+                {periodSteps.bars.map((b, i) => (
+                  <span key={i} className="flex-1 text-center text-[9px] text-muted-foreground">{b.label}</span>
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground text-center py-4">Sin datos de pasos en este periodo</p>
+        )}
       </div>
 
       {/* Weekly Chart */}
