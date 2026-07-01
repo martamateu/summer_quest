@@ -292,7 +292,7 @@ export function FoodScreen() {
             }`}
           >
             <Heart className={`w-3.5 h-3.5 ${showFavorites ? 'fill-red-500' : ''}`} />
-            {favoriteRecipes.length}
+            Guardadas ({favoriteRecipes.length})
           </button>
           <button
             onClick={toggleDayType}
@@ -309,9 +309,13 @@ export function FoodScreen() {
       </div>
 
       {/* Favorite recipes section */}
-      {showFavorites && favoriteRecipes.length > 0 && (
+      {showFavorites && (
         <div className="bg-accent rounded-2xl p-4 mb-4">
-          <h2 className="text-sm font-semibold text-foreground mb-3">Recetas guardadas ({favoriteRecipes.length})</h2>
+          <h2 className="text-sm font-semibold text-foreground mb-1">Recetas guardadas ({favoriteRecipes.length})</h2>
+          <p className="text-[11px] text-muted-foreground mb-3">Recetas que marcas con el corazón ❤ en las ideas de IA (botón "Ideas" en comida y cena).</p>
+          {favoriteRecipes.length === 0 ? (
+            <p className="text-xs text-muted-foreground bg-card rounded-lg p-3 text-center">Aún no has guardado ninguna receta. Pulsa "Ideas" en una comida y guarda las que te gusten.</p>
+          ) : (
           <div className="space-y-2">
             {favoriteRecipes.map(recipe => (
               <div key={recipe.id} className="flex gap-2 p-2 bg-card rounded-lg">
@@ -334,6 +338,7 @@ export function FoodScreen() {
               </div>
             ))}
           </div>
+          )}
         </div>
       )}
 
@@ -366,6 +371,10 @@ export function FoodScreen() {
           </div>
 
           {/* Meals checklist */}
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-sm font-semibold text-foreground">Tu plan nutricional</h2>
+            <span className="text-[10px] text-muted-foreground">{todayLog.dayType === 'entreno' ? 'Día entreno' : 'Día descanso'}</span>
+          </div>
           <div className="space-y-2">
             {MEALS.map(meal => {
               const mealData = meal[todayLog.dayType]
