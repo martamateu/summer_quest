@@ -61,6 +61,9 @@ const CATEGORY_COLORS: Record<ExpenseCategory, string> = {
   otros: '#6b7280',
 }
 
+// Currency formatter with 2 decimals (es-ES): 1.234,56€
+const eur = (n: number) => `${n.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€`
+
 function getWeekRange(refDate: Date, offset: number = 0) {
   const d = new Date(refDate)
   const dayOfWeek = d.getDay()
@@ -255,7 +258,6 @@ export function FinanzasScreen() {
   const prevMonthIncome = onlyIncome(filterByRange(expenses, prevMonth.start, prevMonth.end))
   const prevMonthExpenses = onlyExpenses(filterByRange(expenses, prevMonth.start, prevMonth.end))
   const monthlyTotal = thisMonthExpenses.reduce((s, e) => s + e.amount, 0)
-  const monthlyIncome = thisMonthIncome.reduce((s, e) => s + e.amount, 0)
   const prevMonthPayrollIncome = prevMonthIncome.filter(isPayrollIncome).reduce((s, e) => s + e.amount, 0)
   const prevMonthTotal = prevMonthExpenses.reduce((s, e) => s + e.amount, 0)
   const thisMonthCats = categoryTotals(thisMonthExpenses)
@@ -273,12 +275,16 @@ export function FinanzasScreen() {
   const needsDeltaPct = monthlyFixedPct - 50
   const wantsDeltaPct = monthlyVariablePct - 30
   const savingsDeltaPct = monthlySavingsRatePct - 20
-  const pieTotal = monthlyFixedTotal + monthlyVariableTotal + incomeBase
-  const pieFixedPct = pieTotal > 0 ? (monthlyFixedTotal / pieTotal) * 100 : 0
-  const pieVariablePct = pieTotal > 0 ? (monthlyVariableTotal / pieTotal) * 100 : 0
-  const pieIncomePct = pieTotal > 0 ? (incomeBase / pieTotal) * 100 : 0
+  // Donut = reparto de la base de ingresos: fijos / variables / ahorro (suma 100%)
+  const spentPct = monthlyFixedPct + monthlyVariablePct
+  const overspend = spentPct > 100
+  const donutFixedPct = overspend ? (monthlyFixedPct / spentPct) * 100 : monthlyFixedPct
+  const donutVariablePct = overspend ? (monthlyVariablePct / spentPct) * 100 : monthlyVariablePct
+  const donutSavingsPct = overspend ? 0 : Math.max(0, monthlySavingsRatePct)
+  const dF = donutFixedPct
+  const dFV = donutFixedPct + donutVariablePct
   const donutStyle = {
-    background: `conic-gradient(#8b5cf6 0% ${pieFixedPct.toFixed(2)}%, #f59e0b ${pieFixedPct.toFixed(2)}% ${(pieFixedPct + pieVariablePct).toFixed(2)}%, #22c55e ${(pieFixedPct + pieVariablePct).toFixed(2)}% 100%)`,
+    background: `conic-gradient(#8b5cf6 0% ${dF.toFixed(2)}%, #f59e0b ${dF.toFixed(2)}% ${dFV.toFixed(2)}%, #22c55e ${dFV.toFixed(2)}% 100%)`,
   }
 
   // Insights
@@ -298,7 +304,7 @@ export function FinanzasScreen() {
         const cur = thisWeekCats[cat] || 0
         const prev = prevWeekCats[cat] || 0
         if (cur - prev > 10) {
-          msgs.push(`${EXPENSE_CATEGORY_LABELS[cat]} ha subido +${(cur - prev).toFixed(0)}€ vs semana anterior`)
+          msgs.push(`${EXPENSE_CATEGORY_LABELS[cat]} ha subido +${eur(cur - prev)} vs semana anterior`)
           break
         }
       }
@@ -306,23 +312,17 @@ export function FinanzasScreen() {
         const cur = thisWeekCats[cat] || 0
         const prev = prevWeekCats[cat] || 0
         if (prev - cur > 10) {
-          msgs.push(`Has ahorrado ${(prev - cur).toFixed(0)}€ en ${EXPENSE_CATEGORY_LABELS[cat]} 💪`)
+          msgs.push(`Has ahorrado ${eur(prev - cur)} en ${EXPENSE_CATEGORY_LABELS[cat]} 💪`)
           break
         }
       }
     }
     if (view === 'mes') {
       if (monthlySavings > 0) {
-        const savingsRate = monthlyIncome > 0 ? Math.round((monthlySavings / monthlyIncome) * 100) : 0
-        msgs.push(`Estás ahorrando un ${savingsRate}% de tus ingresos`)
-        if (monthlySavings > 200) {
-          msgs.push('Podrías destinar parte a un fondo de emergencia o inversión')
-        }
-        if (monthlySavings > 500) {
-          msgs.push('Buen mes para invertir en un ETF o cuenta remunerada')
-        }
-      } else if (monthlySavings < 0 && monthlyIncome > 0) {
-        msgs.push(`Gastas ${Math.abs(monthlySavings).toFixed(0)}€ más de lo que ingresas este mes`)
+        const savingsRate = incomeBase > 0 ? Math.round((monthlySavings / incomeBase) * 100) : 0
+        msgs.push(`Estás ahorrando un ${savingsRate}% de tu base de ingresos (${eur(monthlySavings)})`)
+      } else if (monthlySavings < 0 && incomeBase > 0) {
+        msgs.push(`Gastas ${eur(Math.abs(monthlySavings))} más que tu base de ingresos este mes`)
       }
       if (prevMonthTotal > 0) {
         const pct = Math.round(Math.abs(monthlyTotal - prevMonthTotal) / prevMonthTotal * 100)
@@ -332,7 +332,7 @@ export function FinanzasScreen() {
       }
     }
     return msgs
-  }, [view, thisWeekTotal, prevWeekTotal, thisWeekCats, prevWeekCats, monthlySavings, monthlyIncome, monthlyTotal, prevMonthTotal])
+  }, [view, thisWeekTotal, prevWeekTotal, thisWeekCats, prevWeekCats, monthlySavings, incomeBase, monthlyTotal, prevMonthTotal])
 
   // OCR
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -569,7 +569,7 @@ export function FinanzasScreen() {
                 <span className="text-sm text-muted-foreground">Hoy</span>
               </div>
               <p className={`text-2xl font-bold ${isUnderLimit ? 'text-primary' : 'text-red-600'}`}>
-                {todayTotal.toFixed(2)}€
+                {eur(todayTotal)}
               </p>
               <p className="text-xs text-muted-foreground">{isUnderLimit ? 'Vas bien!' : 'Límite superado'}</p>
             </div>
@@ -594,11 +594,11 @@ export function FinanzasScreen() {
                 <ArrowUpCircle className="w-5 h-5 text-red-500" />
                 <span className="text-sm text-muted-foreground">Gastos</span>
               </div>
-              <p className="text-2xl font-bold text-foreground">{thisWeekTotal.toFixed(0)}€</p>
+              <p className="text-2xl font-bold text-foreground">{eur(thisWeekTotal)}</p>
               {prevWeekTotal > 0 && (
                 <div className="flex items-center gap-1 mt-1">
                   {thisWeekTotal <= prevWeekTotal ? <TrendingDown className="w-3 h-3 text-green-500" /> : <TrendingUp className="w-3 h-3 text-red-500" />}
-                  <span className="text-[10px] text-muted-foreground">ant: {prevWeekTotal.toFixed(0)}€</span>
+                  <span className="text-[10px] text-muted-foreground">ant: {eur(prevWeekTotal)}</span>
                 </div>
               )}
             </div>
@@ -608,7 +608,7 @@ export function FinanzasScreen() {
                   <ArrowDownCircle className="w-5 h-5 text-green-500" />
                   <span className="text-sm text-muted-foreground">Ingresos</span>
                 </div>
-                <p className="text-2xl font-bold text-green-600">{thisWeekIncomeTotal.toFixed(0)}€</p>
+                <p className="text-2xl font-bold text-green-600">{eur(thisWeekIncomeTotal)}</p>
               </div>
             )}
           </div>
@@ -627,7 +627,7 @@ export function FinanzasScreen() {
                     <div className="flex items-center justify-between text-xs mb-1">
                       <span className="text-foreground">{EXPENSE_CATEGORY_LABELS[cat]}</span>
                       <span className="text-muted-foreground">
-                        {cur.toFixed(0)}€ {prev > 0 && <span className="opacity-50">(ant: {prev.toFixed(0)}€)</span>}
+                        {eur(cur)} {prev > 0 && <span className="opacity-50">(ant: {eur(prev)})</span>}
                       </span>
                     </div>
                     <div className="flex gap-1 h-2">
@@ -657,17 +657,17 @@ export function FinanzasScreen() {
             <div className="bg-card rounded-2xl p-3 text-center">
               <ArrowDownCircle className="w-5 h-5 text-green-500 mx-auto mb-1" />
               <p className="text-[10px] text-muted-foreground">Ingresos base</p>
-              <p className="text-lg font-bold text-green-600">{incomeBase.toFixed(0)}€</p>
+              <p className="text-lg font-bold text-green-600">{eur(incomeBase)}</p>
             </div>
             <div className="bg-card rounded-2xl p-3 text-center">
               <ArrowUpCircle className="w-5 h-5 text-red-500 mx-auto mb-1" />
               <p className="text-[10px] text-muted-foreground">Gastos</p>
-              <p className="text-lg font-bold text-foreground">{monthlyTotal.toFixed(0)}€</p>
+              <p className="text-lg font-bold text-foreground">{eur(monthlyTotal)}</p>
             </div>
             <div className={`rounded-2xl p-3 text-center ${monthlySavings >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
               <p className="text-[10px] text-muted-foreground mt-1">Ahorro</p>
               <p className={`text-lg font-bold ${monthlySavings >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {monthlySavings >= 0 ? '+' : ''}{monthlySavings.toFixed(0)}€
+                {monthlySavings >= 0 ? '+' : ''}{eur(monthlySavings)}
               </p>
               {incomeBase > 0 && (
                 <p className="text-[10px] text-muted-foreground">{Math.round((monthlySavings / incomeBase) * 100)}%</p>
@@ -677,64 +677,36 @@ export function FinanzasScreen() {
 
           {/* Financial pie (percentages over net income) */}
           <div className="bg-card rounded-2xl p-4 mb-4">
-            <h2 className="text-sm font-semibold text-foreground mb-3">Tarta financiera</h2>
+            <h2 className="text-sm font-semibold text-foreground mb-1">Reparto de tu dinero</h2>
+            <p className="text-[11px] text-muted-foreground mb-3">Cómo se reparte tu base de ingresos entre gastos y ahorro.</p>
             {incomeBase > 0 ? (
               <>
                 <div className="flex items-center gap-4 mb-3">
                   <div className="relative w-28 h-28 shrink-0">
                     <div className="w-28 h-28 rounded-full" style={donutStyle} />
                     <div className="absolute inset-3 bg-card rounded-full flex items-center justify-center">
-                      <span className="text-[10px] text-muted-foreground text-center leading-tight">Tarta<br />mensual</span>
+                      <span className="text-[10px] text-muted-foreground text-center leading-tight">Reparto<br />mensual</span>
                     </div>
                   </div>
                   <div className="space-y-1.5 text-xs flex-1">
                     <div className="flex items-center justify-between">
-                      <span className="text-foreground">Gastos fijos</span>
-                      <span className="text-muted-foreground">{pieFixedPct.toFixed(1)}% · {monthlyFixedTotal.toFixed(0)}€</span>
+                      <span className="flex items-center gap-1.5 text-foreground"><span className="w-2.5 h-2.5 rounded-full bg-violet-500" />Gastos fijos</span>
+                      <span className="text-muted-foreground">{monthlyFixedPct.toFixed(1)}% · {eur(monthlyFixedTotal)}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-foreground">Gastos variables</span>
-                      <span className="text-muted-foreground">{pieVariablePct.toFixed(1)}% · {monthlyVariableTotal.toFixed(0)}€</span>
+                      <span className="flex items-center gap-1.5 text-foreground"><span className="w-2.5 h-2.5 rounded-full bg-orange-400" />Gastos variables</span>
+                      <span className="text-muted-foreground">{monthlyVariablePct.toFixed(1)}% · {eur(monthlyVariableTotal)}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-foreground">Ingresos fijos</span>
-                      <span className="text-muted-foreground">{pieIncomePct.toFixed(1)}% · {incomeBase.toFixed(0)}€</span>
+                      <span className="flex items-center gap-1.5 text-foreground"><span className="w-2.5 h-2.5 rounded-full bg-green-500" />Ahorro</span>
+                      <span className={monthlySavings >= 0 ? 'text-green-600' : 'text-red-600'}>{donutSavingsPct.toFixed(1)}% · {eur(monthlySavings)}</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex flex-wrap gap-3 mb-3 text-[11px]">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-violet-500" />
-                    <span className="text-muted-foreground">Gastos fijos</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-orange-400" />
-                    <span className="text-muted-foreground">Gastos variables</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
-                    <span className="text-muted-foreground">Ingresos base</span>
-                  </div>
-                </div>
-
-                <div className="space-y-2 text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="text-foreground">% gastos fijos (sobre ingreso)</span>
-                    <span className="text-muted-foreground">{monthlyFixedPct.toFixed(1)}% · {monthlyFixedTotal.toFixed(0)}€</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-foreground">% gastos variables (sobre ingreso)</span>
-                    <span className="text-muted-foreground">{monthlyVariablePct.toFixed(1)}% · {monthlyVariableTotal.toFixed(0)}€</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-foreground">Tasa de ahorro</span>
-                    <span className={`${monthlySavingsRatePct >= 0 ? 'text-green-600' : 'text-red-600'} font-medium`}>{monthlySavingsRatePct.toFixed(1)}%</span>
-                  </div>
-                  <p className="text-[10px] text-muted-foreground">
-                    Base: otros ingresos este mes ({thisMonthOtherIncome.toFixed(0)}€) + nómina mes anterior ({prevMonthPayrollIncome.toFixed(0)}€) = {incomeBase.toFixed(0)}€
-                  </p>
-                </div>
+                <p className="text-[10px] text-muted-foreground mb-3">
+                  Base de ingresos: otros ingresos este mes ({eur(thisMonthOtherIncome)}) + nómina mes anterior ({eur(prevMonthPayrollIncome)}) = {eur(incomeBase)}
+                </p>
 
                 <div className="mt-3 rounded-xl border border-border/60 p-3">
                   <p className="text-xs font-semibold text-foreground mb-2">Regla 50 / 30 / 20</p>
@@ -768,54 +740,30 @@ export function FinanzasScreen() {
 
                 {monthlySavingsRatePct >= 0 && savingsDeltaPct < 0 && (
                   <div className="mt-3 rounded-xl bg-amber-50 p-2.5 text-xs text-amber-700">
-                    Aviso 50/30/20: podrías ahorrar o invertir {(incomeBase * Math.abs(savingsDeltaPct) / 100).toFixed(0)}€ más este mes para llegar al 20%.
+                    Aviso 50/30/20: podrías ahorrar o invertir {eur(incomeBase * Math.abs(savingsDeltaPct) / 100)} más este mes para llegar al 20%.
                   </div>
                 )}
 
                 <div className="mt-3 rounded-xl bg-accent p-3">
-                  <p className="text-xs font-semibold text-foreground mb-2">IA Insights</p>
+                  <p className="text-xs font-semibold text-foreground mb-2">Consejo</p>
                   <div className="space-y-1.5 text-xs text-muted-foreground">
-                    {needsDeltaPct > 0 && (
-                      <p>• Según la regla 50/30/20, tus necesidades están {needsDeltaPct.toFixed(1)} puntos por encima. Hogar, hipoteca, seguros o suscripciones están consumiendo demasiado margen.</p>
+                    {needsDeltaPct > 5 && (
+                      <p>• Necesidades altas ({monthlyFixedPct.toFixed(0)}% vs 50%): revisa hogar, hipoteca, seguros o suscripciones.</p>
                     )}
-                    {wantsDeltaPct > 0 && (
-                      <p>• Tus deseos están {wantsDeltaPct.toFixed(1)} puntos por encima del 30%. Aquí es donde más fácil puedes recortar.</p>
+                    {wantsDeltaPct > 5 && (
+                      <p>• Deseos por encima del 30% ({monthlyVariablePct.toFixed(0)}%): ocio, ropa y compras es donde más fácil recortas.</p>
                     )}
-                    {savingsDeltaPct < 0 && (
-                      <p>• Estás {Math.abs(savingsDeltaPct).toFixed(1)} puntos por debajo del objetivo de ahorro/inversión del 20%.</p>
+                    {monthlySavingsRatePct >= 20 && (
+                      <p>• Buena tasa de ahorro ({monthlySavingsRatePct.toFixed(0)}%). Podrías destinar parte a un ETF o cuenta remunerada.</p>
                     )}
-                    {monthlySavingsRatePct >= 30 && (
-                      <p>• Excelente tasa de ahorro ({monthlySavingsRatePct.toFixed(0)}%). Puedes destinar parte a inversión en ETF o cuenta remunerada.</p>
-                    )}
-                    {monthlySavingsRatePct >= 20 && monthlySavingsRatePct < 30 && (
-                      <p>• Buena tasa de ahorro ({monthlySavingsRatePct.toFixed(0)}%). Estás en camino — intenta llegar al 30% bajando gastos variables.</p>
-                    )}
-                    {monthlySavingsRatePct >= 10 && monthlySavingsRatePct < 20 && (
-                      <p>• Tasa de ahorro mejorable ({monthlySavingsRatePct.toFixed(0)}%). Deberías ahorrar al menos un 20% de tu base de ingresos.</p>
-                    )}
-                    {monthlySavingsRatePct >= 0 && monthlySavingsRatePct < 10 && (
-                      <p>• Tasa de ahorro baja ({monthlySavingsRatePct.toFixed(0)}%). Revisa gastos variables: si bajas {(incomeBase * 0.1 - incomeBase * (monthlySavingsRatePct / 100)).toFixed(0)}€ llegarías al 10%.</p>
-                    )}
-                    {monthlySavingsRatePct < 0 && (
-                      <p>• 🚨 Estás gastando más de tu base de ingresos. Reduce gastos antes de plantearte invertir.</p>
-                    )}
-                    {monthlyFixedPct > 55 && (
-                      <p>• Gastos fijos altos ({monthlyFixedPct.toFixed(0)}% del ingreso). Revisa suscripciones o seguros para ganar margen.</p>
-                    )}
-                    {monthlyFixedPct >= 40 && monthlyFixedPct <= 55 && (
-                      <p>• Gastos fijos razonables ({monthlyFixedPct.toFixed(0)}%). Podrías optimizar si quieres más margen de ahorro.</p>
-                    )}
-                    {monthlyVariablePct > 40 && (
-                      <p>• Gastos variables altos ({monthlyVariablePct.toFixed(0)}%). Revisa ocio, ropa y compras para liberar dinero.</p>
-                    )}
-                    {incomeBase > 0 && monthlySavingsRatePct > 0 && (
-                      <p>• Ahorro estimado este mes: {(incomeBase * monthlySavingsRatePct / 100).toFixed(0)}€ — {monthlySavingsRatePct >= 20 ? 'lógica para invertir parte' : 'acumula hasta tener 3 meses de fondo de emergencia'}.</p>
+                    {needsDeltaPct <= 5 && wantsDeltaPct <= 5 && monthlySavingsRatePct < 20 && monthlySavingsRatePct >= 0 && (
+                      <p>• Vas equilibrada. Un pequeño recorte en gastos variables te acercaría al 20% de ahorro.</p>
                     )}
                   </div>
                 </div>
               </>
             ) : (
-              <p className="text-sm text-muted-foreground">No hay base suficiente para la tarta. Registra ingresos del mes o una nómina en el mes anterior.</p>
+              <p className="text-sm text-muted-foreground">No hay base suficiente para el reparto. Registra ingresos del mes o una nómina en el mes anterior.</p>
             )}
           </div>
 
@@ -831,7 +779,7 @@ export function FinanzasScreen() {
                   <div key={cat} className="flex items-center gap-3">
                     <div className="w-3 h-3 rounded-full" style={{ backgroundColor: CATEGORY_COLORS[cat] }} />
                     <span className="text-sm text-foreground flex-1">{EXPENSE_CATEGORY_LABELS[cat]}</span>
-                    <span className="text-sm font-medium text-foreground">{total.toFixed(0)}€</span>
+                    <span className="text-sm font-medium text-foreground">{eur(total)}</span>
                     <span className="text-xs text-muted-foreground w-10 text-right">{pct.toFixed(0)}%</span>
                   </div>
                 )
@@ -844,7 +792,7 @@ export function FinanzasScreen() {
             <div className="bg-card rounded-2xl p-4 mb-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Mes anterior</span>
-                <span className="text-sm font-medium text-foreground">{prevMonthTotal.toFixed(0)}€</span>
+                <span className="text-sm font-medium text-foreground">{eur(prevMonthTotal)}</span>
               </div>
               <div className="flex items-center gap-1 mt-1">
                 {monthlyTotal <= prevMonthTotal ? <TrendingDown className="w-4 h-4 text-green-500" /> : <TrendingUp className="w-4 h-4 text-red-500" />}
@@ -894,7 +842,7 @@ export function FinanzasScreen() {
                     <p className="text-sm font-medium text-foreground">{item.description}</p>
                   </div>
                   <p className={`text-sm font-bold ${item.isIncome ? 'text-green-600' : 'text-primary'}`}>
-                    {item.isIncome ? '+' : ''}{item.amount.toFixed(2)}€
+                    {item.isIncome ? '+' : ''}{eur(item.amount)}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 mb-2">
@@ -1044,7 +992,7 @@ export function FinanzasScreen() {
                 </div>
               </div>
               <p className={`text-sm font-bold mr-3 ${expense.isIncome ? 'text-green-600' : 'text-foreground'}`}>
-                {expense.isIncome ? '+' : ''}{expense.amount.toFixed(2)}€
+                {expense.isIncome ? '+' : ''}{eur(expense.amount)}
               </p>
               <button onClick={() => openEditExpense(expense)} className="p-1 rounded-full hover:bg-secondary transition-colors">
                 <Pencil className="w-4 h-4 text-muted-foreground" />
