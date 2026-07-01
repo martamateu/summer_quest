@@ -44,11 +44,11 @@ flowchart TB
 
 | Tab | Description |
 |-----|-------------|
-| 🏠 **Hoy** | Daily non-negotiable habits (6 areas), progress ring, steps, screen time, Pomodoro timer |
+| 🏠 **Hoy** | Daily non-negotiable habits (6 areas), progress ring, steps, screen time, Pomodoro timer · **Ayuda 2 min** (AI breaks a blocking task into mini-steps) |
 | 🍽️ **Food** | 5 meals/day with macros for training vs rest days · Spoonacular recipe ideas + saved recipes |
-| 💰 **Finanzas** | Receipt OCR (Gemini), manual entry, 21 categories, auto-categorization (supermarket & café), income tracking, day/week/month views + 50/30/20 insights |
-| 🏋️ **Gym** | A/B/C workout rotation, weight×reps tracking, progression analytics, Google Sheets sync |
-| 📊 **Stats** | Habit completion %, streaks, steps, weekly charts, per-area breakdowns |
+| 💰 **Finanzas** | Receipt OCR (Gemini), manual entry, 27 categories, auto-categorization (supermarket · café · horchata), income tracking, day/week/month views + 50/30/20 insights · **monthly report export** (Markdown for NotebookLM / PDF) |
+| 🏋️ **Gym** | A/B/C workout rotation, weight×reps tracking, progression analytics, **week/month stats** (workout types + time trained), Google Sheets sync |
+| 📊 **Stats** | Habit completion %, streaks, per-area breakdowns, **navigable steps explorer** (month/year totals, average, best day + bar chart) |
 
 Secondary tabs: **Carrera** (career habits) and **Quests** (non-daily habits by area).
 
@@ -74,6 +74,7 @@ Secondary tabs: **Carrera** (career habits) and **Quests** (non-daily habits by 
 | Route | Method | Purpose | Auth |
 |-------|--------|---------|------|
 | `/api/analyze-receipt` | POST | Receipt OCR → expense items (Gemini) | Session |
+| `/api/break-task` | POST | Break a task into mini-steps (Gemini) | Session |
 | `/api/recipe-suggest` | POST | Recipes by macro constraints (Spoonacular) | Bypass |
 | `/api/sync-data` | GET/POST | Cloud backup/restore of localStorage (Redis) | Session |
 | `/api/sync-sheet` | GET/POST | Write gym workouts to Google Sheets | Session |
@@ -124,12 +125,37 @@ npm run dev          # http://localhost:3000
 
 ## Roadmap
 
-Actively expanding towards a full life-tracker. Highlights in progress:
+Actively expanding towards a full life-tracker.
 
-- **Finanzas** — clearer fixed vs variable split, payroll tracker (PDF), sharper AI insights
-- **Gym** — weight tracking, running tracker, workout OCR diary, AI coach, weekly/monthly stats
-- **Health** — cycle calendar with training insights, food photo OCR, books & study trackers
-- **Home** — day-type routines (energía/calma/productividad/admin) replacing the flat habit list
-- **Admin Life** — to-do + cleaning schedule, voice notes → shopping list
+### Recently shipped
+
+- **Ayuda 2 min** — AI breaks a blocking task into a 2-minute first action + mini-step checklist
+- **Finanzas monthly report** — export a month as Markdown (for NotebookLM) / PDF
+- **Gym week/month stats** — workout types + time trained (with session-duration tracking)
+- **Steps explorer** — navigable month/year totals, average, best day + bar chart
+- **New finance categories** — café, horchata, psicólogo, entrenador, Urban Sports, lentillas, uni, cine, libros + keyword auto-categorization
+
+### Next up (near-term)
+
+- **CSV import** — bulk-backfill past months of expenses/income from a bank export
+- **Gym weight tracker** — manual log + chart (Renpho mock → Google Health later)
+- **Study tracker** — AI master's degree progress screen
+- **Books tracker** — reading log + "20 pages/day" habit (manual first, Goodreads later)
+- **Payroll tracker** — nómina screen + payslip PDF OCR
+- **Admin Life** — to-do + cleaning schedule that feeds the calendar; voice notes → shopping list
+
+### Planned (larger / AI-heavy)
+
+- **Home redesign** — day-type routines (energía / calma / productividad / admin) with morning + evening flows, stored in Redis, per-routine stats
+- **Gym workout OCR diary** — photograph a workout → structured log
+- **Cycle calendar** — menstrual phases + training/nutrition insights
+- **Running tracker** — sessions + AI insights
+- **Gym AI coach** — load progression, cycle-aware
+- **Food photo OCR** — meal photo → macros & quantities
+- **Voice recorder** — transcript → categorized notes + shopping list
+- **Health tracker + RAG** — weight, food, cycle, workouts, steps, medical records → weekly health report
+- **Wishlist** — voice + photos, price estimation and **price tracking** of wanted products
+- **Jefe Final** — weekly boss challenge aggregating steps / finance / deep-work; reward = a small wishlist item
+- **Auto NotebookLM sync** — end-of-month report pushed to a Google Doc source (no public NotebookLM upload API yet)
 
 This is a private project — not for redistribution.
