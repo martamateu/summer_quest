@@ -173,11 +173,16 @@ export default function Page() {
     fetch('/api/screen-time')
       .then((r) => r.json())
       .then((data) => {
-        if (data.minutes > 0) {
+        if (typeof data.minutes === 'number' && data.minutes >= 0) {
           const h = Math.floor(data.minutes / 60)
           const m = data.minutes % 60
           const formatted = h > 0 ? `${h}h ${m}m` : `${m}m`
           setMetrics((prev) => ({ ...prev, screenTime: formatted }))
+          // Auto-mark "Límite pantalla 3h" (id '20'): done while under 180 min, undone if exceeded
+          const underLimit = data.minutes < 180
+          setHabits((prev) =>
+            prev.map((h) => h.id === '20' ? { ...h, completed: underLimit } : h)
+          )
         }
       })
       .catch(() => {})
