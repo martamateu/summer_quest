@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { Camera, Plus, X, Check, Loader2, Flame, Receipt, TrendingDown, TrendingUp, Trash2, ChevronLeft, ChevronRight, ArrowDownCircle, ArrowUpCircle, Lightbulb, Pencil } from 'lucide-react'
+import { Camera, Plus, X, Check, Loader2, Flame, Receipt, TrendingDown, TrendingUp, Trash2, ChevronLeft, ChevronRight, ArrowDownCircle, ArrowUpCircle, Lightbulb, Pencil, FileText } from 'lucide-react'
 import type { Expense, ExpenseCategory } from '@/lib/types'
 import { EXPENSE_CATEGORY_LABELS } from '@/lib/types'
+import { ReportExportModal } from '@/components/report-export-modal'
 
 const EXPENSES_STORAGE_KEY = 'sq_expenses'
 const FINANCE_START_STORAGE_KEY = 'sq_finance_started_at'
@@ -136,6 +137,7 @@ export function FinanzasScreen() {
   const [view, setView] = useState<FinanceView>('dia')
   const [weekOffset, setWeekOffset] = useState(0)
   const [monthOffset, setMonthOffset] = useState(0)
+  const [showReport, setShowReport] = useState(false)
   const [filterCategory, setFilterCategory] = useState<ExpenseCategory | 'all'>('all')
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null)
   const [editDescription, setEditDescription] = useState('')
@@ -298,6 +300,45 @@ export function FinanzasScreen() {
   const donutSavingsPct = overspend ? 0 : Math.max(0, monthlySavingsRatePct)
   const dF = donutFixedPct
   const dFV = donutFixedPct + donutVariablePct
+
+  // Monthly report (markdown) for export to NotebookLM
+  const buildMonthReport = () => {
+    const catLines = Object.entries(thisMonthCats)
+      .sort((a, b) => (b[1] as number) - (a[1] as number))
+      .map(([cat, total]) => `- ${EXPENSE_CATEGORY_LABELS[cat as ExpenseCategory]}: ${eur(total as number)}${monthlyTotal > 0 ? ` (${Math.round(((total as number) / monthlyTotal) * 100)}%)` : ''}`)
+      .join('\n') || '- (sin gastos)'
+
+    const incomeLines = thisMonthIncome
+      .slice().sort((a, b) => a.date.localeCompare(b.date))
+      .map(e => `- ${e.date} · ${e.description}: ${eur(e.amount)}`)
+      .join('\n') || '- (sin ingresos registrados este mes)'
+
+    const expenseLines = thisMonthExpenses
+      .slice().sort((a, b) => a.date.localeCompare(b.date))
+      .map(e => `- ${e.date} · ${e.description} [${EXPENSE_CATEGORY_LABELS[e.category]}]: ${eur(e.amount)}`)
+      .join('\n') || '- (sin gastos registrados este mes)'
+
+    return `# Informe financiero — ${monthLabel}
+
+## Resumen
+- Ingresos base: ${eur(incomeBase)}
+- Gastos totales: ${eur(monthlyTotal)}
+- Ahorro: ${eur(monthlySavings)}${incomeBase > 0 ? ` (${Math.round((monthlySavings / incomeBase) * 100)}%)` : ''}
+- Gastos fijos: ${eur(monthlyFixedTotal)}${incomeBase > 0 ? ` (${Math.round(monthlyFixedPct)}%)` : ''}
+- Gastos variables: ${eur(monthlyVariableTotal)}${incomeBase > 0 ? ` (${Math.round(monthlyVariablePct)}%)` : ''}
+
+## Gastos por categoría
+${catLines}
+
+## Ingresos del mes
+${incomeLines}
+
+## Movimientos (gastos)
+${expenseLines}
+
+_Generado por Summer Quest · ${getTodayStr()}_
+`
+  }
   const donutStyle = {
     background: `conic-gradient(#8b5cf6 0% ${dF.toFixed(2)}%, #f59e0b ${dF.toFixed(2)}% ${dFV.toFixed(2)}%, #22c55e ${dFV.toFixed(2)}% 100%)`,
   }
@@ -666,6 +707,15 @@ export function FinanzasScreen() {
             <p className="text-sm font-medium text-foreground capitalize">{monthLabel}</p>
             <button onClick={() => setMonthOffset(m => Math.min(m + 1, 0))} className="p-2 rounded-full hover:bg-secondary" disabled={monthOffset >= 0}><ChevronRight className={`w-5 h-5 ${monthOffset >= 0 ? 'text-muted-foreground/30' : 'text-muted-foreground'}`} /></button>
           </div>
+
+          {/* Export monthly report */}
+          <button
+            onClick={() => setShowReport(true)}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-secondary text-foreground text-sm font-medium mb-4"
+          >
+            <FileText className="w-4 h-4" />
+            Exportar informe (NotebookLM / PDF)
+          </button>
 
           {/* Income / Expenses / Savings */}
           <div className="grid grid-cols-3 gap-2 mb-4">
@@ -1061,6 +1111,15 @@ export function FinanzasScreen() {
             </button>
           </div>
         </div>
+      )}
+
+      {showReport && (
+        <ReportExportModal
+          title={`Informe ${monthLabel}`}
+          filename={`finanzas-${thisMonth.start.slice(0, 7)}.md`}
+          text={buildMonthReport()}
+          onClose={() => setShowReport(false)}
+        />
       )}
     </div>
   )
