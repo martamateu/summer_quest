@@ -29,6 +29,23 @@ function saveLogs(logs: GymSessionLog[]) {
 
 const getTodayStr = () => new Date().toISOString().split('T')[0]
 
+// Local YYYY-MM-DD (avoids UTC offset issues)
+const fmtLocal = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+// Session length in minutes. Estimate ~3 min/set when not recorded (older/seed logs).
+function sessionMinutes(session: GymSessionLog): number {
+  if (typeof session.durationMin === 'number') return session.durationMin
+  const totalSets = session.exercises.reduce((s, e) => s + e.sets.length, 0)
+  return totalSets * 3
+}
+
+const fmtDuration = (min: number) => {
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  return h > 0 ? `${h}h ${m}m` : `${m}m`
+}
+
 export function GymScreen() {
   const [logs, setLogs] = useState<GymSessionLog[]>([])
   const [selectedWorkout, setSelectedWorkout] = useState<string>('A')
@@ -37,6 +54,8 @@ export function GymScreen() {
   const [currentSets, setCurrentSets] = useState<Record<string, GymSet[]>>({})
   const [expandedExercise, setExpandedExercise] = useState<string | null>(null)
   const [showStats, setShowStats] = useState(false)
+  const [statsPeriod, setStatsPeriod] = useState<'week' | 'month'>('week')
+  const [sessionStart, setSessionStart] = useState<number | null>(null)
   const [syncStatus, setSyncStatus] = useState<string | null>(null)
 
   useEffect(() => { setLogs(loadLogs()) }, [])
@@ -58,6 +77,7 @@ export function GymScreen() {
   // Start session
   const startSession = () => {
     setActiveSession(true)
+    setSessionStart(Date.now())
     const initial: Record<string, GymSet[]> = {}
     workout.exercises.forEach(ex => {
       const prev = getPreviousLog(ex.id)
@@ -101,10 +121,15 @@ export function GymScreen() {
 
     if (exercises.length === 0) return
 
+    const durationMin = sessionStart
+      ? Math.min(240, Math.max(1, Math.round((Date.now() - sessionStart) / 60000)))
+      : undefined
+
     const session: GymSessionLog = {
       date: sessionDate,
       workoutId: selectedWorkout,
       exercises,
+      durationMin,
     }
 
     const updated = [...logs, session]
@@ -112,6 +137,7 @@ export function GymScreen() {
     saveLogs(updated)
     setActiveSession(false)
     setCurrentSets({})
+    setSessionStart(null)
 
     // Sync to Google Sheet with feedback
     setSyncStatus('Sincronizando con Google Sheet...')
@@ -183,6 +209,36 @@ export function GymScreen() {
       }
     }).filter((p): p is NonNullable<typeof p> => p !== null)
   }, [logs, selectedWorkout, workout.exercises])
+
+  // Week / month summary across ALL workouts: types trained + time trained
+  const periodStats = useMemo(() => {
+    const now = new Date()
+    let start: Date
+    if (statsPeriod === 'week') {
+      const day = now.getDay() // 0=Dom
+      const sinceMonday = day === 0 ? 6 : day - 1
+      start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - sinceMonday)
+    } else {
+      start = new Date(now.getFullYear(), now.getMonth(), 1)
+    }
+    const startStr = fmtLocal(start)
+
+    const inRange = logs.filter(l => l.date >= startStr)
+    const totalMin = inRange.reduce((s, l) => s + sessionMinutes(l), 0)
+
+    const byType = WORKOUTS.map(w => ({
+      id: w.id,
+      name: w.name,
+      count: inRange.filter(l => l.workoutId === w.id).length,
+    })).filter(t => t.count > 0)
+
+    return {
+      sessions: inRange.length,
+      totalMin,
+      avgMin: inRange.length ? Math.round(totalMin / inRange.length) : 0,
+      byType,
+    }
+  }, [logs, statsPeriod])
 
   // Render active session
   if (activeSession) {
@@ -372,9 +428,69 @@ export function GymScreen() {
         </div>
       </div>
 
-      {/* Progression Stats */}
-      {showStats && exerciseProgression.length > 0 && (
+      {/* Week / Month summary */}
+      {showStats && (
         <div className="bg-card rounded-2xl p-4 mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-base font-semibold text-foreground">Resumen</h2>
+            <div className="flex gap-1 bg-secondary rounded-full p-0.5">
+              {(['week', 'month'] as const).map(p => (
+                <button
+                  key={p}
+                  onClick={() => setStatsPeriod(p)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                    statsPeriod === p ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
+                  }`}
+                >
+                  {p === 'week' ? 'Semana' : 'Mes'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {periodStats.sessions === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              Sin entrenos {statsPeriod === 'week' ? 'esta semana' : 'este mes'}
+            </p>
+          ) : (
+            <>
+              <div className="grid grid-cols-3 gap-2 mb-3">
+                <div className="bg-secondary rounded-xl p-2.5">
+                  <p className="text-[10px] text-muted-foreground uppercase">Entrenos</p>
+                  <p className="text-lg font-bold text-foreground">{periodStats.sessions}</p>
+                </div>
+                <div className="bg-secondary rounded-xl p-2.5">
+                  <p className="text-[10px] text-muted-foreground uppercase">Tiempo total</p>
+                  <p className="text-lg font-bold text-foreground">{fmtDuration(periodStats.totalMin)}</p>
+                </div>
+                <div className="bg-secondary rounded-xl p-2.5">
+                  <p className="text-[10px] text-muted-foreground uppercase">Media/sesión</p>
+                  <p className="text-lg font-bold text-foreground">{fmtDuration(periodStats.avgMin)}</p>
+                </div>
+              </div>
+              <div>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5">Tipos de entreno</p>
+                <div className="space-y-1.5">
+                  {periodStats.byType.map(t => (
+                    <div key={t.id} className="flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-primary/10 text-primary text-xs font-bold flex items-center justify-center shrink-0">
+                        {t.id}
+                      </span>
+                      <span className="text-sm text-foreground flex-1 truncate">{t.name}</span>
+                      <span className="text-sm font-semibold text-foreground">
+                        {t.count}×
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Progression Stats */}
+      {showStats && exerciseProgression.length > 0 && (        <div className="bg-card rounded-2xl p-4 mb-4">
           <div className="flex items-center gap-2 mb-3">
             <TrendingUp className="w-5 h-5 text-primary" />
             <h2 className="text-base font-semibold text-foreground">Progreso</h2>

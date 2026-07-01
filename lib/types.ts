@@ -135,6 +135,7 @@ export interface GymSessionLog {
   date: string // YYYY-MM-DD
   workoutId: string // 'A' | 'B' | 'C'
   exercises: GymExerciseLog[]
+  durationMin?: number // measured session length in minutes (estimated for older logs)
 }
 
 export interface GymExercise {
