@@ -143,42 +143,29 @@ export default function Page() {
   const { streak, bestStreak } = useMemo(() => getStreaks(habits), [habits])
   const weeklyData = useMemo(() => getWeeklyData(), [habits])
 
-  const yesterdayData = useMemo((): DayHistory | null => {
-    if (typeof window === 'undefined') return null
-    try {
-      const history: Record<string, DayHistory> = JSON.parse(localStorage.getItem('sq_history') || '{}')
-      const y = new Date()
-      y.setDate(y.getDate() - 1)
-      const key = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, '0')}-${String(y.getDate()).padStart(2, '0')}`
-      return history[key] || null
-    } catch { return null }
-  }, [habits])
-
   // Fetch today's steps and screen time from the API (updated by the Android app)
   const fetchSteps = () => {
     fetch('/api/steps')
       .then((r) => r.json())
       .then((data) => {
-        const steps = typeof data.steps === 'number' ? data.steps : 0
-        setMetrics((prev) => ({
-          ...prev,
-          steps: { ...prev.steps, current: steps },
-        }))
-        // Persist to steps history for Stats screen (always update today's entry)
-        try {
-          const key = 'sq_steps_history'
-          const history = JSON.parse(localStorage.getItem(key) || '{}')
-          const today = new Date().toISOString().split('T')[0]
-          history[today] = { steps, calories: data.calories || 0 }
-          localStorage.setItem(key, JSON.stringify(history))
-        } catch {}
-        // Auto-complete habit only if not already completed, to avoid unnecessary re-renders
-        if (steps >= 15000) {
-          setHabits((prev) => {
-            const habit = prev.find((h) => h.id === '10')
-            if (habit?.completed) return prev // already done, no re-render
-            return prev.map((h) => h.id === '10' ? { ...h, completed: true } : h)
-          })
+        if (data.steps > 0) {
+          setMetrics((prev) => ({
+            ...prev,
+            steps: { ...prev.steps, current: data.steps },
+          }))
+          // Persist to steps history for Stats screen
+          try {
+            const key = 'sq_steps_history'
+            const history = JSON.parse(localStorage.getItem(key) || '{}')
+            const today = new Date().toISOString().split('T')[0]
+            history[today] = { steps: data.steps, calories: data.calories || 0 }
+            localStorage.setItem(key, JSON.stringify(history))
+          } catch {}
+          if (data.steps >= 15000) {
+            setHabits((prev) =>
+              prev.map((h) => h.id === '10' ? { ...h, completed: true } : h)
+            )
+          }
         }
       })
       .catch(() => {})
@@ -401,8 +388,6 @@ export default function Page() {
             habits={habits}
             metrics={metrics}
             streak={streak}
-            bestStreak={bestStreak}
-            yesterdayData={yesterdayData}
             onToggleHabit={handleToggleHabit}
             onTogglePriority={handleTogglePriority}
             onOpenPomodoro={() => setShowPomodoro(true)}

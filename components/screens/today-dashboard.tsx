@@ -1,33 +1,24 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Flame, Footprints, Smartphone, Brain, Settings, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Minus, Trophy, Star } from 'lucide-react'
+import { Flame, Footprints, Smartphone, Brain, Settings, ChevronDown, ChevronRight, Star } from 'lucide-react'
 import { ProgressRing } from '@/components/progress-ring'
 import { MetricChip } from '@/components/metric-chip'
 import { HabitRow } from '@/components/habit-row'
 import type { Habit, DailyMetrics, HabitArea } from '@/lib/types'
 import { AREA_LABELS, AREA_COLORS } from '@/lib/types'
 
-interface DayHistory {
-  nonNegTotal: number
-  nonNegCompleted: number
-  total: number
-  completed: number
-}
-
 interface TodayDashboardProps {
   habits: Habit[]
   metrics: DailyMetrics
   streak: number
-  bestStreak: number
-  yesterdayData: DayHistory | null
   onToggleHabit: (id: string) => void
   onTogglePriority: (id: string) => void
   onOpenPomodoro: () => void
   onEditHabits: () => void
 }
 
-export function TodayDashboard({ habits, metrics, streak, bestStreak, yesterdayData, onToggleHabit, onTogglePriority, onOpenPomodoro, onEditHabits }: TodayDashboardProps) {
+export function TodayDashboard({ habits, metrics, streak, onToggleHabit, onTogglePriority, onOpenPomodoro, onEditHabits }: TodayDashboardProps) {
   const [expandedArea, setExpandedArea] = useState<HabitArea | null>(null)
 
   const todayHabits = habits.filter((h) => h.nonNegotiable)
@@ -51,41 +42,6 @@ export function TodayDashboard({ habits, metrics, streak, bestStreak, yesterdayD
     () => todayHabits.filter((h) => h.priority).slice(0, 3),
     [todayHabits]
   )
-
-  // Yesterday comparison
-  const yesterdayPct = yesterdayData && yesterdayData.nonNegTotal > 0
-    ? Math.round((yesterdayData.nonNegCompleted / yesterdayData.nonNegTotal) * 100)
-    : null
-  const todayPct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
-
-  // Habit streak: consecutive days with at least 1 habit completed
-  const habitStreak = useMemo(() => {
-    if (typeof window === 'undefined') return 0
-    try {
-      const history: Record<string, DayHistory> = JSON.parse(localStorage.getItem('sq_history') || '{}')
-      // Include today
-      const todayKey = new Date().toISOString().split('T')[0]
-      const todayEntry: DayHistory = {
-        nonNegTotal: totalCount,
-        nonNegCompleted: completedCount,
-        total: habits.length,
-        completed: habits.filter(h => h.completed).length,
-      }
-      const all = { ...history, [todayKey]: todayEntry }
-
-      let s = 0
-      for (let i = 0; i < 365; i++) {
-        const d = new Date()
-        d.setDate(d.getDate() - i)
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-        const entry = all[key]
-        if (entry && entry.completed > 0) s++
-        else if (i === 0) continue // today might have 0 still
-        else break
-      }
-      return s
-    } catch { return 0 }
-  }, [habits, completedCount, totalCount])
 
   const today = new Date()
   const dateString = today.toLocaleDateString('es-ES', {
@@ -111,43 +67,6 @@ export function TodayDashboard({ habits, metrics, streak, bestStreak, yesterdayD
       {/* Progress Ring */}
       <div className="flex justify-center mb-6">
         <ProgressRing progress={completedCount} total={totalCount} />
-      </div>
-
-      {/* Streak & Yesterday Stats */}
-      <div className="grid grid-cols-3 gap-2 mb-4">
-        <div className="bg-card rounded-2xl p-3 text-center">
-          <Flame className="w-5 h-5 text-orange-500 mx-auto mb-1" />
-          <p className="text-lg font-bold text-foreground">{habitStreak}</p>
-          <p className="text-[10px] text-muted-foreground">Racha activa</p>
-        </div>
-        <div className="bg-card rounded-2xl p-3 text-center">
-          <Trophy className="w-5 h-5 text-amber-500 mx-auto mb-1" />
-          <p className="text-lg font-bold text-foreground">{bestStreak}</p>
-          <p className="text-[10px] text-muted-foreground">Mejor racha</p>
-        </div>
-        <div className="bg-card rounded-2xl p-3 text-center">
-          {yesterdayPct !== null ? (
-            <>
-              {todayPct > yesterdayPct ? (
-                <TrendingUp className="w-5 h-5 text-green-500 mx-auto mb-1" />
-              ) : todayPct < yesterdayPct ? (
-                <TrendingDown className="w-5 h-5 text-red-500 mx-auto mb-1" />
-              ) : (
-                <Minus className="w-5 h-5 text-muted-foreground mx-auto mb-1" />
-              )}
-              <p className={`text-lg font-bold ${todayPct > yesterdayPct ? 'text-green-600' : todayPct < yesterdayPct ? 'text-red-500' : 'text-foreground'}`}>
-                {todayPct > yesterdayPct ? '+' : ''}{todayPct - yesterdayPct}%
-              </p>
-              <p className="text-[10px] text-muted-foreground">vs ayer</p>
-            </>
-          ) : (
-            <>
-              <Minus className="w-5 h-5 text-muted-foreground mx-auto mb-1" />
-              <p className="text-lg font-bold text-muted-foreground">—</p>
-              <p className="text-[10px] text-muted-foreground">vs ayer</p>
-            </>
-          )}
-        </div>
       </div>
 
       {/* Metric Chips */}
