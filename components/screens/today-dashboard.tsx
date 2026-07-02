@@ -1,213 +1,333 @@
 'use client'
 
-import { useState, useMemo } from 'react'
-import { Flame, Footprints, Smartphone, Brain, Settings, ChevronDown, ChevronRight, Star, Sparkles } from 'lucide-react'
-import { ProgressRing } from '@/components/progress-ring'
-import { MetricChip } from '@/components/metric-chip'
-import { HabitRow } from '@/components/habit-row'
+import { useState, useEffect } from 'react'
+import { Flame, Dumbbell, GraduationCap, PersonStanding, CheckCircle2, Circle, Wallet, CloudRain, Sun, Cloud, CloudSnow, Wind, Loader2 } from 'lucide-react'
 import { TaskBreakdown } from '@/components/task-breakdown'
-import type { Habit, DailyMetrics, HabitArea } from '@/lib/types'
-import { AREA_LABELS, AREA_COLORS } from '@/lib/types'
 
-interface TodayDashboardProps {
-  habits: Habit[]
-  metrics: DailyMetrics
-  streak: number
-  onToggleHabit: (id: string) => void
-  onTogglePriority: (id: string) => void
-  onOpenPomodoro: () => void
-  onEditHabits: () => void
+// ── localStorage helpers ───────────────────────────────────────────────────────
+const getLocalDateStr = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-export function TodayDashboard({ habits, metrics, streak, onToggleHabit, onTogglePriority, onOpenPomodoro, onEditHabits }: TodayDashboardProps) {
-  const [expandedArea, setExpandedArea] = useState<HabitArea | null>(null)
+function readDayData(today: string): DayData {
+  if (typeof window === 'undefined') return defaultDayData()
+  try {
+    const raw = localStorage.getItem('sq_today_goals')
+    if (!raw) return defaultDayData()
+    const parsed = JSON.parse(raw)
+    if (parsed.date !== today) return defaultDayData()
+    return parsed as DayData
+  } catch { return defaultDayData() }
+}
+
+function saveDayData(data: DayData) {
+  localStorage.setItem('sq_today_goals', JSON.stringify(data))
+  window.dispatchEvent(new Event('sq-data-changed'))
+}
+
+// Append today to a log array (stored as array of date strings)
+function logToday(key: string) {
+  if (typeof window === 'undefined') return
+  const today = getLocalDateStr()
+  try {
+    const arr: string[] = JSON.parse(localStorage.getItem(key) || '[]')
+    if (!arr.includes(today)) {
+      arr.push(today)
+      localStorage.setItem(key, JSON.stringify(arr))
+      window.dispatchEvent(new Event('sq-data-changed'))
+    }
+  } catch {}
+}
+
+function removeToday(key: string) {
+  if (typeof window === 'undefined') return
+  const today = getLocalDateStr()
+  try {
+    const arr: string[] = JSON.parse(localStorage.getItem(key) || '[]')
+    localStorage.setItem(key, JSON.stringify(arr.filter(d => d !== today)))
+    window.dispatchEvent(new Event('sq-data-changed'))
+  } catch {}
+}
+
+function isTodayLogged(key: string): boolean {
+  if (typeof window === 'undefined') return false
+  const today = getLocalDateStr()
+  try {
+    const arr: string[] = JSON.parse(localStorage.getItem(key) || '[]')
+    return arr.includes(today)
+  } catch { return false }
+}
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+interface GoalEntry {
+  task: string
+  done: boolean
+}
+
+interface DayData {
+  date: string
+  fuerza: GoalEntry
+  master: GoalEntry
+  flexibilidad: GoalEntry
+  finanzas: boolean
+}
+
+function defaultDayData(): DayData {
+  return {
+    date: getLocalDateStr(),
+    fuerza: { task: '', done: false },
+    master: { task: '', done: false },
+    flexibilidad: { task: '', done: false },
+    finanzas: false,
+  }
+}
+
+// ── Weather ────────────────────────────────────────────────────────────────────
+interface Weather {
+  temp: number
+  code: number   // WMO weather code
+  isDay: boolean
+}
+
+function weatherIcon(code: number, isDay: boolean): React.ReactNode {
+  if (code === 0) return isDay ? <Sun className="w-5 h-5 text-amber-400" /> : <Sun className="w-5 h-5 text-slate-400" />
+  if (code <= 3) return <Cloud className="w-5 h-5 text-slate-400" />
+  if (code <= 67) return <CloudRain className="w-5 h-5 text-blue-400" />
+  if (code <= 77) return <CloudSnow className="w-5 h-5 text-sky-300" />
+  if (code <= 99) return <CloudRain className="w-5 h-5 text-indigo-400" />
+  return <Wind className="w-5 h-5 text-slate-400" />
+}
+
+function weatherLabel(code: number): string {
+  if (code === 0) return 'Despejado'
+  if (code <= 3) return 'Nublado'
+  if (code <= 51) return 'Llovizna'
+  if (code <= 67) return 'Lluvia'
+  if (code <= 77) return 'Nieve'
+  if (code <= 99) return 'Tormenta'
+  return ''
+}
+
+// ── Props (mínimas — ya no recibe habits/metrics) ─────────────────────────────
+interface TodayDashboardProps {
+  streak: number
+}
+
+// ── Goal card ─────────────────────────────────────────────────────────────────
+function GoalCard({
+  icon, label, color, entry,
+  onTaskChange, onToggle,
+}: {
+  icon: React.ReactNode
+  label: string
+  color: string
+  entry: GoalEntry
+  onTaskChange: (v: string) => void
+  onToggle: () => void
+}) {
+  return (
+    <div className={`bg-card rounded-2xl p-4 border-l-4`} style={{ borderLeftColor: color }}>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span style={{ color }}>{icon}</span>
+          <p className="text-sm font-semibold text-foreground">{label}</p>
+        </div>
+        <button onClick={onToggle} className="shrink-0">
+          {entry.done
+            ? <CheckCircle2 className="w-6 h-6" style={{ color }} />
+            : <Circle className="w-6 h-6 text-muted-foreground/40" />
+          }
+        </button>
+      </div>
+      <input
+        type="text"
+        value={entry.task}
+        onChange={e => onTaskChange(e.target.value)}
+        placeholder={`¿Qué harás hoy para ${label.toLowerCase()}?`}
+        className={`w-full text-sm bg-secondary rounded-xl px-3 py-2 outline-none focus:ring-2 text-foreground placeholder:text-muted-foreground/60 ${entry.done ? 'line-through text-muted-foreground' : ''}`}
+        style={{ '--tw-ring-color': color } as React.CSSProperties}
+      />
+    </div>
+  )
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
+export function TodayDashboard({ streak }: TodayDashboardProps) {
+  const today = getLocalDateStr()
+
+  const [dayData, setDayData] = useState<DayData>(defaultDayData)
+  const [weather, setWeather] = useState<Weather | null>(null)
+  const [weatherLoading, setWeatherLoading] = useState(false)
   const [showTaskHelp, setShowTaskHelp] = useState(false)
 
-  const todayHabits = habits.filter((h) => h.nonNegotiable)
-  const completedCount = todayHabits.filter((h) => h.completed).length
-  const totalCount = todayHabits.length
+  // Load today's data from localStorage
+  useEffect(() => {
+    setDayData(readDayData(today))
+  }, [today])
 
-  const activeAreas = useMemo(() => {
-    const areas = new Set(todayHabits.map(h => h.area))
-    return Array.from(areas) as HabitArea[]
-  }, [todayHabits])
+  // Fetch weather via geolocation → open-meteo (free, no key)
+  useEffect(() => {
+    if (!navigator.geolocation) return
+    setWeatherLoading(true)
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${coords.latitude}&longitude=${coords.longitude}&current=temperature_2m,weather_code,is_day&timezone=auto`
+        )
+          .then(r => r.json())
+          .then(data => {
+            setWeather({
+              temp: Math.round(data.current.temperature_2m),
+              code: data.current.weather_code,
+              isDay: data.current.is_day === 1,
+            })
+          })
+          .catch(() => {})
+          .finally(() => setWeatherLoading(false))
+      },
+      () => setWeatherLoading(false),
+      { timeout: 8000 }
+    )
+  }, [])
 
-  const areaData = useMemo(() => {
-    return activeAreas.map(area => {
-      const areaHabits = todayHabits.filter(h => h.area === area)
-      const done = areaHabits.filter(h => h.completed).length
-      return { area, habits: areaHabits, done, total: areaHabits.length, allDone: done === areaHabits.length }
-    })
-  }, [activeAreas, todayHabits])
+  const update = (next: DayData) => {
+    setDayData(next)
+    saveDayData(next)
+  }
 
-  const priorityHabits = useMemo(
-    () => todayHabits.filter((h) => h.priority).slice(0, 3),
-    [todayHabits]
-  )
+  const toggleGoal = (key: 'fuerza' | 'master' | 'flexibilidad') => {
+    const next = { ...dayData, [key]: { ...dayData[key], done: !dayData[key].done } }
+    update(next)
+    // Flexibilidad: sync con sq_flex_log
+    if (key === 'flexibilidad') {
+      if (!dayData.flexibilidad.done) logToday('sq_flex_log')
+      else removeToday('sq_flex_log')
+    }
+  }
 
-  const today = new Date()
-  const dateString = today.toLocaleDateString('es-ES', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
+  const setTask = (key: 'fuerza' | 'master' | 'flexibilidad', v: string) => {
+    update({ ...dayData, [key]: { ...dayData[key], task: v } })
+  }
+
+  const toggleFinanzas = () => {
+    const next = { ...dayData, finanzas: !dayData.finanzas }
+    update(next)
+    if (!dayData.finanzas) logToday('sq_finance_log')
+    else removeToday('sq_finance_log')
+  }
+
+  // Date string
+  const dateStr = new Date().toLocaleDateString('es-ES', {
+    weekday: 'long', day: 'numeric', month: 'long',
   })
 
+  const goalsCompleted = [dayData.fuerza.done, dayData.master.done, dayData.flexibilidad.done].filter(Boolean).length
+
   return (
-    <div className="px-4 pt-6 pb-24">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">¡Buenos días! ☀️</h1>
-          <p className="text-sm text-muted-foreground capitalize">{dateString}</p>
+    <div className="px-4 pt-6 pb-24 space-y-4">
+
+      {/* Header: fecha + clima + racha */}
+      <div className="bg-card rounded-2xl p-4">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">Hoy</p>
+            <p className="text-lg font-bold text-foreground capitalize">{dateStr}</p>
+          </div>
+          <div className="flex items-center gap-1.5 bg-orange-50 dark:bg-orange-950/30 px-3 py-1.5 rounded-full">
+            <Flame className="w-4 h-4 text-orange-500" />
+            <span className="text-sm font-semibold text-orange-500">{streak} días</span>
+          </div>
         </div>
-        <div className="flex items-center gap-1.5 bg-accent px-3 py-1.5 rounded-full">
-          <Flame className="w-4 h-4 text-primary" />
-          <span className="text-sm font-semibold text-primary">{streak} días</span>
+
+        {/* Clima */}
+        <div className="mt-3 flex items-center gap-2">
+          {weatherLoading ? (
+            <Loader2 className="w-4 h-4 text-muted-foreground animate-spin" />
+          ) : weather ? (
+            <>
+              {weatherIcon(weather.code, weather.isDay)}
+              <span className="text-sm text-foreground font-medium">{weather.temp}°C</span>
+              <span className="text-sm text-muted-foreground">{weatherLabel(weather.code)}</span>
+            </>
+          ) : (
+            <span className="text-xs text-muted-foreground">Clima no disponible</span>
+          )}
         </div>
       </div>
 
-      {/* Progress Ring */}
-      <div className="flex justify-center mb-6">
-        <ProgressRing progress={completedCount} total={totalCount} />
+      {/* Goals progress */}
+      <div className="flex items-center gap-3 px-1">
+        <p className="text-xs text-muted-foreground">Goals de hoy</p>
+        <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
+          <div
+            className="h-full rounded-full bg-primary transition-all duration-500"
+            style={{ width: `${(goalsCompleted / 3) * 100}%` }}
+          />
+        </div>
+        <p className="text-xs font-medium text-foreground">{goalsCompleted}/3</p>
       </div>
 
-      {/* Metric Chips */}
-      <div className="flex gap-3 mb-6">
-        <MetricChip
-          icon={<Footprints className="w-5 h-5" />}
-          label="Pasos"
-          value={`${(metrics.steps.current / 1000).toFixed(1)}k/${metrics.steps.goal / 1000}k`}
-        />
-        <MetricChip
-          icon={<Smartphone className="w-5 h-5" />}
-          label="Pantalla"
-          value={metrics.screenTime}
-        />
-        <MetricChip
-          icon={<Brain className="w-5 h-5" />}
-          label="Deep Work"
-          value={`${metrics.deepWork} min`}
-          onClick={onOpenPomodoro}
-        />
-      </div>
+      {/* Goal cards */}
+      <GoalCard
+        icon={<Dumbbell className="w-4 h-4" />}
+        label="Fuerza"
+        color="#ef4444"
+        entry={dayData.fuerza}
+        onTaskChange={v => setTask('fuerza', v)}
+        onToggle={() => toggleGoal('fuerza')}
+      />
+      <GoalCard
+        icon={<GraduationCap className="w-4 h-4" />}
+        label="Máster"
+        color="#8b5cf6"
+        entry={dayData.master}
+        onTaskChange={v => setTask('master', v)}
+        onToggle={() => toggleGoal('master')}
+      />
+      <GoalCard
+        icon={<PersonStanding className="w-4 h-4" />}
+        label="Flexibilidad"
+        color="#22c55e"
+        entry={dayData.flexibilidad}
+        onTaskChange={v => setTask('flexibilidad', v)}
+        onToggle={() => toggleGoal('flexibilidad')}
+      />
+
+      {/* Check finanzas */}
+      <button
+        onClick={toggleFinanzas}
+        className={`w-full flex items-center gap-3 p-4 rounded-2xl border-2 transition-all ${
+          dayData.finanzas
+            ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-400'
+            : 'bg-card border-border'
+        }`}
+      >
+        {dayData.finanzas
+          ? <CheckCircle2 className="w-6 h-6 text-amber-500 shrink-0" />
+          : <Wallet className="w-6 h-6 text-muted-foreground shrink-0" />
+        }
+        <div className="text-left">
+          <p className={`text-sm font-semibold ${dayData.finanzas ? 'text-amber-600 dark:text-amber-400' : 'text-foreground'}`}>
+            Gastos del día registrados
+          </p>
+          <p className="text-xs text-muted-foreground">¿Has añadido tus movimientos de hoy?</p>
+        </div>
+      </button>
 
       {/* Ayuda 2 min */}
       <button
         onClick={() => setShowTaskHelp(true)}
-        className="w-full flex items-center gap-3 p-3 rounded-2xl bg-accent mb-6 text-left"
+        className="w-full flex items-center gap-3 p-3 rounded-2xl bg-secondary text-left"
       >
-        <div className="w-9 h-9 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
-          <Sparkles className="w-4 h-4 text-primary" />
+        <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+          <span className="text-base">⚡</span>
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-foreground">Ayuda 2 min</p>
           <p className="text-xs text-muted-foreground">¿Bloqueada? Parto tu tarea en mini-pasos</p>
         </div>
-        <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
       </button>
-
-      {/* Top 3 Priority Habits */}
-      {priorityHabits.length > 0 && (
-        <div className="mb-6">
-          <div className="flex items-center gap-2 mb-3">
-            <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
-            <h2 className="text-base font-semibold text-foreground">Top 3 prioridades</h2>
-          </div>
-          <div className="space-y-2">
-            {priorityHabits.map((habit, index) => (
-              <button
-                key={habit.id}
-                onClick={() => onToggleHabit(habit.id)}
-                className={`w-full text-left p-4 rounded-2xl border transition-all ${habit.completed ? 'bg-amber-50/70 border-amber-200' : 'bg-card border-amber-300/60'} `}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-7 h-7 rounded-full bg-amber-100 text-amber-700 text-sm font-bold flex items-center justify-center">
-                    {index + 1}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-semibold ${habit.completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
-                      {habit.title}
-                    </p>
-                    <p className="text-xs text-muted-foreground">{AREA_LABELS[habit.area]} · {habit.frequency}</p>
-                  </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onTogglePriority(habit.id)
-                    }}
-                    className="p-1.5 rounded-full hover:bg-secondary transition-colors"
-                    aria-label="Quitar prioridad"
-                  >
-                    <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
-                  </button>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Habits by Area (collapsed) */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="text-base font-semibold text-foreground">Hábitos de hoy</h2>
-          <button
-            onClick={onEditHabits}
-            className="p-2 rounded-full hover:bg-secondary transition-colors"
-            aria-label="Editar habitos"
-          >
-            <Settings className="w-5 h-5 text-muted-foreground" />
-          </button>
-        </div>
-
-        {areaData.map(({ area, habits: areaHabits, done, total, allDone }) => (
-          <div key={area} className="bg-card rounded-2xl overflow-hidden">
-            {/* Area header - tappable */}
-            <button
-              onClick={() => setExpandedArea(expandedArea === area ? null : area)}
-              className="w-full flex items-center gap-3 p-4"
-            >
-              <div
-                className="w-3 h-3 rounded-full shrink-0"
-                style={{ backgroundColor: AREA_COLORS[area] }}
-              />
-              <span className="text-sm font-medium text-foreground flex-1 text-left">{AREA_LABELS[area]}</span>
-              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                allDone ? 'bg-green-100 text-green-700' : 'bg-secondary text-muted-foreground'
-              }`}>
-                {done}/{total}
-              </span>
-              {/* Progress bar mini */}
-              <div className="w-12 h-1.5 rounded-full bg-secondary overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all duration-300"
-                  style={{
-                    width: `${total > 0 ? (done / total) * 100 : 0}%`,
-                    backgroundColor: allDone ? '#22c55e' : AREA_COLORS[area],
-                  }}
-                />
-              </div>
-              {expandedArea === area
-                ? <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
-                : <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />}
-            </button>
-
-            {/* Expanded habits */}
-            {expandedArea === area && (
-              <div className="px-4 pb-3 divide-y divide-border/50">
-                {areaHabits.map((habit) => (
-                  <HabitRow
-                    key={habit.id}
-                    habit={habit}
-                    onToggle={onToggleHabit}
-                    onTogglePriority={onTogglePriority}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
 
       {showTaskHelp && <TaskBreakdown onClose={() => setShowTaskHelp(false)} />}
     </div>

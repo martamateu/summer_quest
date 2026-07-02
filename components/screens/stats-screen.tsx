@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { TrendingUp, Calendar, CheckCircle2, Flame, Footprints, ChevronLeft, ChevronRight } from 'lucide-react'
+import { TrendingUp, Calendar, CheckCircle2, Flame, Footprints, ChevronLeft, ChevronRight, PersonStanding, Wallet, Smartphone } from 'lucide-react'
 import type { Habit, DailyMetrics } from '@/lib/types'
 import { AREA_COLORS, AREA_LABELS, type HabitArea } from '@/lib/types'
 
@@ -12,6 +12,44 @@ const fmtLocal = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
 interface StepsEntry { steps: number; calories: number }
+
+// Calcula racha actual (días consecutivos hasta hoy) desde un array de fechas "YYYY-MM-DD"
+function calcStreak(dates: string[]): number {
+  if (dates.length === 0) return 0
+  const set = new Set(dates)
+  const today = fmtLocal(new Date())
+  let streak = 0
+  const d = new Date()
+  // Si hoy no está en el set, empezar desde ayer (puede que aún no lo hayan marcado)
+  if (!set.has(today)) d.setDate(d.getDate() - 1)
+  while (set.has(fmtLocal(d))) {
+    streak++
+    d.setDate(d.getDate() - 1)
+  }
+  return streak
+}
+
+function readDateLog(key: string): string[] {
+  if (typeof window === 'undefined') return []
+  try { return JSON.parse(localStorage.getItem(key) || '[]') } catch { return [] }
+}
+
+// Racha de pasos desde sq_steps_history (días con ≥15000 pasos)
+function calcStepsStreak(history: Record<string, StepsEntry>): number {
+  const today = fmtLocal(new Date())
+  let streak = 0
+  const d = new Date()
+  // Si hoy no tiene datos, empezar desde ayer
+  if (!history[today] || history[today].steps < 15000) d.setDate(d.getDate() - 1)
+  while (true) {
+    const key = fmtLocal(d)
+    if (history[key] && history[key].steps >= 15000) {
+      streak++
+      d.setDate(d.getDate() - 1)
+    } else break
+  }
+  return streak
+}
 
 interface StatsScreenProps {
   habits: Habit[]
@@ -29,9 +67,13 @@ function getStepsHistory(): Record<string, StepsEntry> {
 export function StatsScreen({ habits, streak, bestStreak, weeklyData, metrics }: StatsScreenProps) {
   const [stepsHistory, setStepsHistory] = useState<Record<string, StepsEntry>>({})
   const [stepsOffset, setStepsOffset] = useState(0)
+  const [flexLog, setFlexLog] = useState<string[]>([])
+  const [financeLog, setFinanceLog] = useState<string[]>([])
 
   useEffect(() => {
     setStepsHistory(getStepsHistory())
+    setFlexLog(readDateLog('sq_flex_log'))
+    setFinanceLog(readDateLog('sq_finance_log'))
   }, [])
 
   // Save today's steps to history whenever metrics update
@@ -134,6 +176,39 @@ export function StatsScreen({ habits, streak, bestStreak, weeklyData, metrics }:
           </div>
           <p className="text-2xl font-bold text-foreground">{bestStreak} días</p>
         </div>
+      </div>
+
+      {/* 3 Streaks */}
+      {(() => {
+        const stepsStreak = calcStepsStreak(stepsHistory)
+        const flexStreak = calcStreak(flexLog)
+        const financeStreak = calcStreak(financeLog)
+        const streaks = [
+          { label: 'Pasos +15k', streak: stepsStreak, icon: <Footprints className="w-5 h-5" />, color: '#3b82f6' },
+          { label: 'Flexibilidad', streak: flexStreak, icon: <PersonStanding className="w-5 h-5" />, color: '#22c55e' },
+          { label: 'Gastos', streak: financeStreak, icon: <Wallet className="w-5 h-5" />, color: '#f59e0b' },
+        ]
+        return (
+          <div className="grid grid-cols-3 gap-3 mb-6">
+            {streaks.map(s => (
+              <div key={s.label} className="bg-card rounded-2xl p-3 text-center">
+                <div className="flex justify-center mb-1" style={{ color: s.color }}>{s.icon}</div>
+                <p className="text-2xl font-bold text-foreground">{s.streak}</p>
+                <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">{s.label}</p>
+              </div>
+            ))}
+          </div>
+        )
+      })()}
+
+      {/* Screen Time */}
+      <div className="bg-card rounded-2xl p-4 mb-6">
+        <div className="flex items-center gap-2 mb-2">
+          <Smartphone className="w-5 h-5 text-primary" />
+          <h2 className="text-base font-semibold text-foreground">Pantalla</h2>
+        </div>
+        <p className="text-2xl font-bold text-foreground">{metrics.screenTime}</p>
+        <p className="text-xs text-muted-foreground mt-1">Objetivo: menos de 3h</p>
       </div>
 
       {/* Steps Stats */}

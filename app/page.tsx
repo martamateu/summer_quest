@@ -240,7 +240,7 @@ export default function Page() {
   }
 
   // ── Cloud backup: sync localStorage ↔ Redis ──
-  const SYNC_KEYS = ['sq_habits', 'sq_today', 'sq_history', 'sq_expenses', 'sq_finance_started_at', 'sq_gym_logs', 'sq_gym_seeded', 'sq_steps_history', 'sq_food_log', 'sq_favorite_recipes', 'sq_notes', 'sq_super_list', 'sq_home', 'sq_cleaning_history', 'sq_cycle', 'sq_run_logs']
+  const SYNC_KEYS = ['sq_habits', 'sq_today', 'sq_history', 'sq_expenses', 'sq_finance_started_at', 'sq_gym_logs', 'sq_gym_seeded', 'sq_steps_history', 'sq_food_log', 'sq_favorite_recipes', 'sq_notes', 'sq_super_list', 'sq_home', 'sq_cleaning_history', 'sq_cycle', 'sq_run_logs', 'sq_today_goals', 'sq_flex_log', 'sq_finance_log']
 
   // Debounced upload: cancel previous pending upload so only the latest data is sent
   const uploadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -442,17 +442,7 @@ export default function Page() {
   const renderScreen = () => {
     switch (activeTab) {
       case 'hoy':
-        return (
-          <TodayDashboard
-            habits={habits}
-            metrics={metrics}
-            streak={streak}
-            onToggleHabit={handleToggleHabit}
-            onTogglePriority={handleTogglePriority}
-            onOpenPomodoro={() => setShowPomodoro(true)}
-            onEditHabits={() => setShowHabitEditor(true)}
-          />
-        )
+        return <TodayDashboard streak={streak} />
       case 'stats':
         return <StatsScreen habits={habits} streak={streak} bestStreak={bestStreak} weeklyData={weeklyData} metrics={metrics} />
       default:
