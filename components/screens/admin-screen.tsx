@@ -1,9 +1,13 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Mic, MicOff, Send, Trash2, StickyNote, ShoppingCart, Loader2, Check, Plus, Sparkles, ChevronLeft, ChevronRight, Home, RotateCcw, Pencil, X } from 'lucide-react'
+import { Mic, MicOff, Send, Trash2, StickyNote, ShoppingCart, Loader2, Check, Plus, Sparkles, ChevronLeft, ChevronRight, Home, RotateCcw, Pencil, X, Droplets, Brain } from 'lucide-react'
 import { resolveHomeTasks, getSuggestedTask, getSuggestedTaskPerArea } from '@/lib/cleaning-templates'
 import type { HomeData, ResolvedTask } from '@/lib/cleaning-templates'
+import { getLocalDateStr as cycleLocalDate, getCurrentPhase, predictNextPeriod, computeAvgCycleLen, getAveragePeriodLength } from '@/lib/cycle'
+import type { CycleData, CyclePeriod } from '@/lib/types'
+
+const CYCLE_KEY = 'sq_cycle'
 
 // Paleta de colores para áreas — se asignan en orden de aparición
 const AREA_PALETTE = [
@@ -96,7 +100,7 @@ function persistArr<T>(key: string, data: T[]) {
 }
 
 export function AdminScreen() {
-  const [tab, setTab] = useState<'notas' | 'super' | 'limpieza'>('notas')
+  const [tab, setTab] = useState<'notas' | 'super' | 'limpieza' | 'periodo'>('notas')
 
   // Notas
   const [notes, setNotes] = useState<Note[]>([])
@@ -125,6 +129,15 @@ export function AdminScreen() {
   const [areaFilter2, setAreaFilter2] = useState<string>('all')
   const [showDoneToday, setShowDoneToday] = useState(false)
   const [calAreaFilter, setCalAreaFilter] = useState<string>('all')
+  // Ciclo menstrual
+  const [cycle, setCycle] = useState<CycleData>({ periods: [] })
+  const [cycleMonthOffset, setCycleMonthOffset] = useState(0)
+  const [manualStart, setManualStart] = useState('')
+  const [manualEnd, setManualEnd] = useState('')
+  const [cycleInsights, setCycleInsights] = useState<{ summary: string; cycleRegularity: string; insights: string[] } | null>(null)
+  const [insightsLoading, setInsightsLoading] = useState(false)
+  const [insightsError, setInsightsError] = useState<string | null>(null)
+
   // Edición de tarea
   const [editingTaskKey, setEditingTaskKey] = useState<string | null>(null)
   const [editLabel, setEditLabel] = useState('')
@@ -136,6 +149,7 @@ export function AdminScreen() {
     setSuperList(readArr<ListItem>(SUPER_KEY))
     setHomeData(readObj<HomeData | null>(HOME_KEY, null))
     setCleaningHistory(readObj<Record<string, string>>(HISTORY_KEY, {}))
+    setCycle(readObj<CycleData>(CYCLE_KEY, { periods: [] }))
 
     const SR = (typeof window !== 'undefined' &&
       ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)) || null
@@ -229,6 +243,70 @@ export function AdminScreen() {
     recognitionRef.current = recognition
     setListening(true)
     recognition.start()
+  }
+
+  // ── Ciclo menstrual ────────────────────────────────────────────────────────
+  const saveCycle = (next: CycleData) => {
+    const withAvg: CycleData = { ...next, avgCycleLen: computeAvgCycleLen(next.periods) }
+    setCycle(withAvg)
+    persistObj(CYCLE_KEY, withAvg)
+  }
+
+  const todayStr = cycleLocalDate()
+
+  const startPeriodToday = () => {
+    const sorted = [...cycle.periods].sort((a, b) => a.start.localeCompare(b.start))
+    const last = sorted[sorted.length - 1]
+    const inProgress = last && !last.end
+    if (inProgress) {
+      // Terminar regla en curso
+      const updated = cycle.periods.map(p =>
+        p.start === last.start ? { ...p, end: todayStr } : p
+      )
+      saveCycle({ ...cycle, periods: updated })
+    } else {
+      // Iniciar nueva regla
+      const newPeriod: CyclePeriod = { start: todayStr }
+      const updated = [...cycle.periods, newPeriod].sort((a, b) => a.start.localeCompare(b.start))
+      saveCycle({ ...cycle, periods: updated })
+    }
+  }
+
+  const addManualPeriod = () => {
+    if (!manualStart) return
+    if (manualEnd && manualEnd < manualStart) return
+    if (manualStart > todayStr) return
+    // No duplicar inicio
+    if (cycle.periods.some(p => p.start === manualStart)) return
+    const newP: CyclePeriod = { start: manualStart, ...(manualEnd ? { end: manualEnd } : {}) }
+    const updated = [...cycle.periods, newP].sort((a, b) => a.start.localeCompare(b.start))
+    saveCycle({ ...cycle, periods: updated })
+    setManualStart('')
+    setManualEnd('')
+  }
+
+  const deletePeriod = (start: string) => {
+    saveCycle({ ...cycle, periods: cycle.periods.filter(p => p.start !== start) })
+  }
+
+  const fetchCycleInsights = async () => {
+    setInsightsLoading(true)
+    setInsightsError(null)
+    setCycleInsights(null)
+    try {
+      const res = await fetch('/api/cycle-insights', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cycle }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Error')
+      setCycleInsights(data)
+    } catch (e: any) {
+      setInsightsError(e?.message || 'No se pudo generar el análisis ahora.')
+    } finally {
+      setInsightsLoading(false)
+    }
   }
 
   // ── Limpieza ───────────────────────────────────────────────────────────────
@@ -443,25 +521,31 @@ export function AdminScreen() {
       </div>
       {status && <p className="text-xs text-muted-foreground mb-3">{status}</p>}
 
-      {/* Sub-tabs */}
-      <div className="flex gap-2 my-4">
+      {/* Sub-tabs — 2×2 grid */}
+      <div className="grid grid-cols-2 gap-2 my-4">
         <button
           onClick={() => setTab('notas')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium ${tab === 'notas' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
+          className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium ${tab === 'notas' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
         >
           <StickyNote className="w-4 h-4" /> Notas
         </button>
         <button
           onClick={() => setTab('super')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium ${tab === 'super' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
+          className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium ${tab === 'super' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
         >
           <ShoppingCart className="w-4 h-4" /> Súper {superList.length > 0 && `(${superList.filter(i => !i.done).length})`}
         </button>
         <button
           onClick={() => setTab('limpieza')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium ${tab === 'limpieza' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
+          className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium ${tab === 'limpieza' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
         >
           <Sparkles className="w-4 h-4" /> Casa {overdueCount > 0 && <span className="bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5 ml-0.5">{overdueCount}</span>}
+        </button>
+        <button
+          onClick={() => setTab('periodo')}
+          className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium ${tab === 'periodo' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
+        >
+          <Droplets className="w-4 h-4" /> Periodo
         </button>
       </div>
 
@@ -990,6 +1074,343 @@ export function AdminScreen() {
           )}
         </>
       )}
+
+      {/* ── Periodo ─────────────────────────────────────────────────────────── */}
+      {tab === 'periodo' && (
+        <PeriodoView
+          cycle={cycle}
+          todayStr={todayStr}
+          monthOffset={cycleMonthOffset}
+          setMonthOffset={setCycleMonthOffset}
+          manualStart={manualStart}
+          setManualStart={setManualStart}
+          manualEnd={manualEnd}
+          setManualEnd={setManualEnd}
+          onStartToday={startPeriodToday}
+          onAddManual={addManualPeriod}
+          onDelete={deletePeriod}
+          cycleInsights={cycleInsights}
+          insightsLoading={insightsLoading}
+          insightsError={insightsError}
+          onFetchInsights={fetchCycleInsights}
+        />
+      )}
     </div>
+  )
+}
+
+// ── PeriodoView ────────────────────────────────────────────────────────────────
+
+interface PeriodoViewProps {
+  cycle: CycleData
+  todayStr: string
+  monthOffset: number
+  setMonthOffset: (fn: (o: number) => number) => void
+  manualStart: string
+  setManualStart: (v: string) => void
+  manualEnd: string
+  setManualEnd: (v: string) => void
+  onStartToday: () => void
+  onAddManual: () => void
+  onDelete: (start: string) => void
+  cycleInsights: { summary: string; cycleRegularity: string; insights: string[] } | null
+  insightsLoading: boolean
+  insightsError: string | null
+  onFetchInsights: () => void
+}
+
+const PHASE_META: Record<string, { label: string; emoji: string; color: string }> = {
+  menstrual: { label: 'Menstrual',  emoji: '🩸', color: '#ef4444' },
+  folicular: { label: 'Folicular',  emoji: '🌱', color: '#22c55e' },
+  ovulacion: { label: 'Ovulación',  emoji: '✨', color: '#f59e0b' },
+  lutea:     { label: 'Lútea',      emoji: '🌙', color: '#8b5cf6' },
+}
+
+const REGULARITY_LABEL: Record<string, string> = {
+  regular: 'Regular',
+  irregular: 'Irregular',
+  pocos_datos: 'Pocos datos',
+}
+
+function fmtDate(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
+}
+
+function getLocalStr(d: Date = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function PeriodoView({
+  cycle, todayStr, monthOffset, setMonthOffset,
+  manualStart, setManualStart, manualEnd, setManualEnd,
+  onStartToday, onAddManual, onDelete,
+  cycleInsights, insightsLoading, insightsError, onFetchInsights,
+}: PeriodoViewProps) {
+  const phaseInfo = getCurrentPhase(cycle, todayStr)
+  const prediction = predictNextPeriod(cycle)
+  const avgCycle = cycle.avgCycleLen
+  const avgPeriod = getAveragePeriodLength(cycle.periods)
+
+  const sorted = [...cycle.periods].sort((a, b) => a.start.localeCompare(b.start))
+  const last = sorted[sorted.length - 1]
+  const inProgress = last && !last.end
+
+  // Calendario
+  const ref = new Date()
+  const base = new Date(ref.getFullYear(), ref.getMonth() + monthOffset, 1)
+  const cy = base.getFullYear()
+  const cm = base.getMonth()
+  const daysInMonth = new Date(cy, cm + 1, 0).getDate()
+  const firstDow = (new Date(cy, cm, 1).getDay() + 6) % 7
+  const monthLabel = base.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
+  const weekDays = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
+
+  // Qué días están dentro de un periodo (start..end o start..hoy si en curso)
+  function isDayInPeriod(dateStr: string): boolean {
+    return cycle.periods.some(p => {
+      const endStr = p.end || (p.start <= todayStr ? todayStr : p.start)
+      return dateStr >= p.start && dateStr <= endStr
+    })
+  }
+
+  // Ventana de ovulación estimada
+  function isDayOvulation(dateStr: string): boolean {
+    if (!last) return false
+    const len = avgCycle ?? 28
+    const [y, m, d] = last.start.split('-').map(Number)
+    const ovBase = new Date(y, m - 1, d)
+    ovBase.setDate(ovBase.getDate() + Math.round(len / 2) - 1)
+    for (let i = 0; i < 3; i++) {
+      const s = getLocalStr(new Date(ovBase.getFullYear(), ovBase.getMonth(), ovBase.getDate() + i))
+      if (s === dateStr) return true
+    }
+    return false
+  }
+
+  const calCells: (string | null)[] = []
+  for (let i = 0; i < firstDow; i++) calCells.push(null)
+  for (let day = 1; day <= daysInMonth; day++) calCells.push(getLocalStr(new Date(cy, cm, day)))
+
+  return (
+    <>
+      {/* A) Estado actual */}
+      <div className="bg-card rounded-2xl p-4 mb-4">
+        {phaseInfo ? (
+          <>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xl">{PHASE_META[phaseInfo.phase]?.emoji}</span>
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  Fase {PHASE_META[phaseInfo.phase]?.label}
+                </p>
+                <p className="text-[11px] text-muted-foreground">Día {phaseInfo.dayOfCycle} del ciclo</p>
+              </div>
+              <span
+                className="ml-auto text-[10px] font-medium px-2 py-0.5 rounded-full text-white"
+                style={{ backgroundColor: PHASE_META[phaseInfo.phase]?.color }}
+              >
+                {PHASE_META[phaseInfo.phase]?.label}
+              </span>
+            </div>
+            {prediction && (
+              <p className="text-[11px] text-muted-foreground">
+                Próxima regla estimada: <span className="text-foreground font-medium">{fmtDate(prediction.date)}</span>
+                {' '}· confianza <span className="font-medium">{prediction.confidence}</span>
+              </p>
+            )}
+            <div className="flex gap-4 mt-2">
+              {avgCycle && (
+                <div>
+                  <p className="text-[10px] text-muted-foreground">Ciclo medio</p>
+                  <p className="text-sm font-semibold text-foreground">{avgCycle} días</p>
+                </div>
+              )}
+              <div>
+                <p className="text-[10px] text-muted-foreground">Regla media</p>
+                <p className="text-sm font-semibold text-foreground">{avgPeriod} días</p>
+              </div>
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground text-center py-2">
+            Aún no hay datos. Registra tu primera regla abajo.
+          </p>
+        )}
+      </div>
+
+      {/* B) Registro rápido */}
+      <div className="bg-card rounded-2xl p-4 mb-4">
+        <p className="text-xs font-medium text-foreground mb-3">Registro rápido</p>
+        <button
+          onClick={onStartToday}
+          className="w-full py-3 rounded-xl text-sm font-medium mb-4 flex items-center justify-center gap-2"
+          style={{ backgroundColor: inProgress ? '#22c55e' : '#ef4444', color: 'white' }}
+        >
+          <Droplets className="w-4 h-4" />
+          {inProgress ? 'Terminar regla hoy' : 'Registrar regla hoy'}
+        </button>
+
+        <p className="text-[10px] text-muted-foreground uppercase mb-2">Añadir regla pasada</p>
+        <div className="flex gap-2 mb-2">
+          <div className="flex-1">
+            <p className="text-[10px] text-muted-foreground mb-1">Inicio</p>
+            <input
+              type="date"
+              value={manualStart}
+              max={todayStr}
+              onChange={e => setManualStart(e.target.value)}
+              className="w-full p-2 rounded-xl bg-secondary text-foreground outline-none focus:ring-2 focus:ring-primary text-sm"
+            />
+          </div>
+          <div className="flex-1">
+            <p className="text-[10px] text-muted-foreground mb-1">Fin (opcional)</p>
+            <input
+              type="date"
+              value={manualEnd}
+              min={manualStart || undefined}
+              max={todayStr}
+              onChange={e => setManualEnd(e.target.value)}
+              className="w-full p-2 rounded-xl bg-secondary text-foreground outline-none focus:ring-2 focus:ring-primary text-sm"
+            />
+          </div>
+        </div>
+        <button
+          onClick={onAddManual}
+          disabled={!manualStart}
+          className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
+        >
+          Añadir
+        </button>
+      </div>
+
+      {/* C) Calendario mensual */}
+      <div className="bg-card rounded-2xl p-4 mb-4">
+        <div className="flex items-center justify-between mb-3">
+          <button onClick={() => setMonthOffset(o => o - 1)} className="p-1.5 rounded-full hover:bg-secondary">
+            <ChevronLeft className="w-4 h-4 text-muted-foreground" />
+          </button>
+          <p className="text-sm font-medium text-foreground capitalize">{monthLabel}</p>
+          <button onClick={() => setMonthOffset(o => o + 1)} className="p-1.5 rounded-full hover:bg-secondary">
+            <ChevronRight className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
+
+        {/* Leyenda */}
+        <div className="flex gap-3 mb-3">
+          <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+            <span className="w-2.5 h-2.5 rounded-sm bg-red-200 inline-block" /> Regla
+          </span>
+          <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+            <span className="w-2.5 h-2.5 rounded-sm bg-amber-200 inline-block" /> Ovulación est.
+          </span>
+          {prediction && (
+            <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+              <span className="w-2.5 h-2.5 rounded-full border-2 border-amber-400 inline-block" /> Próxima
+            </span>
+          )}
+        </div>
+
+        <div className="grid grid-cols-7 gap-1 mb-1">
+          {weekDays.map(d => (
+            <div key={d} className="text-center text-[10px] text-muted-foreground font-medium">{d}</div>
+          ))}
+        </div>
+        <div className="grid grid-cols-7 gap-1">
+          {calCells.map((dateStr, i) => {
+            if (!dateStr) return <div key={`e${i}`} />
+            const dayNum = Number(dateStr.split('-')[2])
+            const inPeriod = isDayInPeriod(dateStr)
+            const isOv = !inPeriod && isDayOvulation(dateStr)
+            const isPrediction = prediction && dateStr === prediction.date
+            const isToday = dateStr === todayStr
+            return (
+              <div
+                key={dateStr}
+                className={`aspect-square flex items-center justify-center rounded-lg text-xs relative
+                  ${inPeriod ? 'bg-red-100 text-red-700 font-medium' : ''}
+                  ${isOv ? 'bg-amber-50 text-amber-700' : ''}
+                  ${!inPeriod && !isOv ? 'text-foreground' : ''}
+                  ${isToday ? 'ring-2 ring-primary' : ''}
+                `}
+              >
+                {dayNum}
+                {isPrediction && !inPeriod && (
+                  <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full border-2 border-amber-400 bg-transparent" />
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* D) Insights IA */}
+      <div className="bg-card rounded-2xl p-4 mb-4">
+        <button
+          onClick={onFetchInsights}
+          disabled={insightsLoading || cycle.periods.length === 0}
+          className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-secondary text-foreground text-sm font-medium disabled:opacity-50"
+        >
+          {insightsLoading
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> Analizando…</>
+            : <><Brain className="w-4 h-4" /> Analizar mi ciclo con IA</>
+          }
+        </button>
+        {insightsError && (
+          <p className="text-xs text-red-500 mt-2 text-center">{insightsError}</p>
+        )}
+        {cycleInsights && (
+          <div className="mt-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
+                cycleInsights.cycleRegularity === 'regular' ? 'bg-green-100 text-green-700' :
+                cycleInsights.cycleRegularity === 'irregular' ? 'bg-red-100 text-red-700' :
+                'bg-secondary text-muted-foreground'
+              }`}>
+                {REGULARITY_LABEL[cycleInsights.cycleRegularity] ?? cycleInsights.cycleRegularity}
+              </span>
+            </div>
+            <p className="text-sm text-foreground">{cycleInsights.summary}</p>
+            <ul className="space-y-1">
+              {cycleInsights.insights.map((ins, i) => (
+                <li key={i} className="text-xs text-muted-foreground flex gap-1.5">
+                  <span className="text-primary shrink-0">·</span> {ins}
+                </li>
+              ))}
+            </ul>
+            <p className="text-[10px] text-muted-foreground italic mt-1">Orientativo, no es consejo médico.</p>
+          </div>
+        )}
+      </div>
+
+      {/* Historial de reglas */}
+      {sorted.length > 0 && (
+        <div className="bg-card rounded-2xl p-4">
+          <p className="text-xs font-medium text-foreground mb-3">Historial</p>
+          <div className="space-y-2">
+            {[...sorted].reverse().map(p => {
+              const days = p.end ? (() => {
+                const [sy, sm, sd] = p.start.split('-').map(Number)
+                const [ey, em, ed] = p.end.split('-').map(Number)
+                return Math.round((new Date(ey, em - 1, ed).getTime() - new Date(sy, sm - 1, sd).getTime()) / 86400000) + 1
+              })() : null
+              return (
+                <div key={p.start} className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm text-foreground">
+                      {fmtDate(p.start)} {p.end ? `– ${fmtDate(p.end)}` : '– en curso'}
+                    </p>
+                    {days && <p className="text-[10px] text-muted-foreground">{days} día{days === 1 ? '' : 's'}</p>}
+                  </div>
+                  <button onClick={() => onDelete(p.start)} className="p-1.5 rounded-full hover:bg-secondary shrink-0">
+                    <Trash2 className="w-4 h-4 text-muted-foreground" />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </>
   )
 }
