@@ -81,6 +81,8 @@ function countTodayExpenses(): number {
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────────
+export type FuerzaMode = 'fuerza' | 'run' | 'descanso'
+
 interface GoalEntry {
   task: string
   done: boolean
@@ -88,6 +90,7 @@ interface GoalEntry {
 
 interface DayData {
   date: string
+  fuerzaMode: FuerzaMode  // run | fuerza | descanso
   fuerza: GoalEntry
   master: GoalEntry
   flexibilidad: GoalEntry
@@ -97,12 +100,19 @@ interface DayData {
 function defaultDayData(): DayData {
   return {
     date: getLocalDateStr(),
+    fuerzaMode: 'fuerza',
     fuerza: { task: '', done: false },
     master: { task: '', done: false },
     flexibilidad: { task: '', done: false },
     finanzas: false,
   }
 }
+
+const FUERZA_MODES: { id: FuerzaMode; label: string; color: string; emoji: string }[] = [
+  { id: 'fuerza',   label: 'Fuerza',   color: '#ef4444', emoji: '🏋️' },
+  { id: 'run',      label: 'Run',      color: '#f97316', emoji: '🏃' },
+  { id: 'descanso', label: 'Descanso', color: '#6b7280', emoji: '😴' },
+]
 
 // ── Weather ────────────────────────────────────────────────────────────────────
 interface Weather {
@@ -139,6 +149,7 @@ interface TodayDashboardProps {
 function GoalCard({
   icon, label, color, entry,
   onTaskChange, onToggle,
+  modeBadge, onCycleMode,
 }: {
   icon: React.ReactNode
   label: string
@@ -146,29 +157,45 @@ function GoalCard({
   entry: GoalEntry
   onTaskChange: (v: string) => void
   onToggle: () => void
+  modeBadge?: { emoji: string; label: string }
+  onCycleMode?: () => void
 }) {
   return (
-    <div className={`bg-card rounded-2xl p-4 border-l-4`} style={{ borderLeftColor: color }}>
+    <div className="bg-card rounded-2xl p-4 border-l-4" style={{ borderLeftColor: color }}>
       <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
           <span style={{ color }}>{icon}</span>
           <p className="text-sm font-semibold text-foreground">{label}</p>
+          {modeBadge && onCycleMode && (
+            <button
+              onClick={onCycleMode}
+              className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-secondary text-foreground"
+            >
+              {modeBadge.emoji} {modeBadge.label}
+              <span className="text-muted-foreground ml-0.5">⇄</span>
+            </button>
+          )}
         </div>
-        <button onClick={onToggle} className="shrink-0">
+        <button onClick={onToggle} className="shrink-0 ml-2">
           {entry.done
             ? <CheckCircle2 className="w-6 h-6" style={{ color }} />
             : <Circle className="w-6 h-6 text-muted-foreground/40" />
           }
         </button>
       </div>
-      <input
-        type="text"
-        value={entry.task}
-        onChange={e => onTaskChange(e.target.value)}
-        placeholder={`¿Qué harás hoy para ${label.toLowerCase()}?`}
-        className={`w-full text-sm bg-secondary rounded-xl px-3 py-2 outline-none focus:ring-2 text-foreground placeholder:text-muted-foreground/60 ${entry.done ? 'line-through text-muted-foreground' : ''}`}
-        style={{ '--tw-ring-color': color } as React.CSSProperties}
-      />
+      {modeBadge?.label !== 'Descanso' && (
+        <input
+          type="text"
+          value={entry.task}
+          onChange={e => onTaskChange(e.target.value)}
+          placeholder={`¿Qué harás hoy para ${label.toLowerCase()}?`}
+          className={`w-full text-sm bg-secondary rounded-xl px-3 py-2 outline-none focus:ring-2 text-foreground placeholder:text-muted-foreground/60 ${entry.done ? 'line-through text-muted-foreground' : ''}`}
+          style={{ '--tw-ring-color': color } as React.CSSProperties}
+        />
+      )}
+      {modeBadge?.label === 'Descanso' && (
+        <p className="text-xs text-muted-foreground italic">Día de descanso activo 😴</p>
+      )}
     </div>
   )
 }
@@ -250,11 +277,37 @@ export function TodayDashboard({ streak }: TodayDashboardProps) {
   const toggleGoal = (key: 'fuerza' | 'master' | 'flexibilidad') => {
     const next = { ...dayData, [key]: { ...dayData[key], done: !dayData[key].done } }
     update(next)
-    // Flexibilidad: sync con sq_flex_log
     if (key === 'flexibilidad') {
       if (!dayData.flexibilidad.done) logToday('sq_flex_log')
       else removeToday('sq_flex_log')
     }
+    if (key === 'fuerza' && !dayData.fuerza.done) {
+      // Guardar en sq_workout_logs según el modo
+      const mode = dayData.fuerzaMode
+      if (mode !== 'descanso') {
+        const today = getLocalDateStr()
+        try {
+          const logs = JSON.parse(localStorage.getItem('sq_workout_logs') || '[]')
+          const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7)
+          const activityType = mode === 'run' ? 'cardio' : 'fuerza'
+          const activityName = mode === 'run' ? 'Run' : 'Entreno de fuerza'
+          // Solo añadir si no hay ya un log de hoy con este tipo desde goals
+          const alreadyToday = logs.some((l: { date: string; source?: string }) => l.date === today && l.source === 'goal')
+          if (!alreadyToday) {
+            logs.unshift({ id, date: today, activityName, activityType, source: 'goal', addedManually: false })
+            localStorage.setItem('sq_workout_logs', JSON.stringify(logs))
+            window.dispatchEvent(new Event('sq-data-changed'))
+          }
+        } catch {}
+      }
+    }
+  }
+
+  const cycleFuerzaMode = () => {
+    const modes: FuerzaMode[] = ['fuerza', 'run', 'descanso']
+    const idx = modes.indexOf(dayData.fuerzaMode)
+    const next = { ...dayData, fuerzaMode: modes[(idx + 1) % modes.length] }
+    update(next)
   }
 
   const setTask = (key: 'fuerza' | 'master' | 'flexibilidad', v: string) => {
@@ -366,14 +419,21 @@ export function TodayDashboard({ streak }: TodayDashboardProps) {
       </div>
 
       {/* Goal cards */}
-      <GoalCard
-        icon={<Dumbbell className="w-4 h-4" />}
-        label="Fuerza"
-        color="#ef4444"
-        entry={dayData.fuerza}
-        onTaskChange={v => setTask('fuerza', v)}
-        onToggle={() => toggleGoal('fuerza')}
-      />
+      {(() => {
+        const mode = FUERZA_MODES.find(m => m.id === dayData.fuerzaMode) ?? FUERZA_MODES[0]
+        return (
+          <GoalCard
+            icon={<Dumbbell className="w-4 h-4" />}
+            label="Entreno"
+            color={mode.color}
+            entry={dayData.fuerza}
+            onTaskChange={v => setTask('fuerza', v)}
+            onToggle={() => toggleGoal('fuerza')}
+            modeBadge={{ emoji: mode.emoji, label: mode.label }}
+            onCycleMode={cycleFuerzaMode}
+          />
+        )
+      })()}
       <GoalCard
         icon={<GraduationCap className="w-4 h-4" />}
         label="Máster"

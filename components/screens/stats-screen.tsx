@@ -140,8 +140,9 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
     return () => window.removeEventListener('sq-data-changed', handler)
   }, [])
 
-  // Range
-  const now = new Date()
+  // now es estable durante la sesión (se fija al montar el componente)
+  const [now] = useState(() => new Date())
+
   const range = useMemo(() => {
     if (view === 'dia') {
       const d = new Date(now); d.setDate(d.getDate() + offset)
@@ -149,7 +150,7 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
     }
     if (view === 'semana') return getWeekRange(now, offset)
     return getMonthRange(now, offset)
-  }, [view, offset])
+  }, [view, offset, now])
 
   const rangeLabel = useMemo(() => {
     const fmtShort = (s: string) => {
@@ -163,7 +164,7 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
     if (view === 'semana') return `${fmtShort(range.start)} – ${fmtShort(range.end)}`
     return new Date(now.getFullYear(), now.getMonth() + offset, 1)
       .toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
-  }, [view, offset, range])
+  }, [view, offset, range, now])
 
   const dates = useMemo(() => datesInRange(range.start, range.end), [range])
   const today = getTodayStr()
@@ -172,8 +173,13 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
   const forceDates = useMemo(() => {
     const gymSet = new Set(gymLogs.map(l => l.date))
     const wSet = new Set(workoutLogs.filter(l => l.activityType === 'fuerza').map(l => l.date))
+    // También los goals marcados como 'fuerza' (source: 'goal', activityType: 'fuerza')
     return new Set([...gymSet, ...wSet])
   }, [gymLogs, workoutLogs])
+
+  const runDates = useMemo(() => {
+    return new Set(workoutLogs.filter(l => l.activityType === 'cardio' || l.activityType === 'run').map(l => l.date))
+  }, [workoutLogs])
 
   const cleaningDates = useMemo(() => {
     const set = new Set<string>()
@@ -371,8 +377,10 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
             </div>
           ) : (
             <div className="flex items-end gap-0.5 h-20">
-              {rows.map((r, i) => {
-                const h = Math.max(r.steps > 0 ? Math.max((r.steps / 20000) * 100, 4) : 0, 0)
+              {(() => {
+                const maxSteps = Math.max(...rows.map(r => r.steps), 1000)
+                return rows.map((r, i) => {
+                const h = r.steps > 0 ? Math.max((r.steps / maxSteps) * 100, 4) : 0
                 const isGoal = r.steps >= 15000
                 return (
                   <div key={i} className="flex-1 flex flex-col items-center gap-0.5">
@@ -380,7 +388,7 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
                     {view === 'semana' && <span className="text-[9px] text-muted-foreground">{fmtDateLabel(r.date).split(' ')[0]}</span>}
                   </div>
                 )
-              })}
+              })})()}
             </div>
           )}
         </div>
