@@ -442,8 +442,6 @@ export default function Page() {
 
   const renderScreen = () => {
     switch (activeTab) {
-      case 'hoy':
-        return <TodayDashboard streak={streak} />
       case 'stats':
         return <StatsScreen metrics={metrics} />
       default:
@@ -469,6 +467,9 @@ export default function Page() {
         <>
           {renderScreen()}
           {/* Keep these screens always mounted to preserve state */}
+          <div style={{ display: activeTab === 'hoy' ? 'block' : 'none' }}>
+            <TodayDashboard streak={streak} />
+          </div>
           <div style={{ display: activeTab === 'food' ? 'block' : 'none' }}>
             <FoodScreen />
           </div>
