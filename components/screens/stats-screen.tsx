@@ -1,340 +1,435 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { TrendingUp, Calendar, CheckCircle2, Flame, Footprints, ChevronLeft, ChevronRight, PersonStanding, Wallet, Smartphone } from 'lucide-react'
-import type { Habit, DailyMetrics } from '@/lib/types'
-import { AREA_COLORS, AREA_LABELS, type HabitArea } from '@/lib/types'
+import { Footprints, PersonStanding, Wallet, Dumbbell, Sparkles, GraduationCap, ChevronLeft, ChevronRight, Smartphone } from 'lucide-react'
+import type { DailyMetrics } from '@/lib/types'
 
-const STEPS_HISTORY_KEY = 'sq_steps_history'
-
-// Local YYYY-MM-DD (avoids UTC offset issues)
+// ── Date helpers ───────────────────────────────────────────────────────────────
 const fmtLocal = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
-interface StepsEntry { steps: number; calories: number }
+const getTodayStr = () => fmtLocal(new Date())
 
-// Calcula racha actual (días consecutivos hasta hoy) desde un array de fechas "YYYY-MM-DD"
-function calcStreak(dates: string[]): number {
-  if (dates.length === 0) return 0
-  const set = new Set(dates)
-  const today = fmtLocal(new Date())
-  let streak = 0
-  const d = new Date()
-  // Si hoy no está en el set, empezar desde ayer (puede que aún no lo hayan marcado)
-  if (!set.has(today)) d.setDate(d.getDate() - 1)
-  while (set.has(fmtLocal(d))) {
-    streak++
-    d.setDate(d.getDate() - 1)
-  }
-  return streak
+function getWeekRange(refDate: Date, offset = 0) {
+  const d = new Date(refDate)
+  const dow = d.getDay()
+  const mon = new Date(d)
+  mon.setDate(d.getDate() - ((dow + 6) % 7) + offset * 7)
+  mon.setHours(0, 0, 0, 0)
+  const sun = new Date(mon)
+  sun.setDate(mon.getDate() + 6)
+  return { start: fmtLocal(mon), end: fmtLocal(sun) }
 }
 
-function readDateLog(key: string): string[] {
+function getMonthRange(refDate: Date, offset = 0) {
+  const y = refDate.getFullYear()
+  const m = refDate.getMonth() + offset
+  return {
+    start: fmtLocal(new Date(y, m, 1)),
+    end: fmtLocal(new Date(y, m + 1, 0)),
+  }
+}
+
+function datesInRange(start: string, end: string): string[] {
+  const dates: string[] = []
+  const [sy, sm, sd] = start.split('-').map(Number)
+  const [ey, em, ed] = end.split('-').map(Number)
+  const d = new Date(sy, sm - 1, sd)
+  const e = new Date(ey, em - 1, ed)
+  while (d <= e) { dates.push(fmtLocal(d)); d.setDate(d.getDate() + 1) }
+  return dates
+}
+
+function readArr<T>(key: string): T[] {
   if (typeof window === 'undefined') return []
   try { return JSON.parse(localStorage.getItem(key) || '[]') } catch { return [] }
 }
 
-// Racha de pasos desde sq_steps_history (días con ≥15000 pasos)
-function calcStepsStreak(history: Record<string, StepsEntry>): number {
-  const today = fmtLocal(new Date())
-  let streak = 0
+function readObj<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback
+  try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : fallback } catch { return fallback }
+}
+
+// ── Metric definitions ─────────────────────────────────────────────────────────
+type MetricId = 'pasos' | 'flexibilidad' | 'gastos' | 'fuerza' | 'limpieza' | 'master' | 'screentime'
+
+interface MetricMeta {
+  id: MetricId
+  label: string
+  color: string
+  icon: React.ReactNode
+  hasHistory: boolean // false = solo hoy
+}
+
+const METRICS: MetricMeta[] = [
+  { id: 'pasos',        label: 'Pasos',         color: '#3b82f6', icon: <Footprints className="w-4 h-4" />,     hasHistory: true },
+  { id: 'flexibilidad', label: 'Flexibilidad',   color: '#22c55e', icon: <PersonStanding className="w-4 h-4" />, hasHistory: true },
+  { id: 'gastos',       label: 'Gastos',         color: '#f59e0b', icon: <Wallet className="w-4 h-4" />,         hasHistory: true },
+  { id: 'fuerza',       label: 'Fuerza',         color: '#ef4444', icon: <Dumbbell className="w-4 h-4" />,       hasHistory: true },
+  { id: 'limpieza',     label: 'Limpieza',       color: '#06b6d4', icon: <Sparkles className="w-4 h-4" />,       hasHistory: true },
+  { id: 'master',       label: 'Máster',         color: '#8b5cf6', icon: <GraduationCap className="w-4 h-4" />,  hasHistory: true },
+  { id: 'screentime',   label: 'Pantalla',       color: '#f97316', icon: <Smartphone className="w-4 h-4" />,     hasHistory: false },
+]
+
+// ── Props ──────────────────────────────────────────────────────────────────────
+interface StatsScreenProps {
+  metrics: DailyMetrics
+}
+
+// ── Streak helper ──────────────────────────────────────────────────────────────
+function calcStreak(dates: string[]): number {
+  if (dates.length === 0) return 0
+  const set = new Set(dates)
+  const today = getTodayStr()
   const d = new Date()
-  // Si hoy no tiene datos, empezar desde ayer
+  if (!set.has(today)) d.setDate(d.getDate() - 1)
+  let streak = 0
+  while (set.has(fmtLocal(d))) { streak++; d.setDate(d.getDate() - 1) }
+  return streak
+}
+
+function calcStepsStreak(history: Record<string, { steps: number }>): number {
+  const today = getTodayStr()
+  const d = new Date()
   if (!history[today] || history[today].steps < 15000) d.setDate(d.getDate() - 1)
+  let streak = 0
   while (true) {
-    const key = fmtLocal(d)
-    if (history[key] && history[key].steps >= 15000) {
-      streak++
-      d.setDate(d.getDate() - 1)
-    } else break
+    const k = fmtLocal(d)
+    if (history[k]?.steps >= 15000) { streak++; d.setDate(d.getDate() - 1) } else break
   }
   return streak
 }
 
-interface StatsScreenProps {
-  habits: Habit[]
-  streak: number
-  bestStreak: number
-  weeklyData: number[]
-  metrics: DailyMetrics
-}
+// ── Main component ─────────────────────────────────────────────────────────────
+export function StatsScreen({ metrics }: StatsScreenProps) {
+  const [view, setView] = useState<'dia' | 'semana' | 'mes'>('semana')
+  const [offset, setOffset] = useState(0)
+  const [activeMetric, setActiveMetric] = useState<MetricId | 'all'>('all')
 
-function getStepsHistory(): Record<string, StepsEntry> {
-  if (typeof window === 'undefined') return {}
-  try { return JSON.parse(localStorage.getItem(STEPS_HISTORY_KEY) || '{}') } catch { return {} }
-}
-
-export function StatsScreen({ habits, streak, bestStreak, weeklyData, metrics }: StatsScreenProps) {
-  const [stepsHistory, setStepsHistory] = useState<Record<string, StepsEntry>>({})
-  const [stepsOffset, setStepsOffset] = useState(0)
+  // Data sources
+  const [stepsHistory, setStepsHistory] = useState<Record<string, { steps: number; calories: number }>>({})
   const [flexLog, setFlexLog] = useState<string[]>([])
   const [financeLog, setFinanceLog] = useState<string[]>([])
+  const [workoutLogs, setWorkoutLogs] = useState<{ date: string; activityType: string }[]>([])
+  const [gymLogs, setGymLogs] = useState<{ date: string }[]>([])
+  const [cleaningHistory, setCleaningHistory] = useState<Record<string, string>>({})
+  const [masterLog, setMasterLog] = useState<string[]>([])
 
   useEffect(() => {
-    setStepsHistory(getStepsHistory())
-    setFlexLog(readDateLog('sq_flex_log'))
-    setFinanceLog(readDateLog('sq_finance_log'))
+    setStepsHistory(readObj('sq_steps_history', {}))
+    setFlexLog(readArr<string>('sq_flex_log'))
+    setFinanceLog(readArr<string>('sq_finance_log'))
+    setWorkoutLogs(readArr<{ date: string; activityType: string }>('sq_workout_logs'))
+    setGymLogs(readArr<{ date: string }>('sq_gym_logs'))
+    setCleaningHistory(readObj('sq_cleaning_history', {}))
+    // Build master log from sq_today_goals history — only today available
+    const todayGoals = readObj<{ date: string; master?: { done: boolean } }>('sq_today_goals', { date: '' })
+    if (todayGoals.date && todayGoals.master?.done) {
+      setMasterLog([todayGoals.date])
+    }
+
+    const handler = () => {
+      setStepsHistory(readObj('sq_steps_history', {}))
+      setFlexLog(readArr<string>('sq_flex_log'))
+      setFinanceLog(readArr<string>('sq_finance_log'))
+      setWorkoutLogs(readArr<{ date: string; activityType: string }>('sq_workout_logs'))
+      setGymLogs(readArr<{ date: string }>('sq_gym_logs'))
+      setCleaningHistory(readObj('sq_cleaning_history', {}))
+    }
+    window.addEventListener('sq-data-changed', handler)
+    return () => window.removeEventListener('sq-data-changed', handler)
   }, [])
 
-  // Save today's steps to history whenever metrics update
-  useEffect(() => {
-    if (metrics.steps.current > 0) {
-      const today = fmtLocal(new Date())
-      const history = getStepsHistory()
-      history[today] = { steps: metrics.steps.current, calories: 0 }
-      localStorage.setItem(STEPS_HISTORY_KEY, JSON.stringify(history))
-      setStepsHistory(history)
-    }
-  }, [metrics.steps.current])
-
-  const completedToday = habits.filter((h) => h.nonNegotiable && h.completed).length
-  const totalHabits = habits.filter((h) => h.nonNegotiable).length
-  const completionRate = totalHabits > 0 ? Math.round((completedToday / totalHabits) * 100) : 0
-
-  const habitsByArea = habits.filter(h => h.nonNegotiable).reduce(
-    (acc, habit) => {
-      if (!acc[habit.area]) acc[habit.area] = { total: 0, completed: 0 }
-      acc[habit.area].total++
-      if (habit.completed) acc[habit.area].completed++
-      return acc
-    },
-    {} as Record<HabitArea, { total: number; completed: number }>
-  )
-
-  // Steps calculations
+  // Range
   const now = new Date()
-  const dayOfWeek = now.getDay()
-  const monday = new Date(now)
-  monday.setDate(now.getDate() - ((dayOfWeek + 6) % 7))
+  const range = useMemo(() => {
+    if (view === 'dia') {
+      const d = new Date(now); d.setDate(d.getDate() + offset)
+      const s = fmtLocal(d); return { start: s, end: s }
+    }
+    if (view === 'semana') return getWeekRange(now, offset)
+    return getMonthRange(now, offset)
+  }, [view, offset])
 
-  let weeklySteps = 0
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(monday)
-    d.setDate(monday.getDate() + i)
-    const key = fmtLocal(d)
-    weeklySteps += stepsHistory[key]?.steps || 0
+  const rangeLabel = useMemo(() => {
+    const fmtShort = (s: string) => {
+      const [y, m, d] = s.split('-').map(Number)
+      return new Date(y, m - 1, d).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
+    }
+    if (view === 'dia') {
+      const d = new Date(now); d.setDate(d.getDate() + offset)
+      return d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })
+    }
+    if (view === 'semana') return `${fmtShort(range.start)} – ${fmtShort(range.end)}`
+    return new Date(now.getFullYear(), now.getMonth() + offset, 1)
+      .toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
+  }, [view, offset, range])
+
+  const dates = useMemo(() => datesInRange(range.start, range.end), [range])
+  const today = getTodayStr()
+
+  // Compute per-date data for each metric
+  const forceDates = useMemo(() => {
+    const gymSet = new Set(gymLogs.map(l => l.date))
+    const wSet = new Set(workoutLogs.filter(l => l.activityType === 'fuerza').map(l => l.date))
+    return new Set([...gymSet, ...wSet])
+  }, [gymLogs, workoutLogs])
+
+  const cleaningDates = useMemo(() => {
+    const set = new Set<string>()
+    for (const v of Object.values(cleaningHistory)) { if (v) set.add(v) }
+    return set
+  }, [cleaningHistory])
+
+  // For each date in range, build a row
+  const rows = useMemo(() => dates.map(date => {
+    const steps = stepsHistory[date]?.steps ?? 0
+    const flex = flexLog.includes(date)
+    const finance = financeLog.includes(date)
+    const fuerza = forceDates.has(date)
+    const limpieza = cleaningDates.has(date)
+    const master = masterLog.includes(date)
+    return { date, steps, flex, finance, fuerza, limpieza, master }
+  }), [dates, stepsHistory, flexLog, financeLog, forceDates, cleaningDates, masterLog])
+
+  // Summary counts for the period
+  const summary = useMemo(() => ({
+    pasos: rows.filter(r => r.steps >= 15000).length,
+    flexibilidad: rows.filter(r => r.flex).length,
+    gastos: rows.filter(r => r.finance).length,
+    fuerza: rows.filter(r => r.fuerza).length,
+    limpieza: rows.filter(r => r.limpieza).length,
+    master: rows.filter(r => r.master).length,
+    totalSteps: rows.reduce((s, r) => s + r.steps, 0),
+  }), [rows])
+
+  // Streaks
+  const streaks = useMemo(() => ({
+    pasos: calcStepsStreak(stepsHistory),
+    flexibilidad: calcStreak(flexLog),
+    gastos: calcStreak(financeLog),
+    fuerza: calcStreak(Array.from(forceDates)),
+    limpieza: calcStreak(Array.from(cleaningDates)),
+    master: calcStreak(masterLog),
+  }), [stepsHistory, flexLog, financeLog, forceDates, cleaningDates, masterLog])
+
+  const visibleMetrics = activeMetric === 'all'
+    ? METRICS.filter(m => m.hasHistory)
+    : METRICS.filter(m => m.id === activeMetric)
+
+  const fmtDateLabel = (dateStr: string) => {
+    const [y, m, d] = dateStr.split('-').map(Number)
+    if (view === 'dia') return ''
+    if (view === 'semana') return new Date(y, m - 1, d).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric' })
+    return String(d)
   }
 
-  // Navigable month steps explorer
-  const periodSteps = useMemo(() => {
-    const ref = new Date()
-    const base = new Date(ref.getFullYear(), ref.getMonth() + stepsOffset, 1)
-    const y = base.getFullYear()
-    const m = base.getMonth()
-    const daysInMonth = new Date(y, m + 1, 0).getDate()
-    const bars: { label: string; steps: number }[] = []
-    let total = 0, daysWithData = 0, best = 0
-    for (let day = 1; day <= daysInMonth; day++) {
-      const s = stepsHistory[fmtLocal(new Date(y, m, day))]?.steps || 0
-      bars.push({ label: String(day), steps: s })
-      total += s
-      if (s > 0) { daysWithData++; if (s > best) best = s }
-    }
-    return {
-      label: base.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }),
-      total, best, bars,
-      avg: daysWithData ? Math.round(total / daysWithData) : 0,
-      avgLabel: 'Media/día',
-    }
-  }, [stepsHistory, stepsOffset])
+  const getMetricValue = (row: typeof rows[0], id: MetricId): boolean | number => {
+    if (id === 'pasos') return row.steps
+    if (id === 'flexibilidad') return row.flex
+    if (id === 'gastos') return row.finance
+    if (id === 'fuerza') return row.fuerza
+    if (id === 'limpieza') return row.limpieza
+    if (id === 'master') return row.master
+    return false
+  }
 
-  const maxBar = Math.max(...periodSteps.bars.map(b => b.steps), 1)
-
-  const weekDays = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
+  const getMetricDone = (row: typeof rows[0], id: MetricId): boolean => {
+    if (id === 'pasos') return row.steps >= 15000
+    if (id === 'flexibilidad') return row.flex
+    if (id === 'gastos') return row.finance
+    if (id === 'fuerza') return row.fuerza
+    if (id === 'limpieza') return row.limpieza
+    if (id === 'master') return row.master
+    return false
+  }
 
   return (
     <div className="px-4 pt-6 pb-24">
-      <h1 className="text-2xl font-bold text-foreground mb-6">Estadísticas</h1>
+      <h1 className="text-2xl font-bold text-foreground mb-4">Stats</h1>
 
-      {/* Overview Cards */}
-      <div className="grid grid-cols-2 gap-3 mb-6">
-        <div className="bg-card rounded-2xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <CheckCircle2 className="w-5 h-5 text-primary" />
-            <span className="text-sm text-muted-foreground">Completados</span>
+      {/* Screen time — solo hoy */}
+      <div className="bg-card rounded-2xl p-4 mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Smartphone className="w-5 h-5 text-orange-500" />
+          <div>
+            <p className="text-xs text-muted-foreground">Pantalla hoy</p>
+            <p className="text-lg font-bold text-foreground">{metrics.screenTime}</p>
           </div>
-          <p className="text-2xl font-bold text-foreground">{completedToday}/{totalHabits}</p>
         </div>
-        <div className="bg-card rounded-2xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <TrendingUp className="w-5 h-5 text-primary" />
-            <span className="text-sm text-muted-foreground">Tasa</span>
-          </div>
-          <p className="text-2xl font-bold text-foreground">{completionRate}%</p>
-        </div>
-        <div className="bg-card rounded-2xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Flame className="w-5 h-5 text-orange-500" />
-            <span className="text-sm text-muted-foreground">Racha</span>
-          </div>
-          <p className="text-2xl font-bold text-foreground">{streak} días</p>
-        </div>
-        <div className="bg-card rounded-2xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Calendar className="w-5 h-5 text-blue-500" />
-            <span className="text-sm text-muted-foreground">Mejor racha</span>
-          </div>
-          <p className="text-2xl font-bold text-foreground">{bestStreak} días</p>
+        <div className="text-right">
+          <p className="text-xs text-muted-foreground">Pasos hoy</p>
+          <p className="text-lg font-bold text-foreground">{(metrics.steps.current / 1000).toFixed(1)}k</p>
         </div>
       </div>
 
-      {/* 3 Streaks */}
-      {(() => {
-        const stepsStreak = calcStepsStreak(stepsHistory)
-        const flexStreak = calcStreak(flexLog)
-        const financeStreak = calcStreak(financeLog)
-        const streaks = [
-          { label: 'Pasos +15k', streak: stepsStreak, icon: <Footprints className="w-5 h-5" />, color: '#3b82f6' },
-          { label: 'Flexibilidad', streak: flexStreak, icon: <PersonStanding className="w-5 h-5" />, color: '#22c55e' },
-          { label: 'Gastos', streak: financeStreak, icon: <Wallet className="w-5 h-5" />, color: '#f59e0b' },
-        ]
-        return (
-          <div className="grid grid-cols-3 gap-3 mb-6">
-            {streaks.map(s => (
-              <div key={s.label} className="bg-card rounded-2xl p-3 text-center">
-                <div className="flex justify-center mb-1" style={{ color: s.color }}>{s.icon}</div>
-                <p className="text-2xl font-bold text-foreground">{s.streak}</p>
-                <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">{s.label}</p>
-              </div>
-            ))}
-          </div>
-        )
-      })()}
-
-      {/* Screen Time */}
-      <div className="bg-card rounded-2xl p-4 mb-6">
-        <div className="flex items-center gap-2 mb-2">
-          <Smartphone className="w-5 h-5 text-primary" />
-          <h2 className="text-base font-semibold text-foreground">Pantalla</h2>
-        </div>
-        <p className="text-2xl font-bold text-foreground">{metrics.screenTime}</p>
-        <p className="text-xs text-muted-foreground mt-1">Objetivo: menos de 3h</p>
-      </div>
-
-      {/* Steps Stats */}
-      <div className="bg-card rounded-2xl p-4 mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Footprints className="w-5 h-5 text-primary" />
-            <h2 className="text-base font-semibold text-foreground">Pasos</h2>
-          </div>
-        </div>
-
-        {/* Quick: today + this week */}
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <div>
-            <p className="text-xs text-muted-foreground">Hoy</p>
-            <p className="text-lg font-bold text-foreground">{(metrics.steps.current / 1000).toFixed(1)}k</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Esta semana</p>
-            <p className="text-lg font-bold text-foreground">{(weeklySteps / 1000).toFixed(1)}k</p>
-          </div>
-        </div>
-
-        {/* Period navigator */}
-        <div className="flex items-center justify-between mb-3">
-          <button onClick={() => setStepsOffset(o => o - 1)} className="p-1.5 rounded-full hover:bg-secondary">
-            <ChevronLeft className="w-4 h-4 text-muted-foreground" />
-          </button>
-          <p className="text-sm font-medium text-foreground capitalize">{periodSteps.label}</p>
-          <button
-            onClick={() => setStepsOffset(o => Math.min(o + 1, 0))}
-            disabled={stepsOffset >= 0}
-            className="p-1.5 rounded-full hover:bg-secondary"
-          >
-            <ChevronRight className={`w-4 h-4 ${stepsOffset >= 0 ? 'text-muted-foreground/30' : 'text-muted-foreground'}`} />
-          </button>
-        </div>
-
-        {/* Period stats */}
-        <div className="grid grid-cols-3 gap-2 mb-3">
-          <div className="bg-secondary rounded-xl p-2.5">
-            <p className="text-[10px] text-muted-foreground uppercase">Total</p>
-            <p className="text-base font-bold text-foreground">{(periodSteps.total / 1000).toFixed(1)}k</p>
-          </div>
-          <div className="bg-secondary rounded-xl p-2.5">
-            <p className="text-[10px] text-muted-foreground uppercase">{periodSteps.avgLabel}</p>
-            <p className="text-base font-bold text-foreground">{(periodSteps.avg / 1000).toFixed(1)}k</p>
-          </div>
-          <div className="bg-secondary rounded-xl p-2.5">
-            <p className="text-[10px] text-muted-foreground uppercase">Mejor</p>
-            <p className="text-base font-bold text-foreground">{(periodSteps.best / 1000).toFixed(1)}k</p>
-          </div>
-        </div>
-
-        {/* Mini bar chart */}
-        {periodSteps.total > 0 ? (
-          <>
-            <div className="flex items-end gap-0.5 h-24">
-              {periodSteps.bars.map((b, i) => (
-                <div
-                  key={i}
-                  className={`flex-1 rounded-t ${b.steps === maxBar ? 'bg-primary' : 'bg-primary/30'}`}
-                  style={{ height: `${b.steps > 0 ? Math.max((b.steps / maxBar) * 100, 4) : 0}%` }}
-                  title={`${b.label}: ${b.steps.toLocaleString('es-ES')}`}
-                />
-              ))}
+      {/* Streaks row */}
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        {(['pasos', 'flexibilidad', 'gastos', 'fuerza', 'limpieza', 'master'] as MetricId[]).map(id => {
+          const meta = METRICS.find(m => m.id === id)!
+          return (
+            <div key={id} className="bg-card rounded-2xl p-3 text-center">
+              <div className="flex justify-center mb-1" style={{ color: meta.color }}>{meta.icon}</div>
+              <p className="text-xl font-bold text-foreground">{streaks[id as keyof typeof streaks]}</p>
+              <p className="text-[10px] text-muted-foreground">{meta.label}</p>
             </div>
-          </>
-        ) : (
-          <p className="text-sm text-muted-foreground text-center py-4">Sin datos de pasos en este periodo</p>
-        )}
+          )
+        })}
       </div>
 
-      {/* Weekly Chart */}
-      <div className="bg-card rounded-2xl p-4 mb-6">
-        <h2 className="text-base font-semibold text-foreground mb-4">Esta semana</h2>
-        <div className="flex items-end justify-between gap-2 h-32">
-          {weekDays.map((day, index) => {
-            const height = weeklyData[index] ?? 0
-            const isToday = index === new Date().getDay() - 1 || (new Date().getDay() === 0 && index === 6)
-            return (
-              <div key={day} className="flex-1 flex flex-col items-center gap-2">
-                <div
-                  className={`w-full rounded-t-lg transition-all ${
-                    isToday ? 'bg-primary' : 'bg-primary/30'
-                  }`}
-                  style={{ height: `${height}%` }}
-                />
-                <span className={`text-xs ${isToday ? 'font-semibold text-primary' : 'text-muted-foreground'}`}>
-                  {day}
-                </span>
-              </div>
-            )
-          })}
-        </div>
+      {/* View toggle */}
+      <div className="flex gap-1 bg-secondary rounded-xl p-1 mb-4">
+        {(['dia', 'semana', 'mes'] as const).map(v => (
+          <button key={v} onClick={() => { setView(v); setOffset(0) }}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${view === v ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'}`}>
+            {v === 'dia' ? 'Día' : v === 'semana' ? 'Semana' : 'Mes'}
+          </button>
+        ))}
       </div>
 
-      {/* By Area */}
-      <div className="bg-card rounded-2xl p-4">
-        <h2 className="text-base font-semibold text-foreground mb-4">Por área</h2>
-        <div className="space-y-3">
-          {(Object.keys(habitsByArea) as HabitArea[]).map((area) => {
-            const data = habitsByArea[area]
-            const percent = Math.round((data.completed / data.total) * 100)
-            return (
-              <div key={area}>
-                <div className="flex justify-between mb-1">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: AREA_COLORS[area] }} />
-                    <span className="text-sm text-foreground">{AREA_LABELS[area]}</span>
+      {/* Period navigator */}
+      <div className="flex items-center justify-between mb-4">
+        <button onClick={() => setOffset(o => o - 1)} className="p-1.5 rounded-full hover:bg-secondary">
+          <ChevronLeft className="w-4 h-4 text-muted-foreground" />
+        </button>
+        <p className="text-sm font-medium text-foreground capitalize">{rangeLabel}</p>
+        <button onClick={() => setOffset(o => Math.min(o + 1, 0))} disabled={offset >= 0}
+          className="p-1.5 rounded-full hover:bg-secondary disabled:opacity-30">
+          <ChevronRight className="w-4 h-4 text-muted-foreground" />
+        </button>
+      </div>
+
+      {/* Metric filter chips */}
+      <div className="flex gap-1.5 overflow-x-auto pb-1 mb-4">
+        <button
+          onClick={() => setActiveMetric('all')}
+          className={`px-3 py-1 rounded-full text-xs whitespace-nowrap font-medium ${activeMetric === 'all' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}
+        >
+          Todo
+        </button>
+        {METRICS.filter(m => m.hasHistory).map(m => (
+          <button
+            key={m.id}
+            onClick={() => setActiveMetric(m.id)}
+            className="px-3 py-1 rounded-full text-xs whitespace-nowrap font-medium text-white"
+            style={{ backgroundColor: activeMetric === m.id ? m.color : m.color + '55' }}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Period summary */}
+      {activeMetric === 'all' && (
+        <div className="bg-card rounded-2xl p-4 mb-4">
+          <p className="text-xs text-muted-foreground uppercase mb-3">Resumen del período</p>
+          <div className="grid grid-cols-2 gap-2">
+            {(Object.entries(summary) as [string, number][])
+              .filter(([k]) => k !== 'totalSteps')
+              .map(([key, count]) => {
+                const meta = METRICS.find(m => m.id === key)
+                if (!meta) return null
+                const total = dates.length
+                return (
+                  <div key={key} className="flex items-center gap-2">
+                    <span style={{ color: meta.color }}>{meta.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between mb-0.5">
+                        <span className="text-xs text-muted-foreground">{meta.label}</span>
+                        <span className="text-xs font-medium text-foreground">{count}/{total}</span>
+                      </div>
+                      <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${total > 0 ? (count / total) * 100 : 0}%`, backgroundColor: meta.color }} />
+                      </div>
+                    </div>
                   </div>
-                  <span className="text-sm text-muted-foreground">
-                    {data.completed}/{data.total} ({percent}%)
-                  </span>
-                </div>
-                <div className="h-2 bg-secondary rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all"
-                    style={{ width: `${percent}%`, backgroundColor: AREA_COLORS[area] }}
-                  />
-                </div>
-              </div>
-            )
-          })}
+                )
+              })}
+          </div>
+          {activeMetric === 'all' && (
+            <p className="text-xs text-muted-foreground mt-3">
+              Pasos totales: <span className="text-foreground font-medium">{(summary.totalSteps / 1000).toFixed(1)}k</span>
+            </p>
+          )}
         </div>
-      </div>
+      )}
+
+      {/* Per-metric detail — pasos especial con valor numérico */}
+      {(activeMetric === 'all' || activeMetric === 'pasos') && (
+        <div className="bg-card rounded-2xl p-4 mb-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Footprints className="w-4 h-4 text-blue-500" />
+            <p className="text-sm font-semibold text-foreground">Pasos</p>
+          </div>
+          {view === 'dia' ? (
+            <div className="text-center py-4">
+              <p className="text-4xl font-bold text-foreground">{(stepsHistory[range.start]?.steps ?? metrics.steps.current).toLocaleString('es-ES')}</p>
+              <p className="text-sm text-muted-foreground mt-1">pasos · objetivo 15.000</p>
+              <div className="h-2 bg-secondary rounded-full overflow-hidden mt-3">
+                <div className="h-full rounded-full bg-blue-500" style={{ width: `${Math.min(100, ((stepsHistory[range.start]?.steps ?? metrics.steps.current) / 15000) * 100)}%` }} />
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-end gap-0.5 h-20">
+              {rows.map((r, i) => {
+                const h = Math.max(r.steps > 0 ? Math.max((r.steps / 20000) * 100, 4) : 0, 0)
+                const isGoal = r.steps >= 15000
+                return (
+                  <div key={i} className="flex-1 flex flex-col items-center gap-0.5">
+                    <div className="w-full rounded-t" style={{ height: `${h}%`, backgroundColor: isGoal ? '#3b82f6' : '#3b82f630' }} />
+                    {view === 'semana' && <span className="text-[9px] text-muted-foreground">{fmtDateLabel(r.date).split(' ')[0]}</span>}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Boolean metrics — grid de checkmarks por día */}
+      {visibleMetrics.filter(m => m.id !== 'pasos').map(meta => (
+        <div key={meta.id} className="bg-card rounded-2xl p-4 mb-4">
+          <div className="flex items-center gap-2 mb-3">
+            <span style={{ color: meta.color }}>{meta.icon}</span>
+            <p className="text-sm font-semibold text-foreground">{meta.label}</p>
+            <span className="ml-auto text-xs text-muted-foreground">
+              {rows.filter(r => getMetricDone(r, meta.id)).length}/{dates.length} días
+            </span>
+          </div>
+          {view === 'dia' ? (
+            <div className="flex items-center justify-center py-4">
+              {getMetricDone(rows[0], meta.id)
+                ? <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ backgroundColor: meta.color + '20' }}>
+                    <span className="text-3xl">✓</span>
+                  </div>
+                : <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center">
+                    <span className="text-3xl text-muted-foreground/30">○</span>
+                  </div>
+              }
+            </div>
+          ) : (
+            <div className="flex gap-1 flex-wrap">
+              {rows.map((r, i) => {
+                const done = getMetricDone(r, meta.id)
+                return (
+                  <div key={i} className="flex flex-col items-center gap-0.5">
+                    <div className="w-6 h-6 rounded-md flex items-center justify-center text-xs"
+                      style={{ backgroundColor: done ? meta.color : meta.color + '20', color: done ? 'white' : 'transparent' }}>
+                      ✓
+                    </div>
+                    {view === 'semana' && (
+                      <span className="text-[9px] text-muted-foreground">{fmtDateLabel(r.date).split(' ')[0]}</span>
+                    )}
+                    {view === 'mes' && (
+                      <span className="text-[9px] text-muted-foreground">{fmtDateLabel(r.date)}</span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   )
 }

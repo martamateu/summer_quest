@@ -445,7 +445,7 @@ export default function Page() {
       case 'hoy':
         return <TodayDashboard streak={streak} />
       case 'stats':
-        return <StatsScreen habits={habits} streak={streak} bestStreak={bestStreak} weeklyData={weeklyData} metrics={metrics} />
+        return <StatsScreen metrics={metrics} />
       default:
         return null
     }
