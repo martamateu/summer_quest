@@ -182,11 +182,9 @@ export default function Page() {
           const m = data.minutes % 60
           const formatted = h > 0 ? `${h}h ${m}m` : `${m}m`
           setMetrics((prev) => ({ ...prev, screenTime: formatted }))
-          // Auto-mark "Límite pantalla 3h" (id '20'): done while under 180 min, undone if exceeded
-          const underLimit = data.minutes < 180
-          setHabits((prev) =>
-            prev.map((h) => h.id === '20' ? { ...h, completed: underLimit } : h)
-          )
+          // NOTE: the "Límite pantalla 3h" habit (id '20') is NOT auto-marked during
+          // the day — the day isn't over yet, so it makes no sense. Screen time is
+          // kept only as a metric (dashboard/stats); marking the habit stays manual.
         }
       })
       .catch(() => {})
