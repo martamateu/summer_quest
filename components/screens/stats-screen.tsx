@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { Footprints, PersonStanding, Wallet, Dumbbell, Sparkles, GraduationCap, ChevronLeft, ChevronRight, Smartphone } from 'lucide-react'
+import { Footprints, PersonStanding, Wallet, Dumbbell, GraduationCap, ChevronLeft, ChevronRight, Smartphone, Timer } from 'lucide-react'
 import type { DailyMetrics } from '@/lib/types'
 
 // ── Date helpers ───────────────────────────────────────────────────────────────
@@ -51,14 +51,14 @@ function readObj<T>(key: string, fallback: T): T {
 }
 
 // ── Metric definitions ─────────────────────────────────────────────────────────
-type MetricId = 'pasos' | 'flexibilidad' | 'gastos' | 'fuerza' | 'limpieza' | 'master' | 'screentime'
+type MetricId = 'pasos' | 'flexibilidad' | 'gastos' | 'fuerza' | 'run' | 'descanso' | 'master' | 'screentime'
 
 interface MetricMeta {
   id: MetricId
   label: string
   color: string
   icon: React.ReactNode
-  hasHistory: boolean // false = solo hoy
+  hasHistory: boolean
 }
 
 const METRICS: MetricMeta[] = [
@@ -66,7 +66,8 @@ const METRICS: MetricMeta[] = [
   { id: 'flexibilidad', label: 'Flexibilidad',   color: '#22c55e', icon: <PersonStanding className="w-4 h-4" />, hasHistory: true },
   { id: 'gastos',       label: 'Gastos',         color: '#f59e0b', icon: <Wallet className="w-4 h-4" />,         hasHistory: true },
   { id: 'fuerza',       label: 'Fuerza',         color: '#ef4444', icon: <Dumbbell className="w-4 h-4" />,       hasHistory: true },
-  { id: 'limpieza',     label: 'Limpieza',       color: '#06b6d4', icon: <Sparkles className="w-4 h-4" />,       hasHistory: true },
+  { id: 'run',          label: 'Run',            color: '#f97316', icon: <Timer className="w-4 h-4" />,          hasHistory: true },
+  { id: 'descanso',     label: 'Descanso',       color: '#6b7280', icon: <span className="text-sm">😴</span>,    hasHistory: true },
   { id: 'master',       label: 'Máster',         color: '#8b5cf6', icon: <GraduationCap className="w-4 h-4" />,  hasHistory: true },
   { id: 'screentime',   label: 'Pantalla',       color: '#f97316', icon: <Smartphone className="w-4 h-4" />,     hasHistory: false },
 ]
@@ -181,11 +182,14 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
     return new Set(workoutLogs.filter(l => l.activityType === 'cardio' || l.activityType === 'run').map(l => l.date))
   }, [workoutLogs])
 
-  const cleaningDates = useMemo(() => {
-    const set = new Set<string>()
-    for (const v of Object.values(cleaningHistory)) { if (v) set.add(v) }
-    return set
-  }, [cleaningHistory])
+  const descansoLog = useMemo(() => {
+    // Días marcados como descanso desde el goal de Hoy
+    return Array.from(new Set(
+      workoutLogs
+        .filter((l: any) => l.activityType === 'descanso' || l.source === 'goal_descanso')
+        .map(l => l.date)
+    ))
+  }, [workoutLogs])
 
   // For each date in range, build a row
   const rows = useMemo(() => dates.map(date => {
@@ -193,10 +197,11 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
     const flex = flexLog.includes(date)
     const finance = financeLog.includes(date)
     const fuerza = forceDates.has(date)
-    const limpieza = cleaningDates.has(date)
+    const run = runDates.has(date)
+    const descanso = descansoLog.includes(date)
     const master = masterLog.includes(date)
-    return { date, steps, flex, finance, fuerza, limpieza, master }
-  }), [dates, stepsHistory, flexLog, financeLog, forceDates, cleaningDates, masterLog])
+    return { date, steps, flex, finance, fuerza, run, descanso, master }
+  }), [dates, stepsHistory, flexLog, financeLog, forceDates, runDates, descansoLog, masterLog])
 
   // Summary counts for the period
   const summary = useMemo(() => ({
@@ -204,7 +209,8 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
     flexibilidad: rows.filter(r => r.flex).length,
     gastos: rows.filter(r => r.finance).length,
     fuerza: rows.filter(r => r.fuerza).length,
-    limpieza: rows.filter(r => r.limpieza).length,
+    run: rows.filter(r => r.run).length,
+    descanso: rows.filter(r => r.descanso).length,
     master: rows.filter(r => r.master).length,
     totalSteps: rows.reduce((s, r) => s + r.steps, 0),
   }), [rows])
@@ -215,9 +221,10 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
     flexibilidad: calcStreak(flexLog),
     gastos: calcStreak(financeLog),
     fuerza: calcStreak(Array.from(forceDates)),
-    limpieza: calcStreak(Array.from(cleaningDates)),
+    run: calcStreak(Array.from(runDates)),
+    descanso: calcStreak(descansoLog),
     master: calcStreak(masterLog),
-  }), [stepsHistory, flexLog, financeLog, forceDates, cleaningDates, masterLog])
+  }), [stepsHistory, flexLog, financeLog, forceDates, runDates, descansoLog, masterLog])
 
   const visibleMetrics = activeMetric === 'all'
     ? METRICS.filter(m => m.hasHistory)
@@ -230,22 +237,13 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
     return String(d)
   }
 
-  const getMetricValue = (row: typeof rows[0], id: MetricId): boolean | number => {
-    if (id === 'pasos') return row.steps
-    if (id === 'flexibilidad') return row.flex
-    if (id === 'gastos') return row.finance
-    if (id === 'fuerza') return row.fuerza
-    if (id === 'limpieza') return row.limpieza
-    if (id === 'master') return row.master
-    return false
-  }
-
   const getMetricDone = (row: typeof rows[0], id: MetricId): boolean => {
     if (id === 'pasos') return row.steps >= 15000
     if (id === 'flexibilidad') return row.flex
     if (id === 'gastos') return row.finance
     if (id === 'fuerza') return row.fuerza
-    if (id === 'limpieza') return row.limpieza
+    if (id === 'run') return row.run
+    if (id === 'descanso') return row.descanso
     if (id === 'master') return row.master
     return false
   }
@@ -271,7 +269,7 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
 
       {/* Streaks row */}
       <div className="grid grid-cols-3 gap-2 mb-4">
-        {(['pasos', 'flexibilidad', 'gastos', 'fuerza', 'limpieza', 'master'] as MetricId[]).map(id => {
+        {(['pasos', 'flexibilidad', 'gastos', 'fuerza', 'run', 'master'] as MetricId[]).map(id => {
           const meta = METRICS.find(m => m.id === id)!
           return (
             <div key={id} className="bg-card rounded-2xl p-3 text-center">

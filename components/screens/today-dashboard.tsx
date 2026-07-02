@@ -282,24 +282,20 @@ export function TodayDashboard({ streak }: TodayDashboardProps) {
       else removeToday('sq_flex_log')
     }
     if (key === 'fuerza' && !dayData.fuerza.done) {
-      // Guardar en sq_workout_logs según el modo
       const mode = dayData.fuerzaMode
-      if (mode !== 'descanso') {
-        const today = getLocalDateStr()
-        try {
-          const logs = JSON.parse(localStorage.getItem('sq_workout_logs') || '[]')
+      const today = getLocalDateStr()
+      try {
+        const logs = JSON.parse(localStorage.getItem('sq_workout_logs') || '[]')
+        const alreadyToday = logs.some((l: { date: string; source?: string }) => l.date === today && l.source === 'goal')
+        if (!alreadyToday) {
           const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7)
-          const activityType = mode === 'run' ? 'cardio' : 'fuerza'
-          const activityName = mode === 'run' ? 'Run' : 'Entreno de fuerza'
-          // Solo añadir si no hay ya un log de hoy con este tipo desde goals
-          const alreadyToday = logs.some((l: { date: string; source?: string }) => l.date === today && l.source === 'goal')
-          if (!alreadyToday) {
-            logs.unshift({ id, date: today, activityName, activityType, source: 'goal', addedManually: false })
-            localStorage.setItem('sq_workout_logs', JSON.stringify(logs))
-            window.dispatchEvent(new Event('sq-data-changed'))
-          }
-        } catch {}
-      }
+          const activityType = mode === 'run' ? 'cardio' : mode === 'descanso' ? 'descanso' : 'fuerza'
+          const activityName = mode === 'run' ? 'Run' : mode === 'descanso' ? 'Descanso activo' : 'Entreno de fuerza'
+          logs.unshift({ id, date: today, activityName, activityType, source: 'goal', addedManually: false })
+          localStorage.setItem('sq_workout_logs', JSON.stringify(logs))
+          window.dispatchEvent(new Event('sq-data-changed'))
+        }
+      } catch {}
     }
   }
 
