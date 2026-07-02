@@ -214,6 +214,24 @@ export default function Page() {
       .catch(() => {})
   }
 
+  // Backfill run history from Redis → sq_run_logs (merge by id, array)
+  const fetchRunsHistory = () => {
+    fetch('/api/runs/history')
+      .then((r) => r.json())
+      .then((data) => {
+        const runs = data?.runs as { id: string }[] | undefined
+        if (!Array.isArray(runs) || runs.length === 0) return
+        try {
+          const key = 'sq_run_logs'
+          const local = JSON.parse(localStorage.getItem(key) || '[]') as { id: string }[]
+          const ids = new Set(local.map((r) => r.id))
+          const merged = [...local, ...runs.filter((r) => !ids.has(r.id))]
+          localStorage.setItem(key, JSON.stringify(merged))
+        } catch {}
+      })
+      .catch(() => {})
+  }
+
   const triggerAndroidSync = () => {
     // Ask Android to push fresh steps + screen time, then fetch after 5s
     fetch('/api/trigger-sync', { method: 'POST' })
@@ -222,7 +240,7 @@ export default function Page() {
   }
 
   // ── Cloud backup: sync localStorage ↔ Redis ──
-  const SYNC_KEYS = ['sq_habits', 'sq_today', 'sq_history', 'sq_expenses', 'sq_finance_started_at', 'sq_gym_logs', 'sq_gym_seeded', 'sq_steps_history', 'sq_food_log', 'sq_favorite_recipes', 'sq_notes', 'sq_super_list', 'sq_home', 'sq_cleaning_history', 'sq_cycle']
+  const SYNC_KEYS = ['sq_habits', 'sq_today', 'sq_history', 'sq_expenses', 'sq_finance_started_at', 'sq_gym_logs', 'sq_gym_seeded', 'sq_steps_history', 'sq_food_log', 'sq_favorite_recipes', 'sq_notes', 'sq_super_list', 'sq_home', 'sq_cleaning_history', 'sq_cycle', 'sq_run_logs']
 
   // Debounced upload: cancel previous pending upload so only the latest data is sent
   const uploadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -279,7 +297,7 @@ export default function Page() {
   }
 
   // Keys that contain arrays of items with `id` fields — need merge by ID
-  const ARRAY_KEYS = new Set(['sq_expenses', 'sq_gym_logs', 'sq_notes', 'sq_super_list', 'sq_cleaning_tasks'])
+  const ARRAY_KEYS = new Set(['sq_expenses', 'sq_gym_logs', 'sq_notes', 'sq_super_list', 'sq_cleaning_tasks', 'sq_run_logs'])
 
   // Merge two JSON arrays by `id`, keeping all unique items
   const mergeArraysById = (localJson: string, cloudJson: string): string => {
@@ -350,6 +368,7 @@ export default function Page() {
   useEffect(() => {
     fetchSteps() // show cached data immediately
     fetchStepsHistory() // backfill full daily history from the cloud
+    fetchRunsHistory() // backfill NRC run sessions from the cloud
     triggerAndroidSync() // ping Android, then re-fetch after 5s
 
     // Restore from cloud if localStorage is empty, then upload
