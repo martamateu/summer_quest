@@ -149,7 +149,7 @@ interface TodayDashboardProps {
 function GoalCard({
   icon, label, color, entry,
   onTaskChange, onToggle,
-  modeBadge, onCycleMode,
+  modeBadge, onCycleMode, noTask,
 }: {
   icon: React.ReactNode
   label: string
@@ -159,6 +159,7 @@ function GoalCard({
   onToggle: () => void
   modeBadge?: { emoji: string; label: string }
   onCycleMode?: () => void
+  noTask?: boolean
 }) {
   return (
     <div className="bg-card rounded-2xl p-4 border-l-4" style={{ borderLeftColor: color }}>
@@ -183,12 +184,12 @@ function GoalCard({
           }
         </button>
       </div>
-      {modeBadge?.label !== 'Descanso' && (
+      {!noTask && modeBadge?.label !== 'Descanso' && (
         <input
           type="text"
           value={entry.task}
           onChange={e => onTaskChange(e.target.value)}
-          placeholder={`¿Qué harás hoy para ${label.toLowerCase()}?`}
+          placeholder={`¿Qué harás hoy?`}
           className={`w-full text-sm bg-secondary rounded-xl px-3 py-2 outline-none focus:ring-2 text-foreground placeholder:text-muted-foreground/60 ${entry.done ? 'line-through text-muted-foreground' : ''}`}
           style={{ '--tw-ring-color': color } as React.CSSProperties}
         />
@@ -402,18 +403,6 @@ export function TodayDashboard({ streak }: TodayDashboardProps) {
         </div>
       </div>
 
-      {/* Goals progress */}
-      <div className="flex items-center gap-3 px-1">
-        <p className="text-xs text-muted-foreground">Goals de hoy</p>
-        <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
-          <div
-            className="h-full rounded-full bg-primary transition-all duration-500"
-            style={{ width: `${(goalsCompleted / goalsTotal) * 100}%` }}
-          />
-        </div>
-        <p className="text-xs font-medium text-foreground">{goalsCompleted}/{goalsTotal}</p>
-      </div>
-
       {/* Goal cards */}
       {(() => {
         const mode = FUERZA_MODES.find(m => m.id === dayData.fuerzaMode) ?? FUERZA_MODES[0]
@@ -437,6 +426,7 @@ export function TodayDashboard({ streak }: TodayDashboardProps) {
         entry={dayData.master}
         onTaskChange={v => setTask('master', v)}
         onToggle={() => toggleGoal('master')}
+        noTask
       />
       <GoalCard
         icon={<PersonStanding className="w-4 h-4" />}
@@ -445,6 +435,7 @@ export function TodayDashboard({ streak }: TodayDashboardProps) {
         entry={dayData.flexibilidad}
         onTaskChange={v => setTask('flexibilidad', v)}
         onToggle={() => toggleGoal('flexibilidad')}
+        noTask
       />
 
       {/* Finanzas — mismo diseño que GoalCard pero sin input */}
@@ -471,45 +462,37 @@ export function TodayDashboard({ streak }: TodayDashboardProps) {
         </div>
       </div>
 
-      {/* Grabadora de voz → nota en Admin */}
+      {/* Nota rápida — línea compacta + panel expandible */}
       <div className="bg-card rounded-2xl p-4">
-        <div className="flex items-center justify-between mb-3">
+        {/* Fila compacta siempre visible */}
+        <div className="flex items-center justify-between">
           <p className="text-sm font-semibold text-foreground">Nota rápida</p>
-          {transcript && (
-            <button onClick={() => setTranscript(null)} className="p-1 rounded-full hover:bg-secondary">
-              <X className="w-4 h-4 text-muted-foreground" />
+          <div className="flex items-center gap-2">
+            {transcribing && <Loader2 className="w-4 h-4 text-muted-foreground animate-spin" />}
+            {transcript && (
+              <button onClick={() => setTranscript(null)} className="p-1 rounded-full hover:bg-secondary">
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
+            )}
+            <button
+              onClick={recording ? stopRecording : startRecording}
+              disabled={transcribing}
+              className={`p-2 rounded-full transition-colors ${
+                recording ? 'bg-red-500 text-white animate-pulse' : 'bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground'
+              }`}
+              aria-label={recording ? 'Parar grabación' : 'Grabar nota'}
+            >
+              {recording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
             </button>
-          )}
+          </div>
         </div>
 
-        {!transcript && !transcribing && (
-          <button
-            onClick={recording ? stopRecording : startRecording}
-            className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium ${
-              recording
-                ? 'bg-red-500 text-white animate-pulse'
-                : 'bg-secondary text-foreground'
-            }`}
-          >
-            {recording
-              ? <><MicOff className="w-4 h-4" /> Parar grabación</>
-              : <><Mic className="w-4 h-4" /> Grabar nota de voz</>
-            }
-          </button>
-        )}
-
-        {transcribing && (
-          <div className="flex items-center justify-center gap-2 py-3 text-muted-foreground text-sm">
-            <Loader2 className="w-4 h-4 animate-spin" /> Transcribiendo…
-          </div>
-        )}
-
+        {/* Panel expandible: error, transcribiendo o resultado */}
         {transcriptError && (
-          <p className="text-xs text-red-500 text-center">{transcriptError}</p>
+          <p className="text-xs text-red-500 mt-2">{transcriptError}</p>
         )}
-
         {transcript && (
-          <div className="space-y-3">
+          <div className="mt-3 space-y-2">
             <div className="bg-secondary rounded-xl p-3">
               <p className="text-xs font-medium text-muted-foreground mb-1">{transcript.title}</p>
               <p className="text-sm text-foreground">{transcript.text}</p>
@@ -517,13 +500,13 @@ export function TodayDashboard({ streak }: TodayDashboardProps) {
             <div className="flex gap-2">
               <button
                 onClick={() => setTranscript(null)}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-secondary text-foreground text-sm"
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-secondary text-foreground text-sm"
               >
                 <X className="w-4 h-4" /> Borrar
               </button>
               <button
                 onClick={saveTranscriptToAdmin}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium"
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium"
               >
                 <Save className="w-4 h-4" /> Guardar en Admin
               </button>
