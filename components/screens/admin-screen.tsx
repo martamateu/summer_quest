@@ -2,8 +2,26 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Mic, MicOff, Send, Trash2, StickyNote, ShoppingCart, Loader2, Check, Plus, Sparkles, ChevronLeft, ChevronRight, Home, RotateCcw, Pencil, X } from 'lucide-react'
-import { resolveHomeTasks, getSuggestedTask } from '@/lib/cleaning-templates'
+import { resolveHomeTasks, getSuggestedTask, getSuggestedTaskPerArea } from '@/lib/cleaning-templates'
 import type { HomeData, ResolvedTask } from '@/lib/cleaning-templates'
+
+// Paleta de colores para áreas — se asignan en orden de aparición
+const AREA_PALETTE = [
+  '#3b82f6', // azul
+  '#22c55e', // verde
+  '#f59e0b', // ámbar
+  '#ec4899', // rosa
+  '#8b5cf6', // violeta
+  '#06b6d4', // cyan
+  '#f97316', // naranja
+  '#84cc16', // lima
+]
+
+function buildAreaColorMap(areas: string[]): Record<string, string> {
+  const map: Record<string, string> = {}
+  areas.forEach((a, i) => { map[a] = AREA_PALETTE[i % AREA_PALETTE.length] })
+  return map
+}
 
 const NOTES_KEY = 'sq_notes'
 const SUPER_KEY = 'sq_super_list'
@@ -339,6 +357,7 @@ export function AdminScreen() {
   const doneTodayTasks = resolvedTasks.filter(t => t.lastDone === today && t.nextDue > today)
 
   const areas2 = homeData ? Array.from(new Set(resolvedTasks.map(t => t.areaName))) : []
+  const areaColorMap = buildAreaColorMap(areas2)
 
   const applyAreaFilter = (list: ResolvedTask[]) =>
     areaFilter2 === 'all' ? list : list.filter(t => t.areaName === areaFilter2)
@@ -346,10 +365,12 @@ export function AdminScreen() {
   const sortedPending = [...applyAreaFilter(pendingTasks)].sort((a, b) => a.nextDue.localeCompare(b.nextDue))
   const sortedDoneToday = [...applyAreaFilter(doneTodayTasks)].sort((a, b) => a.label.localeCompare(b.label))
 
-  // Sugerencia del día: cuando no hay pendientes en la vista actual (respeta el filtro de área)
-  const suggestedTask = sortedPending.length === 0
-    ? getSuggestedTask(resolvedTasks, today, areaFilter2)
-    : null
+  // Sugeridas del día: una por área cuando no hay pendientes en la vista actual
+  const suggestedPerArea: ResolvedTask[] = sortedPending.length === 0
+    ? (areaFilter2 === 'all'
+        ? getSuggestedTaskPerArea(resolvedTasks, today)
+        : (() => { const s = getSuggestedTask(resolvedTasks, today, areaFilter2); return s ? [s] : [] })())
+    : []
 
   // Calendario: pinta nextDue de TODAS las tareas (incluidas hechas hoy con nextDue futuro)
   const ref = new Date()
@@ -613,34 +634,40 @@ export function AdminScreen() {
                 </div>
               )}
 
-              {/* Lista de tareas pendientes */}
+              {/* Lista de tareas pendientes / sugeridas por área */}
               {sortedPending.length === 0 ? (
-                <div className="mb-4">
-                  {suggestedTask ? (
-                    <div className="bg-card rounded-2xl p-4 border border-border">
-                      <p className="text-[10px] text-muted-foreground uppercase mb-2">Sugerencia del día</p>
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-foreground truncate">{suggestedTask.label}</p>
-                          <p className="text-[11px] text-muted-foreground mt-0.5">
-                            {suggestedTask.objectName} · toca en {(() => {
-                              const [ty, tm, td] = today.split('-').map(Number)
-                              const [ny, nm, nd] = suggestedTask.nextDue.split('-').map(Number)
-                              const diff = Math.round((new Date(ny, nm - 1, nd).getTime() - new Date(ty, tm - 1, td).getTime()) / 86400000)
-                              return diff === 1 ? 'mañana' : `${diff} días`
-                            })()}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => markDone(suggestedTask.key, today)}
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium shrink-0"
-                        >
-                          <Check className="w-3.5 h-3.5" /> Adelantar
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
+                <div className="mb-4 space-y-2">
+                  {suggestedPerArea.length === 0 ? (
                     <p className="text-sm text-muted-foreground text-center py-8">Todo al día. Vuelve mañana.</p>
+                  ) : (
+                    <>
+                      <p className="text-[10px] text-muted-foreground uppercase mb-1">Sugerencia del día por estancia</p>
+                      {suggestedPerArea.map(t => {
+                        const color = areaColorMap[t.areaName] || '#6b7280'
+                        const [ty, tm, td] = today.split('-').map(Number)
+                        const [ny, nm, nd] = t.nextDue.split('-').map(Number)
+                        const diff = Math.round((new Date(ny, nm - 1, nd).getTime() - new Date(ty, tm - 1, td).getTime()) / 86400000)
+                        const diffLabel = diff === 0 ? 'hoy' : diff === 1 ? 'mañana' : `en ${diff} días`
+                        return (
+                          <div key={t.key} className="bg-card rounded-2xl p-4 flex items-start justify-between gap-2">
+                            <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                              <span className="w-2 h-2 rounded-full shrink-0 mt-1.5" style={{ backgroundColor: color }} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[10px] font-medium uppercase mb-0.5" style={{ color }}>{t.areaName}</p>
+                                <p className="text-sm font-semibold text-foreground truncate">{t.label}</p>
+                                <p className="text-[11px] text-muted-foreground mt-0.5">{t.objectName} · toca {diffLabel}</p>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => markDone(t.key, today)}
+                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-secondary text-foreground text-xs font-medium hover:bg-primary hover:text-primary-foreground shrink-0"
+                            >
+                              <Check className="w-3.5 h-3.5" /> Adelantar
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </>
                   )}
                 </div>
               ) : (
@@ -793,9 +820,21 @@ export function AdminScreen() {
                           ${isSelected ? 'bg-primary text-primary-foreground' : isToday ? 'bg-secondary text-foreground font-semibold' : 'text-foreground hover:bg-secondary'}`}
                       >
                         {dayNum}
-                        {hasTasks && (
-                          <span className={`w-1.5 h-1.5 rounded-full mt-0.5 ${isSelected ? 'bg-primary-foreground' : hasOverdue ? 'bg-red-500' : 'bg-primary'}`} />
-                        )}
+                        {hasTasks && (() => {
+                          // Un punto por área distinta (máx 3)
+                          const dayAreas = Array.from(new Set(dayTasks.map(t => t.areaName))).slice(0, 3)
+                          return (
+                            <div className="flex gap-0.5 mt-0.5">
+                              {dayAreas.map(a => (
+                                <span
+                                  key={a}
+                                  className="w-1.5 h-1.5 rounded-full"
+                                  style={{ backgroundColor: isSelected ? 'white' : (hasOverdue ? '#ef4444' : (areaColorMap[a] || '#3b82f6')) }}
+                                />
+                              ))}
+                            </div>
+                          )
+                        })()}
                       </button>
                     )
                   })}
@@ -821,14 +860,21 @@ export function AdminScreen() {
                             <div key={t.key} className="bg-secondary rounded-xl p-3">
                               {/* Fila principal */}
                               <div className="flex items-start justify-between gap-2">
-                                <div className="flex-1 min-w-0">
-                                  <p className={`text-xs font-semibold truncate ${alreadyDone ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
-                                    {t.label}
-                                  </p>
-                                  <p className="text-[10px] text-muted-foreground mt-0.5">
-                                    {t.objectName} · cada {t.frequencyDays} día{t.frequencyDays === 1 ? '' : 's'}
-                                    {alreadyDone && <span className="text-primary"> · hecha hoy</span>}
-                                  </p>
+                                <div className="flex items-start gap-2 flex-1 min-w-0">
+                                  <span
+                                    className="w-2 h-2 rounded-full shrink-0 mt-1"
+                                    style={{ backgroundColor: areaColorMap[t.areaName] || '#6b7280' }}
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-[9px] font-medium uppercase mb-0.5" style={{ color: areaColorMap[t.areaName] || '#6b7280' }}>{t.areaName}</p>
+                                    <p className={`text-xs font-semibold truncate ${alreadyDone ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                      {t.label}
+                                    </p>
+                                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                                      {t.objectName} · cada {t.frequencyDays} día{t.frequencyDays === 1 ? '' : 's'}
+                                      {alreadyDone && <span className="text-primary"> · hecha</span>}
+                                    </p>
+                                  </div>
                                 </div>
                                 <div className="flex items-center gap-1 shrink-0">
                                   <button

@@ -419,11 +419,8 @@ export function resolveHomeTasks(
 }
 
 /**
- * Devuelve una tarea futura "sugerida" para un día sin tareas pendientes.
- * - Si areaFilter está activo, la sugerencia es de esa estancia.
- * - Si no hay tareas en esa estancia, cae back al global.
- * - La elección es determinista según la fecha (mismo resultado todo el día,
- *   distinto cada día). Prioriza las tareas con nextDue más próximo.
+ * Devuelve una tarea futura "sugerida" para una estancia concreta.
+ * La elección es determinista según la fecha + área (mismo resultado todo el día).
  */
 export function getSuggestedTask(
   resolvedTasks: ResolvedTask[],
@@ -432,25 +429,36 @@ export function getSuggestedTask(
 ): ResolvedTask | null {
   const isFuturePending = (t: ResolvedTask) => t.nextDue > today && t.lastDone !== today
 
-  // Si hay filtro de área activo, intentar primero dentro de esa estancia
   if (areaFilter && areaFilter !== 'all') {
     const areaFuture = resolvedTasks
       .filter(t => t.areaName === areaFilter && isFuturePending(t))
       .sort((a, b) => a.nextDue.localeCompare(b.nextDue))
-
-    if (areaFuture.length > 0) {
-      const pool = areaFuture.slice(0, Math.min(10, areaFuture.length))
-      return pool[hashKey(today) % pool.length]
-    }
+    if (areaFuture.length === 0) return null
+    const pool = areaFuture.slice(0, Math.min(10, areaFuture.length))
+    return pool[hashKey(today + areaFilter) % pool.length]
   }
 
-  // Fallback: global
   const future = resolvedTasks
     .filter(isFuturePending)
     .sort((a, b) => a.nextDue.localeCompare(b.nextDue))
-
   if (future.length === 0) return null
-
   const pool = future.slice(0, Math.min(10, future.length))
   return pool[hashKey(today) % pool.length]
+}
+
+/**
+ * Devuelve una sugerencia por cada área que tenga tareas futuras.
+ * Útil para mostrar "tarea del día" por estancia cuando no hay pendientes.
+ */
+export function getSuggestedTaskPerArea(
+  resolvedTasks: ResolvedTask[],
+  today: string
+): ResolvedTask[] {
+  const areas = Array.from(new Set(resolvedTasks.map(t => t.areaName)))
+  const suggestions: ResolvedTask[] = []
+  for (const area of areas) {
+    const s = getSuggestedTask(resolvedTasks, today, area)
+    if (s) suggestions.push(s)
+  }
+  return suggestions
 }
