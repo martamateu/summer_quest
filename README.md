@@ -23,6 +23,7 @@ Built with **Next.js 16 · React 19 · TypeScript · Tailwind 4**. Offline-first
 | 💰 **Finanzas** | Receipt OCR (Gemini), manual entry, 27 categories, auto-categorization (supermarket · café · horchata), income tracking, day/week/month views + 50/30/20 insights · **monthly report export** (Markdown for NotebookLM / PDF) |
 | 🏋️ **Gym** | A/B/C workout rotation, weight×reps tracking, progression analytics, **week/month stats** (workout types + time trained), Google Sheets sync |
 | 📊 **Stats** | Habit completion %, streaks, per-area breakdowns, **navigable steps explorer** (month/year totals, average, best day + bar chart) |
+| 🗂️ **Admin Life** | Voice/text capture → AI routes to notes or shopping list · **Casa**: AI-generated home cleaning plan from natural language description (32 object templates, deterministic scheduler, per-area colour-coded calendar with inline edit + mark-done) · **Ciclo**: menstrual cycle data model + phase helpers + AI insights endpoint |
 
 Secondary tabs: **Carrera** (career habits) and **Quests** (non-daily habits by area).
 
@@ -55,8 +56,11 @@ Secondary tabs: **Carrera** (career habits) and **Quests** (non-daily habits by 
 | `/api/steps` · `/api/screen-time` | GET/POST | Health data from Android | Bearer |
 | `/api/fcm-token` | GET/POST | Store Firebase push token | Bearer |
 | `/api/trigger-sync` | POST | Silent FCM push to wake Android | Bypass |
+| `/api/home-config` | POST | Natural language description → home inventory JSON (Gemini + Zod) | Session |
+| `/api/cycle-insights` | POST | Cycle history → regularity + phase insights (Gemini + Zod) | Session |
+| `/api/note-capture` | POST | Raw text/voice → structured note or shopping items (Gemini) | Session |
 
-**Sync model:** upload debounced (300 ms) + `sendBeacon` on page hide; download on mount/foreground. Array keys (`sq_expenses`, `sq_gym_logs`) merge by `id`; other keys restore only when local is empty.
+**Sync model:** upload debounced (300 ms) + `sendBeacon` on page hide; download on mount/foreground. Array keys (`sq_expenses`, `sq_gym_logs`, `sq_notes`, `sq_super_list`, `sq_cleaning_tasks`) merge by `id`; object keys (`sq_home`, `sq_cleaning_history`, `sq_cycle`) local-wins on conflict.
 
 ---
 
@@ -108,22 +112,22 @@ Actively expanding towards a full life-tracker.
 - **Gym week/month stats** — workout types + time trained (with session-duration tracking)
 - **Steps explorer** — navigable month/year totals, average, best day + bar chart
 - **New finance categories** — café, horchata, psicólogo, entrenador, Urban Sports, lentillas, uni, cine, libros + keyword auto-categorization
+- **Admin Life – Casa** — AI-generated cleaning plan from a natural language home description; 32 object templates (floor, fridge, washing_machine…); deterministic hash scheduler distributes tasks across the cycle; per-area colour-coded calendar with filter, inline edit (name + frequency), mark-done from list or calendar, daily suggestion per area, overdue badges
+- **Admin Life – Ciclo** — `sq_cycle` data model (`CyclePeriod`, `CycleData`, `CyclePhase`), pure phase/prediction helpers (`lib/cycle.ts`), `/api/cycle-insights` endpoint (Gemini regularity + phase insights)
 
 ### Next up (near-term)
 
+- **Cycle calendar UI** — period calendar in Admin Life using `sq_cycle` + `lib/cycle.ts`
 - **CSV import** — bulk-backfill past months of expenses/income from a bank export
 - **Gym weight tracker** — manual log + chart (Renpho mock → Google Health later)
 - **Study tracker** — AI master's degree progress screen
 - **Books tracker** — reading log + "20 pages/day" habit (manual first, Goodreads later)
 - **Payroll tracker** — nómina screen + payslip PDF OCR
-- **Admin Life** — to-do + cleaning schedule that feeds the calendar; voice notes → shopping list
 
 ### Planned (larger / AI-heavy)
 
 - **Home redesign** — day-type routines (energía / calma / productividad / admin) with morning + evening flows, stored in Redis, per-routine stats
 - **Gym workout OCR diary** — photograph a workout → structured log
-- **Cycle calendar** — menstrual phases + training/nutrition insights
-- **Running tracker** — sessions + AI insights
 - **Gym AI coach** — load progression, cycle-aware
 - **Food photo OCR** — meal photo → macros & quantities
 - **Voice recorder** — transcript → categorized notes + shopping list
