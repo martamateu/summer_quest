@@ -368,7 +368,9 @@ export function resolveHomeTasks(
         const lastDone = history[key]
         const freqOverride = obj.overrides?.[task.id]?.frequencyDays
         const frequencyDays = freqOverride ?? task.frequencyDays
-        const nextDue = lastDone ? addDays(lastDone, frequencyDays) : today
+        // Sin historial: asume que el objeto está recién limpio (onboarding),
+        // la primera vez que toca es dentro de frequencyDays (no hoy).
+        const nextDue = lastDone ? addDays(lastDone, frequencyDays) : addDays(today, frequencyDays)
 
         resolved.push({
           key,

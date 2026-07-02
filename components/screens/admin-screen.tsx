@@ -105,6 +105,7 @@ export function AdminScreen() {
   const [onboardingLoading, setOnboardingLoading] = useState(false)
   const [onboardingError, setOnboardingError] = useState<string | null>(null)
   const [areaFilter2, setAreaFilter2] = useState<string>('all')
+  const [showDoneToday, setShowDoneToday] = useState(false)
 
   useEffect(() => {
     setNotes(readArr<Note>(NOTES_KEY))
@@ -264,13 +265,19 @@ export function AdminScreen() {
     return { label: `en ${diff} día${diff === 1 ? '' : 's'}`, cls: 'text-muted-foreground' }
   }
 
-  const areas2 = homeData ? Array.from(new Set(resolvedTasks.map(t => t.areaName))) : []
-  const filteredTasks = areaFilter2 === 'all'
-    ? resolvedTasks
-    : resolvedTasks.filter(t => t.areaName === areaFilter2)
-  const sortedTasks = [...filteredTasks].sort((a, b) => a.nextDue.localeCompare(b.nextDue))
+  // Separar: pendientes (nextDue <= hoy) vs hechas hoy (lastDone === hoy, nextDue > hoy)
+  const pendingTasks = resolvedTasks.filter(t => t.nextDue <= today)
+  const doneTodayTasks = resolvedTasks.filter(t => t.lastDone === today && t.nextDue > today)
 
-  // Calendario
+  const areas2 = homeData ? Array.from(new Set(resolvedTasks.map(t => t.areaName))) : []
+
+  const applyAreaFilter = (list: ResolvedTask[]) =>
+    areaFilter2 === 'all' ? list : list.filter(t => t.areaName === areaFilter2)
+
+  const sortedPending = [...applyAreaFilter(pendingTasks)].sort((a, b) => a.nextDue.localeCompare(b.nextDue))
+  const sortedDoneToday = [...applyAreaFilter(doneTodayTasks)].sort((a, b) => a.label.localeCompare(b.label))
+
+  // Calendario: pinta nextDue de TODAS las tareas (incluidas hechas hoy con nextDue futuro)
   const ref = new Date()
   const base = new Date(ref.getFullYear(), ref.getMonth() + monthOffset, 1)
   const cy = base.getFullYear()
@@ -292,9 +299,9 @@ export function AdminScreen() {
 
   const selectedDayTasks = selectedDay ? tasksByDay[selectedDay] || [] : []
 
-  // Derived counts
-  const overdueCount = resolvedTasks.filter(t => t.nextDue < today).length
-  const todayCount = resolvedTasks.filter(t => t.nextDue === today).length
+  // Counts para badges
+  const overdueCount = pendingTasks.filter(t => t.nextDue < today).length
+  const todayCount = pendingTasks.filter(t => t.nextDue === today).length
 
   // ── Render ─────────────────────────────────────────────────────────────────
   const areasPresent = Array.from(new Set(notes.map(n => n.area)))
@@ -532,30 +539,60 @@ export function AdminScreen() {
                 </div>
               )}
 
-              {/* Lista de tareas */}
-              <div className="space-y-2 mb-6">
-                {sortedTasks.map(t => {
-                  const st = taskStatusFor(t)
-                  return (
-                    <div key={t.key} className="bg-card rounded-2xl p-4">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-foreground truncate">{t.label}</p>
-                          <p className="text-[11px] text-muted-foreground mt-0.5">
-                            {t.objectName} · cada {t.frequencyDays} día{t.frequencyDays === 1 ? '' : 's'} · <span className={st.cls}>{st.label}</span>
-                          </p>
+              {/* Lista de tareas pendientes */}
+              {sortedPending.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  Todo al día. Vuelve mañana.
+                </p>
+              ) : (
+                <div className="space-y-2 mb-4">
+                  {sortedPending.map(t => {
+                    const st = taskStatusFor(t)
+                    return (
+                      <div key={t.key} className="bg-card rounded-2xl p-4">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-foreground truncate">{t.label}</p>
+                            <p className="text-[11px] text-muted-foreground mt-0.5">
+                              {t.objectName} · cada {t.frequencyDays} día{t.frequencyDays === 1 ? '' : 's'} · <span className={st.cls}>{st.label}</span>
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => markDone(t.key, t.frequencyDays)}
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-secondary text-foreground text-xs font-medium hover:bg-primary hover:text-primary-foreground shrink-0"
+                          >
+                            <Check className="w-3.5 h-3.5" /> Hecho
+                          </button>
                         </div>
-                        <button
-                          onClick={() => markDone(t.key, t.frequencyDays)}
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-secondary text-foreground text-xs font-medium hover:bg-primary hover:text-primary-foreground shrink-0"
-                        >
-                          <Check className="w-3.5 h-3.5" /> Hecho
-                        </button>
                       </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* Sección: hechas hoy */}
+              {sortedDoneToday.length > 0 && (
+                <div className="mb-6">
+                  <button
+                    onClick={() => setShowDoneToday(v => !v)}
+                    className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2"
+                  >
+                    <Check className="w-3.5 h-3.5 text-primary" />
+                    Hechas hoy ({sortedDoneToday.length})
+                    <span className="ml-1">{showDoneToday ? '▲' : '▼'}</span>
+                  </button>
+                  {showDoneToday && (
+                    <div className="space-y-1.5">
+                      {sortedDoneToday.map(t => (
+                        <div key={t.key} className="bg-card rounded-xl p-3 opacity-60">
+                          <p className="text-sm text-muted-foreground line-through truncate">{t.label}</p>
+                          <p className="text-[10px] text-muted-foreground">{t.objectName} · próxima en {t.frequencyDays} día{t.frequencyDays === 1 ? '' : 's'}</p>
+                        </div>
+                      ))}
                     </div>
-                  )
-                })}
-              </div>
+                  )}
+                </div>
+              )}
 
               {/* Calendario mensual */}
               <div className="bg-card rounded-2xl p-4">
