@@ -165,3 +165,19 @@ export interface GymWorkout {
   name: string
   exercises: GymExercise[]
 }
+
+// ── Cycle types ──
+
+export interface CyclePeriod {
+  start: string     // "YYYY-MM-DD" primer día de regla
+  end?: string      // "YYYY-MM-DD" último día (opcional si sigue en curso)
+  symptoms?: string[] // síntomas opcionales (MVP puede ir vacío)
+}
+
+export interface CycleData {
+  periods: CyclePeriod[]  // historial de reglas, ordenado por start asc
+  avgCycleLen?: number    // días medios entre inicios (calculado, NO fijo a 28)
+  symptoms?: string[]     // síntomas globales opcionales
+}
+
+export type CyclePhase = 'menstrual' | 'folicular' | 'ovulacion' | 'lutea'
