@@ -10,6 +10,7 @@ import { GymScreen } from '@/components/screens/gym-screen'
 import { StatsScreen } from '@/components/screens/stats-screen'
 import { AdminScreen } from '@/components/screens/admin-screen'
 import { FoodScreen } from '@/components/screens/food-screen'
+import { WorkoutScreen } from '@/components/screens/workout-screen'
 import { INITIAL_HABITS, INITIAL_METRICS } from '@/lib/data'
 import type { Habit, DailyMetrics } from '@/lib/types'
 
@@ -89,7 +90,7 @@ function getWeeklyData(): number[] {
   } catch { return [0,0,0,0,0,0,0] }
 }
 
-type Tab = 'hoy' | 'food' | 'finanzas' | 'gym' | 'stats' | 'admin'
+type Tab = 'hoy' | 'food' | 'finanzas' | 'gym' | 'entrenos' | 'stats' | 'admin'
 
 export default function Page() {
   const [activeTab, setActiveTab] = useState<Tab>('hoy')
@@ -240,7 +241,7 @@ export default function Page() {
   }
 
   // ── Cloud backup: sync localStorage ↔ Redis ──
-  const SYNC_KEYS = ['sq_habits', 'sq_today', 'sq_history', 'sq_expenses', 'sq_finance_started_at', 'sq_gym_logs', 'sq_gym_seeded', 'sq_steps_history', 'sq_food_log', 'sq_favorite_recipes', 'sq_notes', 'sq_super_list', 'sq_home', 'sq_cleaning_history', 'sq_cycle', 'sq_run_logs', 'sq_today_goals', 'sq_flex_log', 'sq_finance_log']
+  const SYNC_KEYS = ['sq_habits', 'sq_today', 'sq_history', 'sq_expenses', 'sq_finance_started_at', 'sq_gym_logs', 'sq_gym_seeded', 'sq_steps_history', 'sq_food_log', 'sq_favorite_recipes', 'sq_notes', 'sq_super_list', 'sq_home', 'sq_cleaning_history', 'sq_cycle', 'sq_run_logs', 'sq_today_goals', 'sq_flex_log', 'sq_finance_log', 'sq_workout_logs']
 
   // Debounced upload: cancel previous pending upload so only the latest data is sent
   const uploadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -297,7 +298,7 @@ export default function Page() {
   }
 
   // Keys that contain arrays of items with `id` fields — need merge by ID
-  const ARRAY_KEYS = new Set(['sq_expenses', 'sq_gym_logs', 'sq_notes', 'sq_super_list', 'sq_cleaning_tasks', 'sq_run_logs'])
+  const ARRAY_KEYS = new Set(['sq_expenses', 'sq_gym_logs', 'sq_notes', 'sq_super_list', 'sq_cleaning_tasks', 'sq_run_logs', 'sq_workout_logs'])
 
   // Merge two JSON arrays by `id`, keeping all unique items
   const mergeArraysById = (localJson: string, cloudJson: string): string => {
@@ -476,6 +477,9 @@ export default function Page() {
           </div>
           <div style={{ display: activeTab === 'gym' ? 'block' : 'none' }}>
             <GymScreen />
+          </div>
+          <div style={{ display: activeTab === 'entrenos' ? 'block' : 'none' }}>
+            <WorkoutScreen />
           </div>
           <div style={{ display: activeTab === 'admin' ? 'block' : 'none' }}>
             <AdminScreen />
