@@ -779,14 +779,101 @@ export function AdminScreen() {
                     {selectedDayTasks.length === 0 ? (
                       <p className="text-xs text-muted-foreground">Sin tareas este día.</p>
                     ) : (
-                      <ul className="space-y-1">
-                        {selectedDayTasks.map(t => (
-                          <li key={t.key} className="text-xs text-foreground flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
-                            <span className="font-medium">{t.objectName}:</span> {t.label}
-                          </li>
-                        ))}
-                      </ul>
+                      <div className="space-y-2">
+                        {selectedDayTasks.map(t => {
+                          const isEditing = editingTaskKey === t.key
+                          const alreadyDone = t.lastDone === today
+                          return (
+                            <div key={t.key} className="bg-secondary rounded-xl p-3">
+                              {/* Fila principal */}
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <p className={`text-xs font-semibold truncate ${alreadyDone ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                    {t.label}
+                                  </p>
+                                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                                    {t.objectName} · cada {t.frequencyDays} día{t.frequencyDays === 1 ? '' : 's'}
+                                    {alreadyDone && <span className="text-primary"> · hecha hoy</span>}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button
+                                    onClick={() => isEditing ? cancelTaskEdit() : startTaskEdit(t)}
+                                    className="p-1 rounded-full hover:bg-card"
+                                    title="Editar tarea"
+                                  >
+                                    {isEditing
+                                      ? <X className="w-3.5 h-3.5 text-muted-foreground" />
+                                      : <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
+                                    }
+                                  </button>
+                                  {!alreadyDone && (
+                                    <button
+                                      onClick={() => markDone(t.key, t.frequencyDays)}
+                                      className="flex items-center gap-0.5 px-2 py-1 rounded-full bg-card text-foreground text-[10px] font-medium hover:bg-primary hover:text-primary-foreground"
+                                    >
+                                      <Check className="w-3 h-3" /> Hecho
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Panel de edición expandible */}
+                              {isEditing && (
+                                <div className="mt-2 pt-2 border-t border-border space-y-2">
+                                  <div>
+                                    <p className="text-[10px] text-muted-foreground uppercase mb-1">Nombre</p>
+                                    <input
+                                      autoFocus
+                                      value={editLabel}
+                                      onChange={e => setEditLabel(e.target.value)}
+                                      onKeyDown={e => { if (e.key === 'Enter') saveTaskEdit(t); if (e.key === 'Escape') cancelTaskEdit() }}
+                                      className="w-full p-2 rounded-lg bg-card text-foreground outline-none focus:ring-2 focus:ring-primary text-xs"
+                                    />
+                                  </div>
+                                  <div>
+                                    <p className="text-[10px] text-muted-foreground uppercase mb-1">Frecuencia</p>
+                                    <div className="flex flex-wrap gap-1 mb-1.5">
+                                      {FREQ_OPTIONS.map(opt => (
+                                        <button
+                                          key={opt.days}
+                                          onClick={() => { setEditFrequency(opt.days); setEditCustomFreq('') }}
+                                          className={`px-2.5 py-0.5 rounded-full text-[10px] ${editFrequency === opt.days && !editCustomFreq ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
+                                        >
+                                          {opt.label}
+                                        </button>
+                                      ))}
+                                    </div>
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      value={editCustomFreq}
+                                      onChange={e => { setEditCustomFreq(e.target.value); setEditFrequency(0) }}
+                                      placeholder="Cada X días"
+                                      className="w-full p-1.5 rounded-lg bg-card text-foreground outline-none focus:ring-2 focus:ring-primary text-xs"
+                                    />
+                                  </div>
+                                  <div className="flex gap-1.5">
+                                    <button
+                                      onClick={cancelTaskEdit}
+                                      className="flex-1 py-1.5 rounded-lg bg-card text-foreground text-xs font-medium"
+                                    >
+                                      Cancelar
+                                    </button>
+                                    <button
+                                      onClick={() => saveTaskEdit(t)}
+                                      disabled={!editLabel.trim()}
+                                      className="flex-1 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-50"
+                                    >
+                                      Guardar
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
                     )}
                   </div>
                 )}
