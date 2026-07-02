@@ -70,6 +70,16 @@ function isTodayLogged(key: string): boolean {
   } catch { return false }
 }
 
+// Cuenta cuántos gastos hay hoy en sq_expenses
+function countTodayExpenses(): number {
+  if (typeof window === 'undefined') return 0
+  const today = getLocalDateStr()
+  try {
+    const arr: { date: string }[] = JSON.parse(localStorage.getItem('sq_expenses') || '[]')
+    return arr.filter(e => e.date === today).length
+  } catch { return 0 }
+}
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface GoalEntry {
   task: string
@@ -171,6 +181,7 @@ export function TodayDashboard({ streak }: TodayDashboardProps) {
   const [weather, setWeather] = useState<Weather | null>(null)
   const [weatherLoading, setWeatherLoading] = useState(false)
   const [showTaskHelp, setShowTaskHelp] = useState(false)
+  const [todayExpenseCount, setTodayExpenseCount] = useState(0)
 
   // Grabadora de voz
   const [recording, setRecording] = useState(false)
@@ -183,6 +194,27 @@ export function TodayDashboard({ streak }: TodayDashboardProps) {
   // Load today's data from localStorage
   useEffect(() => {
     setDayData(readDayData(today))
+    setTodayExpenseCount(countTodayExpenses())
+  }, [today])
+
+  // Escuchar cambios: si se añaden gastos hoy, auto-marcar finanzas
+  useEffect(() => {
+    const handler = () => {
+      const count = countTodayExpenses()
+      setTodayExpenseCount(count)
+      if (count > 0) {
+        // Auto-marcar finanzas si hay gastos hoy y no estaba marcado
+        const current = readDayData(today)
+        if (!current.finanzas) {
+          const next = { ...current, finanzas: true }
+          saveDayData(next)
+          setDayData(next)
+          logToday('sq_finance_log')
+        }
+      }
+    }
+    window.addEventListener('sq-data-changed', handler)
+    return () => window.removeEventListener('sq-data-changed', handler)
   }, [today])
 
   // Fetch weather via geolocation → open-meteo (free, no key)
@@ -286,7 +318,8 @@ export function TodayDashboard({ streak }: TodayDashboardProps) {
     weekday: 'long', day: 'numeric', month: 'long',
   })
 
-  const goalsCompleted = [dayData.fuerza.done, dayData.master.done, dayData.flexibilidad.done].filter(Boolean).length
+  const goalsCompleted = [dayData.fuerza.done, dayData.master.done, dayData.flexibilidad.done, dayData.finanzas].filter(Boolean).length
+  const goalsTotal = 4
 
   return (
     <div className="px-4 pt-6 pb-24 space-y-4">
@@ -326,10 +359,10 @@ export function TodayDashboard({ streak }: TodayDashboardProps) {
         <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
           <div
             className="h-full rounded-full bg-primary transition-all duration-500"
-            style={{ width: `${(goalsCompleted / 3) * 100}%` }}
+            style={{ width: `${(goalsCompleted / goalsTotal) * 100}%` }}
           />
         </div>
-        <p className="text-xs font-medium text-foreground">{goalsCompleted}/3</p>
+        <p className="text-xs font-medium text-foreground">{goalsCompleted}/{goalsTotal}</p>
       </div>
 
       {/* Goal cards */}
@@ -358,26 +391,29 @@ export function TodayDashboard({ streak }: TodayDashboardProps) {
         onToggle={() => toggleGoal('flexibilidad')}
       />
 
-      {/* Check finanzas */}
-      <button
-        onClick={toggleFinanzas}
-        className={`w-full flex items-center gap-3 p-4 rounded-2xl border-2 transition-all ${
-          dayData.finanzas
-            ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-400'
-            : 'bg-card border-border'
-        }`}
-      >
-        {dayData.finanzas
-          ? <CheckCircle2 className="w-6 h-6 text-amber-500 shrink-0" />
-          : <Wallet className="w-6 h-6 text-muted-foreground shrink-0" />
-        }
-        <div className="text-left">
-          <p className={`text-sm font-semibold ${dayData.finanzas ? 'text-amber-600 dark:text-amber-400' : 'text-foreground'}`}>
-            Gastos del día registrados
-          </p>
-          <p className="text-xs text-muted-foreground">¿Has añadido tus movimientos de hoy?</p>
+      {/* Finanzas — mismo diseño que GoalCard pero sin input */}
+      <div className="bg-card rounded-2xl p-4 border-l-4" style={{ borderLeftColor: '#f59e0b' }}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <span style={{ color: '#f59e0b' }}><Wallet className="w-4 h-4" /></span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-foreground">Gastos</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {todayExpenseCount > 0
+                  ? `${todayExpenseCount} movimiento${todayExpenseCount === 1 ? '' : 's'} registrado${todayExpenseCount === 1 ? '' : 's'} hoy`
+                  : '¿Has añadido tus movimientos de hoy?'
+                }
+              </p>
+            </div>
+          </div>
+          <button onClick={toggleFinanzas} className="shrink-0 ml-3">
+            {dayData.finanzas
+              ? <CheckCircle2 className="w-6 h-6" style={{ color: '#f59e0b' }} />
+              : <Circle className="w-6 h-6 text-muted-foreground/40" />
+            }
+          </button>
         </div>
-      </button>
+      </div>
 
       {/* Grabadora de voz → nota en Admin */}
       <div className="bg-card rounded-2xl p-4">
