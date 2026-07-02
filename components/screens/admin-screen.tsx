@@ -246,9 +246,12 @@ export function AdminScreen() {
     }
   }
 
-  const markDone = (key: string, frequencyDays: number) => {
-    const today = getLocalDateStr()
-    saveHistory({ ...cleaningHistory, [key]: today })
+  // doneDate: la fecha en que se considera hecha la tarea.
+  // - Desde lista pendiente: siempre hoy.
+  // - Desde calendario: la fecha del día seleccionado (puede ser futura si el usuario adelanta).
+  // nextDue = doneDate + frequencyDays (el scheduler lo recalcula en render).
+  const markDone = (key: string, doneDate: string) => {
+    saveHistory({ ...cleaningHistory, [key]: doneDate })
   }
 
   const resetHome = () => {
@@ -637,7 +640,7 @@ export function AdminScreen() {
                               }
                             </button>
                             <button
-                              onClick={() => markDone(t.key, t.frequencyDays)}
+                              onClick={() => markDone(t.key, today)}
                               className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-secondary text-foreground text-xs font-medium hover:bg-primary hover:text-primary-foreground"
                             >
                               <Check className="w-3.5 h-3.5" /> Hecho
@@ -782,7 +785,8 @@ export function AdminScreen() {
                       <div className="space-y-2">
                         {selectedDayTasks.map(t => {
                           const isEditing = editingTaskKey === t.key
-                          const alreadyDone = t.lastDone === today
+                          // hecha si lastDone coincide con el día seleccionado en el calendario
+                          const alreadyDone = t.lastDone === selectedDay
                           return (
                             <div key={t.key} className="bg-secondary rounded-xl p-3">
                               {/* Fila principal */}
@@ -809,7 +813,7 @@ export function AdminScreen() {
                                   </button>
                                   {!alreadyDone && (
                                     <button
-                                      onClick={() => markDone(t.key, t.frequencyDays)}
+                                      onClick={() => markDone(t.key, selectedDay!)}
                                       className="flex items-center gap-0.5 px-2 py-1 rounded-full bg-card text-foreground text-[10px] font-medium hover:bg-primary hover:text-primary-foreground"
                                     >
                                       <Check className="w-3 h-3" /> Hecho
