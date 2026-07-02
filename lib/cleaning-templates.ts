@@ -21,7 +21,7 @@ export interface HomeObject {
   name: string        // nombre personalizado (ej. "Armario superior 1")
   templateId: string
   config?: Record<string, unknown>
-  overrides?: Record<string, { frequencyDays?: number }> // override por taskId
+  overrides?: Record<string, { frequencyDays?: number; label?: string }> // override por taskId
 }
 
 export interface HomeArea {
@@ -366,8 +366,9 @@ export function resolveHomeTasks(
       for (const task of template.tasks) {
         const key = `${obj.id}::${task.id}`
         const lastDone = history[key]
-        const freqOverride = obj.overrides?.[task.id]?.frequencyDays
-        const frequencyDays = freqOverride ?? task.frequencyDays
+        const taskOverride = obj.overrides?.[task.id]
+        const frequencyDays = taskOverride?.frequencyDays ?? task.frequencyDays
+        const label = taskOverride?.label ?? task.label
         // Sin historial: asume que el objeto está recién limpio (onboarding),
         // la primera vez que toca es dentro de frequencyDays (no hoy).
         const nextDue = lastDone ? addDays(lastDone, frequencyDays) : addDays(today, frequencyDays)
@@ -379,7 +380,7 @@ export function resolveHomeTasks(
           areaName: area.name,
           templateId: obj.templateId,
           taskId: task.id,
-          label: task.label,
+          label,
           frequencyDays,
           lastDone,
           nextDue,

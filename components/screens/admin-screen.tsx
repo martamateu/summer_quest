@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Mic, MicOff, Send, Trash2, StickyNote, ShoppingCart, Loader2, Check, Plus, Sparkles, ChevronLeft, ChevronRight, Home, RotateCcw } from 'lucide-react'
+import { Mic, MicOff, Send, Trash2, StickyNote, ShoppingCart, Loader2, Check, Plus, Sparkles, ChevronLeft, ChevronRight, Home, RotateCcw, Pencil, X } from 'lucide-react'
 import { resolveHomeTasks } from '@/lib/cleaning-templates'
 import type { HomeData, ResolvedTask } from '@/lib/cleaning-templates'
 
@@ -106,6 +106,11 @@ export function AdminScreen() {
   const [onboardingError, setOnboardingError] = useState<string | null>(null)
   const [areaFilter2, setAreaFilter2] = useState<string>('all')
   const [showDoneToday, setShowDoneToday] = useState(false)
+  // Edición de tarea
+  const [editingTaskKey, setEditingTaskKey] = useState<string | null>(null)
+  const [editLabel, setEditLabel] = useState('')
+  const [editFrequency, setEditFrequency] = useState(7)
+  const [editCustomFreq, setEditCustomFreq] = useState('')
 
   useEffect(() => {
     setNotes(readArr<Note>(NOTES_KEY))
@@ -250,6 +255,67 @@ export function AdminScreen() {
     setHomeData(null)
     persistObj(HOME_KEY, null)
     saveHistory({})
+  }
+
+  const FREQ_OPTIONS = [
+    { label: 'Diaria', days: 1 },
+    { label: 'Semanal', days: 7 },
+    { label: 'Quincenal', days: 15 },
+    { label: 'Mensual', days: 30 },
+    { label: 'Trimestral', days: 90 },
+  ]
+
+  const startTaskEdit = (t: ResolvedTask) => {
+    setEditingTaskKey(t.key)
+    setEditLabel(t.label)
+    const isPreset = FREQ_OPTIONS.some(o => o.days === t.frequencyDays)
+    if (isPreset) {
+      setEditFrequency(t.frequencyDays)
+      setEditCustomFreq('')
+    } else {
+      setEditFrequency(0)
+      setEditCustomFreq(String(t.frequencyDays))
+    }
+  }
+
+  const cancelTaskEdit = () => {
+    setEditingTaskKey(null)
+    setEditLabel('')
+    setEditCustomFreq('')
+  }
+
+  const saveTaskEdit = (t: ResolvedTask) => {
+    if (!homeData) return
+    const newLabel = editLabel.trim() || t.label
+    const newFreq = editCustomFreq.trim()
+      ? Math.max(1, parseInt(editCustomFreq, 10) || t.frequencyDays)
+      : editFrequency || t.frequencyDays
+
+    // Aplicar override en sq_home: no tocamos las plantillas, solo el objeto
+    const updatedHome: HomeData = {
+      ...homeData,
+      areas: homeData.areas.map(area => ({
+        ...area,
+        objects: area.objects.map(obj => {
+          if (obj.id !== t.objectId) return obj
+          const currentOverrides = obj.overrides ?? {}
+          const taskOverride = currentOverrides[t.taskId] ?? {}
+          return {
+            ...obj,
+            overrides: {
+              ...currentOverrides,
+              [t.taskId]: {
+                ...taskOverride,
+                ...(newLabel !== t.label ? { label: newLabel } : {}),
+                ...(newFreq !== t.frequencyDays ? { frequencyDays: newFreq } : {}),
+              },
+            },
+          }
+        }),
+      })),
+    }
+    saveHome(updatedHome) // persistObj(HOME_KEY, ...) + dispatch → sube a Redis
+    cancelTaskEdit()
   }
 
   // Derivados para la UI de limpieza
@@ -548,8 +614,10 @@ export function AdminScreen() {
                 <div className="space-y-2 mb-4">
                   {sortedPending.map(t => {
                     const st = taskStatusFor(t)
+                    const isEditing = editingTaskKey === t.key
                     return (
                       <div key={t.key} className="bg-card rounded-2xl p-4">
+                        {/* Fila principal */}
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-semibold text-foreground truncate">{t.label}</p>
@@ -557,13 +625,78 @@ export function AdminScreen() {
                               {t.objectName} · cada {t.frequencyDays} día{t.frequencyDays === 1 ? '' : 's'} · <span className={st.cls}>{st.label}</span>
                             </p>
                           </div>
-                          <button
-                            onClick={() => markDone(t.key, t.frequencyDays)}
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-secondary text-foreground text-xs font-medium hover:bg-primary hover:text-primary-foreground shrink-0"
-                          >
-                            <Check className="w-3.5 h-3.5" /> Hecho
-                          </button>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              onClick={() => isEditing ? cancelTaskEdit() : startTaskEdit(t)}
+                              className="p-1.5 rounded-full hover:bg-secondary"
+                              title="Editar tarea"
+                            >
+                              {isEditing
+                                ? <X className="w-4 h-4 text-muted-foreground" />
+                                : <Pencil className="w-4 h-4 text-muted-foreground" />
+                              }
+                            </button>
+                            <button
+                              onClick={() => markDone(t.key, t.frequencyDays)}
+                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-secondary text-foreground text-xs font-medium hover:bg-primary hover:text-primary-foreground"
+                            >
+                              <Check className="w-3.5 h-3.5" /> Hecho
+                            </button>
+                          </div>
                         </div>
+
+                        {/* Panel de edición expandible */}
+                        {isEditing && (
+                          <div className="mt-3 pt-3 border-t border-border space-y-3">
+                            <div>
+                              <p className="text-[10px] text-muted-foreground uppercase mb-1">Nombre de la tarea</p>
+                              <input
+                                autoFocus
+                                value={editLabel}
+                                onChange={e => setEditLabel(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') saveTaskEdit(t); if (e.key === 'Escape') cancelTaskEdit() }}
+                                className="w-full p-2 rounded-xl bg-secondary text-foreground outline-none focus:ring-2 focus:ring-primary text-sm"
+                              />
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-muted-foreground uppercase mb-1">Frecuencia</p>
+                              <div className="flex flex-wrap gap-1.5 mb-2">
+                                {FREQ_OPTIONS.map(opt => (
+                                  <button
+                                    key={opt.days}
+                                    onClick={() => { setEditFrequency(opt.days); setEditCustomFreq('') }}
+                                    className={`px-3 py-1 rounded-full text-xs ${editFrequency === opt.days && !editCustomFreq ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}
+                                  >
+                                    {opt.label}
+                                  </button>
+                                ))}
+                              </div>
+                              <input
+                                type="number"
+                                min={1}
+                                value={editCustomFreq}
+                                onChange={e => { setEditCustomFreq(e.target.value); setEditFrequency(0) }}
+                                placeholder="Cada X días (personalizado)"
+                                className="w-full p-2 rounded-xl bg-secondary text-foreground outline-none focus:ring-2 focus:ring-primary text-sm"
+                              />
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={cancelTaskEdit}
+                                className="flex-1 py-2 rounded-xl bg-secondary text-foreground text-sm font-medium"
+                              >
+                                Cancelar
+                              </button>
+                              <button
+                                onClick={() => saveTaskEdit(t)}
+                                disabled={!editLabel.trim()}
+                                className="flex-1 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
+                              >
+                                Guardar
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )
                   })}
