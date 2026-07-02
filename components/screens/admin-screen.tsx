@@ -817,11 +817,8 @@ export function AdminScreen() {
                       <button
                         key={a}
                         onClick={() => { setCalAreaFilter(a); setSelectedDay(null) }}
-                        className="px-2.5 py-1 rounded-full text-[11px] whitespace-nowrap"
-                        style={calAreaFilter === a
-                          ? { backgroundColor: areaColorMap[a] || '#6b7280', color: 'white' }
-                          : { backgroundColor: 'var(--secondary)', color: 'var(--muted-foreground)' }
-                        }
+                        className={`px-2.5 py-1 rounded-full text-[11px] whitespace-nowrap ${calAreaFilter === a ? 'text-white' : 'bg-secondary text-muted-foreground'}`}
+                        style={calAreaFilter === a ? { backgroundColor: areaColorMap[a] || '#6b7280' } : undefined}
                       >
                         {a}
                       </button>
