@@ -124,6 +124,7 @@ export function AdminScreen() {
   const [onboardingError, setOnboardingError] = useState<string | null>(null)
   const [areaFilter2, setAreaFilter2] = useState<string>('all')
   const [showDoneToday, setShowDoneToday] = useState(false)
+  const [calAreaFilter, setCalAreaFilter] = useState<string>('all')
   // Edición de tarea
   const [editingTaskKey, setEditingTaskKey] = useState<string | null>(null)
   const [editLabel, setEditLabel] = useState('')
@@ -382,8 +383,10 @@ export function AdminScreen() {
   const monthLabel = base.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
   const weekDays = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 
-  // El calendario respeta el filtro de área activo
-  const calendarTasks = applyAreaFilter(resolvedTasks)
+  // Calendario: filtro propio independiente del filtro de lista
+  const calendarTasks = calAreaFilter === 'all'
+    ? resolvedTasks
+    : resolvedTasks.filter(t => t.areaName === calAreaFilter)
   const tasksByDay: Record<string, ResolvedTask[]> = {}
   for (const t of calendarTasks) {
     if (!tasksByDay[t.nextDue]) tasksByDay[t.nextDue] = []
@@ -800,6 +803,32 @@ export function AdminScreen() {
                     <ChevronRight className="w-4 h-4 text-muted-foreground" />
                   </button>
                 </div>
+
+                {/* Filtro de área del calendario */}
+                {areas2.length > 1 && (
+                  <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1">
+                    <button
+                      onClick={() => { setCalAreaFilter('all'); setSelectedDay(null) }}
+                      className={`px-2.5 py-1 rounded-full text-[11px] whitespace-nowrap ${calAreaFilter === 'all' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}
+                    >
+                      Todas
+                    </button>
+                    {areas2.map(a => (
+                      <button
+                        key={a}
+                        onClick={() => { setCalAreaFilter(a); setSelectedDay(null) }}
+                        className="px-2.5 py-1 rounded-full text-[11px] whitespace-nowrap"
+                        style={calAreaFilter === a
+                          ? { backgroundColor: areaColorMap[a] || '#6b7280', color: 'white' }
+                          : { backgroundColor: 'var(--secondary)', color: 'var(--muted-foreground)' }
+                        }
+                      >
+                        {a}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 <div className="grid grid-cols-7 gap-1 mb-1">
                   {weekDays.map(d => (
                     <div key={d} className="text-center text-[10px] text-muted-foreground font-medium">{d}</div>
