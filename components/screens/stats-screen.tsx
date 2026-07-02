@@ -376,20 +376,59 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
               </div>
             </div>
           ) : (
-            <div className="flex items-end gap-0.5 h-20">
-              {(() => {
-                const maxSteps = Math.max(...rows.map(r => r.steps), 1000)
-                return rows.map((r, i) => {
-                const h = r.steps > 0 ? Math.max((r.steps / maxSteps) * 100, 4) : 0
-                const isGoal = r.steps >= 15000
-                return (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-0.5">
-                    <div className="w-full rounded-t" style={{ height: `${h}%`, backgroundColor: isGoal ? '#3b82f6' : '#3b82f630' }} />
-                    {view === 'semana' && <span className="text-[9px] text-muted-foreground">{fmtDateLabel(r.date).split(' ')[0]}</span>}
-                  </div>
-                )
-              })})()}
-            </div>
+            <>
+              {/* Stats del período */}
+              <div className="grid grid-cols-3 gap-2 mb-3">
+                <div className="bg-secondary rounded-xl p-2 text-center">
+                  <p className="text-[10px] text-muted-foreground uppercase">Total</p>
+                  <p className="text-sm font-bold text-foreground">{(summary.totalSteps / 1000).toFixed(1)}k</p>
+                </div>
+                <div className="bg-secondary rounded-xl p-2 text-center">
+                  <p className="text-[10px] text-muted-foreground uppercase">Media</p>
+                  <p className="text-sm font-bold text-foreground">
+                    {rows.filter(r => r.steps > 0).length > 0
+                      ? (summary.totalSteps / rows.filter(r => r.steps > 0).length / 1000).toFixed(1)
+                      : '0.0'}k
+                  </p>
+                </div>
+                <div className="bg-secondary rounded-xl p-2 text-center">
+                  <p className="text-[10px] text-muted-foreground uppercase">Días ≥15k</p>
+                  <p className="text-sm font-bold text-foreground">{summary.pasos}/{rows.length}</p>
+                </div>
+              </div>
+              {/* Gráfico de barras */}
+              {summary.totalSteps > 0 ? (
+                <div className="flex items-end gap-1" style={{ height: 80 }}>
+                  {(() => {
+                    const maxSteps = Math.max(...rows.map(r => r.steps), 1)
+                    return rows.map((r, i) => {
+                      const barH = r.steps > 0 ? Math.max(Math.round((r.steps / maxSteps) * 72), 4) : 2
+                      const isGoal = r.steps >= 15000
+                      return (
+                        <div key={i} className="flex-1 flex flex-col items-center justify-end gap-0.5" style={{ height: 80 }}>
+                          <div
+                            className="w-full rounded-t transition-all"
+                            style={{ height: barH, backgroundColor: isGoal ? '#3b82f6' : '#3b82f620' }}
+                          />
+                          {view === 'semana' && (
+                            <span className="text-[8px] text-muted-foreground leading-none">
+                              {fmtDateLabel(r.date).split(' ')[0]}
+                            </span>
+                          )}
+                          {view === 'mes' && Number(r.date.split('-')[2]) % 5 === 1 && (
+                            <span className="text-[8px] text-muted-foreground leading-none">
+                              {Number(r.date.split('-')[2])}
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })
+                  })()}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">Sin datos de pasos en este período</p>
+              )}
+            </>
           )}
         </div>
       )}
