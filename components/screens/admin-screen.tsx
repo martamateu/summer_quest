@@ -338,8 +338,8 @@ export function AdminScreen() {
   const pendingTasks = resolvedTasks.filter(t => t.nextDue <= today)
   const doneTodayTasks = resolvedTasks.filter(t => t.lastDone === today && t.nextDue > today)
 
-  // Sugerencia del día: solo cuando no hay pendientes ni hechas hoy
-  const suggestedTask = pendingTasks.length === 0 && doneTodayTasks.length === 0
+  // Sugerencia del día: cuando no hay tareas pendientes globales (con o sin filtro de área)
+  const suggestedTask = pendingTasks.length === 0
     ? getSuggestedTask(resolvedTasks, today)
     : null
 

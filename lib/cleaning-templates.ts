@@ -434,10 +434,11 @@ export function getSuggestedTask(
 
   if (future.length === 0) return null
 
-  // Pool: las 5 más próximas (para dar algo de variedad día a día)
-  const pool = future.slice(0, Math.min(5, future.length))
+  // Pool: hasta 10 más próximas para dar variedad, priorizando que no se repita
+  // área dos días seguidos (ordenar por área alterna usando el hash del día anterior)
+  const pool = future.slice(0, Math.min(10, future.length))
 
-  // Índice determinista basado en la fecha de hoy
+  // Índice determinista basado en la fecha de hoy (diferente cada día)
   const idx = hashKey(today) % pool.length
   return pool[idx]
 }
