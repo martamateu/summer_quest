@@ -192,6 +192,30 @@ export default function Page() {
       .catch(() => {})
   }
 
+  // Backfill the full daily-steps history (all years available in Google Health,
+  // pushed by the Android app to /api/steps/history). Hydrates sq_steps_history
+  // so the Stats screen can show every past day. Today's live value always wins.
+  const fetchStepsHistory = () => {
+    fetch('/api/steps/history')
+      .then((r) => r.json())
+      .then((data) => {
+        const days = data?.days as Record<string, { steps: number; calories: number }> | undefined
+        if (!days || Object.keys(days).length === 0) return
+        try {
+          const key = 'sq_steps_history'
+          const local = JSON.parse(localStorage.getItem(key) || '{}') as Record<string, { steps: number; calories: number }>
+          // History is authoritative for past days; keep local today (live) value.
+          const merged: Record<string, { steps: number; calories: number }> = { ...days }
+          const today = getLocalDateStr()
+          for (const d of Object.keys(local)) {
+            if (d === today || !(d in merged)) merged[d] = local[d]
+          }
+          localStorage.setItem(key, JSON.stringify(merged))
+        } catch {}
+      })
+      .catch(() => {})
+  }
+
   const triggerAndroidSync = () => {
     // Ask Android to push fresh steps + screen time, then fetch after 5s
     fetch('/api/trigger-sync', { method: 'POST' })
@@ -327,6 +351,7 @@ export default function Page() {
 
   useEffect(() => {
     fetchSteps() // show cached data immediately
+    fetchStepsHistory() // backfill full daily history from the cloud
     triggerAndroidSync() // ping Android, then re-fetch after 5s
 
     // Restore from cloud if localStorage is empty, then upload

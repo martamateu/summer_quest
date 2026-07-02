@@ -41,7 +41,11 @@ export async function POST(request: Request) {
   }
 
   const dateKey = date ?? new Date().toISOString().split('T')[0]
-  await redis.set(`steps:${dateKey}`, JSON.stringify({ steps, calories: calories ?? 0 }), { ex: 172800 })
+  const payload = JSON.stringify({ steps, calories: calories ?? 0 })
+  // Live/recent value (48h TTL) used by the dashboard for "today"
+  await redis.set(`steps:${dateKey}`, payload, { ex: 172800 })
+  // Persistent daily history (no TTL) so past days survive for the Stats screen
+  await redis.hset('steps:daily', { [dateKey]: payload })
 
   return Response.json({ ok: true, date: dateKey, steps })
 }
