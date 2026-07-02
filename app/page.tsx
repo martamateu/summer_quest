@@ -222,7 +222,7 @@ export default function Page() {
   }
 
   // ── Cloud backup: sync localStorage ↔ Redis ──
-  const SYNC_KEYS = ['sq_habits', 'sq_today', 'sq_history', 'sq_expenses', 'sq_finance_started_at', 'sq_gym_logs', 'sq_gym_seeded', 'sq_steps_history', 'sq_food_log', 'sq_favorite_recipes', 'sq_notes', 'sq_super_list']
+  const SYNC_KEYS = ['sq_habits', 'sq_today', 'sq_history', 'sq_expenses', 'sq_finance_started_at', 'sq_gym_logs', 'sq_gym_seeded', 'sq_steps_history', 'sq_food_log', 'sq_favorite_recipes', 'sq_notes', 'sq_super_list', 'sq_cleaning_tasks']
 
   // Debounced upload: cancel previous pending upload so only the latest data is sent
   const uploadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -279,7 +279,7 @@ export default function Page() {
   }
 
   // Keys that contain arrays of items with `id` fields — need merge by ID
-  const ARRAY_KEYS = new Set(['sq_expenses', 'sq_gym_logs', 'sq_notes', 'sq_super_list'])
+  const ARRAY_KEYS = new Set(['sq_expenses', 'sq_gym_logs', 'sq_notes', 'sq_super_list', 'sq_cleaning_tasks'])
 
   // Merge two JSON arrays by `id`, keeping all unique items
   const mergeArraysById = (localJson: string, cloudJson: string): string => {
