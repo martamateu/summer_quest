@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Flame, Dumbbell, GraduationCap, PersonStanding, CheckCircle2, Circle, Wallet, CloudRain, Sun, Cloud, CloudSnow, Wind, Loader2, Mic, MicOff, X, Save } from 'lucide-react'
+import { Dumbbell, GraduationCap, PersonStanding, CheckCircle2, Circle, Wallet, CloudRain, Sun, Cloud, CloudSnow, Wind, Loader2, Mic, MicOff, X, Save } from 'lucide-react'
 import { TaskBreakdown } from '@/components/task-breakdown'
 
 // ── localStorage helpers ───────────────────────────────────────────────────────
@@ -141,9 +141,7 @@ function weatherLabel(code: number): string {
 }
 
 // ── Props (mínimas — ya no recibe habits/metrics) ─────────────────────────────
-interface TodayDashboardProps {
-  streak: number
-}
+interface TodayDashboardProps {}
 
 // ── Goal card ─────────────────────────────────────────────────────────────────
 function GoalCard({
@@ -202,7 +200,7 @@ function GoalCard({
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
-export function TodayDashboard({ streak }: TodayDashboardProps) {
+export function TodayDashboard({}: TodayDashboardProps) {
   const today = getLocalDateStr()
 
   const [dayData, setDayData] = useState<DayData>(defaultDayData)
@@ -381,10 +379,7 @@ export function TodayDashboard({ streak }: TodayDashboardProps) {
             <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">Hoy</p>
             <p className="text-lg font-bold text-foreground capitalize">{dateStr}</p>
           </div>
-          <div className="flex items-center gap-1.5 bg-orange-50 dark:bg-orange-950/30 px-3 py-1.5 rounded-full">
-            <Flame className="w-4 h-4 text-orange-500" />
-            <span className="text-sm font-semibold text-orange-500">{streak} días</span>
-          </div>
+
         </div>
 
         {/* Clima */}

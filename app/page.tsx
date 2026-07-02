@@ -468,7 +468,7 @@ export default function Page() {
           {renderScreen()}
           {/* Keep these screens always mounted to preserve state */}
           <div style={{ display: activeTab === 'hoy' ? 'block' : 'none' }}>
-            <TodayDashboard streak={streak} />
+            <TodayDashboard />
           </div>
           <div style={{ display: activeTab === 'food' ? 'block' : 'none' }}>
             <FoodScreen />

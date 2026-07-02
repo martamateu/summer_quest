@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { Camera, Plus, X, Check, Loader2, Flame, Receipt, TrendingDown, TrendingUp, Trash2, ChevronLeft, ChevronRight, ArrowDownCircle, ArrowUpCircle, Lightbulb, Pencil, FileText } from 'lucide-react'
+import { Camera, Plus, X, Check, Loader2, Receipt, TrendingDown, TrendingUp, Trash2, ChevronLeft, ChevronRight, ArrowDownCircle, ArrowUpCircle, Lightbulb, Pencil, FileText } from 'lucide-react'
 import type { Expense, ExpenseCategory } from '@/lib/types'
 import { EXPENSE_CATEGORY_LABELS } from '@/lib/types'
 import { ReportExportModal } from '@/components/report-export-modal'
@@ -231,26 +231,6 @@ export function FinanzasScreen() {
   const todayExpenses = onlyExpenses(expenses.filter(e => e.date === todayStr))
   const todayTotal = todayExpenses.reduce((s, e) => s + e.amount, 0)
   const isUnderLimit = todayTotal < 10
-
-  // Streak
-  const streak = useMemo(() => {
-    const expensesByDate = onlyExpenses(expenses).reduce((acc, e) => {
-      acc[e.date] = (acc[e.date] || 0) + e.amount
-      return acc
-    }, {} as Record<string, number>)
-    let s = 0
-    const today = new Date()
-    const start = financeStartDate ? new Date(financeStartDate) : today
-    for (let i = 0; i < 365; i++) {
-      const date = new Date(today)
-      date.setDate(date.getDate() - i)
-      if (date < start) break
-      const dateStr = toDateStr(date)
-      if ((expensesByDate[dateStr] || 0) < 10) s++
-      else break
-    }
-    return s
-  }, [expenses, financeStartDate])
 
   // Week data
   const now = new Date()
@@ -610,15 +590,7 @@ _Generado por Summer Quest · ${getTodayStr()}_
       {/* ────── DAY VIEW ────── */}
       {view === 'dia' && (
         <>
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            <div className="bg-card rounded-2xl p-4">
-              <div className="flex items-center gap-2 mb-1">
-                <Flame className={`w-5 h-5 ${streak > 0 ? 'text-orange-500' : 'text-muted-foreground'}`} />
-                <span className="text-sm text-muted-foreground">Racha</span>
-              </div>
-              <p className="text-2xl font-bold text-foreground">{streak} días</p>
-              <p className="text-xs text-muted-foreground">{'<'}10€/día</p>
-            </div>
+          <div className="mb-4">
             <div className={`rounded-2xl p-4 ${isUnderLimit ? 'bg-accent' : 'bg-red-50'}`}>
               <div className="flex items-center gap-2 mb-1">
                 <Receipt className={`w-5 h-5 ${isUnderLimit ? 'text-primary' : 'text-red-500'}`} />
