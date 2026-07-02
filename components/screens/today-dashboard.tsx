@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Flame, Dumbbell, GraduationCap, PersonStanding, CheckCircle2, Circle, Wallet, CloudRain, Sun, Cloud, CloudSnow, Wind, Loader2 } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Flame, Dumbbell, GraduationCap, PersonStanding, CheckCircle2, Circle, Wallet, CloudRain, Sun, Cloud, CloudSnow, Wind, Loader2, Mic, MicOff, X, Save } from 'lucide-react'
 import { TaskBreakdown } from '@/components/task-breakdown'
 
 // ── localStorage helpers ───────────────────────────────────────────────────────
@@ -27,6 +27,17 @@ function saveDayData(data: DayData) {
 }
 
 // Append today to a log array (stored as array of date strings)
+function saveToAdminNotes(title: string, text: string, area: string) {
+  if (typeof window === 'undefined') return
+  try {
+    const notes = JSON.parse(localStorage.getItem('sq_notes') || '[]')
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7)
+    notes.unshift({ id, title, text, area, date: new Date().toISOString() })
+    localStorage.setItem('sq_notes', JSON.stringify(notes))
+    window.dispatchEvent(new Event('sq-data-changed'))
+  } catch {}
+}
+
 function logToday(key: string) {
   if (typeof window === 'undefined') return
   const today = getLocalDateStr()
@@ -161,6 +172,14 @@ export function TodayDashboard({ streak }: TodayDashboardProps) {
   const [weatherLoading, setWeatherLoading] = useState(false)
   const [showTaskHelp, setShowTaskHelp] = useState(false)
 
+  // Grabadora de voz
+  const [recording, setRecording] = useState(false)
+  const [transcribing, setTranscribing] = useState(false)
+  const [transcript, setTranscript] = useState<{ text: string; title: string; area: string } | null>(null)
+  const [transcriptError, setTranscriptError] = useState<string | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const chunksRef = useRef<Blob[]>([])
+
   // Load today's data from localStorage
   useEffect(() => {
     setDayData(readDayData(today))
@@ -215,6 +234,51 @@ export function TodayDashboard({ streak }: TodayDashboardProps) {
     update(next)
     if (!dayData.finanzas) logToday('sq_finance_log')
     else removeToday('sq_finance_log')
+  }
+
+  // Grabadora helpers
+  const startRecording = async () => {
+    setTranscript(null)
+    setTranscriptError(null)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mr = new MediaRecorder(stream)
+      chunksRef.current = []
+      mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+      mr.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop())
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+        setTranscribing(true)
+        try {
+          const fd = new FormData()
+          fd.append('audio', blob, 'nota.webm')
+          const res = await fetch('/api/transcribe', { method: 'POST', body: fd })
+          const data = await res.json()
+          if (!res.ok) throw new Error(data.error || 'Error')
+          setTranscript(data)
+        } catch (e: any) {
+          setTranscriptError(e?.message || 'Error al transcribir. Solo funciona en producción.')
+        } finally {
+          setTranscribing(false)
+        }
+      }
+      mediaRecorderRef.current = mr
+      mr.start()
+      setRecording(true)
+    } catch {
+      setTranscriptError('No se pudo acceder al micrófono.')
+    }
+  }
+
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop()
+    setRecording(false)
+  }
+
+  const saveTranscriptToAdmin = () => {
+    if (!transcript) return
+    saveToAdminNotes(transcript.title, transcript.text, transcript.area)
+    setTranscript(null)
   }
 
   // Date string
@@ -314,6 +378,67 @@ export function TodayDashboard({ streak }: TodayDashboardProps) {
           <p className="text-xs text-muted-foreground">¿Has añadido tus movimientos de hoy?</p>
         </div>
       </button>
+
+      {/* Grabadora de voz → nota en Admin */}
+      <div className="bg-card rounded-2xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-semibold text-foreground">Nota rápida</p>
+          {transcript && (
+            <button onClick={() => setTranscript(null)} className="p-1 rounded-full hover:bg-secondary">
+              <X className="w-4 h-4 text-muted-foreground" />
+            </button>
+          )}
+        </div>
+
+        {!transcript && !transcribing && (
+          <button
+            onClick={recording ? stopRecording : startRecording}
+            className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium ${
+              recording
+                ? 'bg-red-500 text-white animate-pulse'
+                : 'bg-secondary text-foreground'
+            }`}
+          >
+            {recording
+              ? <><MicOff className="w-4 h-4" /> Parar grabación</>
+              : <><Mic className="w-4 h-4" /> Grabar nota de voz</>
+            }
+          </button>
+        )}
+
+        {transcribing && (
+          <div className="flex items-center justify-center gap-2 py-3 text-muted-foreground text-sm">
+            <Loader2 className="w-4 h-4 animate-spin" /> Transcribiendo…
+          </div>
+        )}
+
+        {transcriptError && (
+          <p className="text-xs text-red-500 text-center">{transcriptError}</p>
+        )}
+
+        {transcript && (
+          <div className="space-y-3">
+            <div className="bg-secondary rounded-xl p-3">
+              <p className="text-xs font-medium text-muted-foreground mb-1">{transcript.title}</p>
+              <p className="text-sm text-foreground">{transcript.text}</p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setTranscript(null)}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-secondary text-foreground text-sm"
+              >
+                <X className="w-4 h-4" /> Borrar
+              </button>
+              <button
+                onClick={saveTranscriptToAdmin}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium"
+              >
+                <Save className="w-4 h-4" /> Guardar en Admin
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Ayuda 2 min */}
       <button

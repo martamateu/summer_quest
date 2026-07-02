@@ -26,6 +26,25 @@ function loadLogs(): GymSessionLog[] {
 
 function saveLogs(logs: GymSessionLog[]) {
   localStorage.setItem(GYM_LOGS_KEY, JSON.stringify(logs))
+  window.dispatchEvent(new Event('sq-data-changed'))
+}
+
+const getTodayLocalStr = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function markGoalFuerza(date: string) {
+  const today = getTodayLocalStr()
+  if (date !== today) return
+  try {
+    const raw = localStorage.getItem('sq_today_goals')
+    const data = raw ? JSON.parse(raw) : {}
+    if (data.date !== today) return
+    data.fuerza = { ...(data.fuerza || {}), done: true }
+    localStorage.setItem('sq_today_goals', JSON.stringify(data))
+    window.dispatchEvent(new Event('sq-data-changed'))
+  } catch {}
 }
 
 const getTodayStr = () => new Date().toISOString().split('T')[0]
@@ -137,6 +156,7 @@ export function GymScreen() {
     const updated = [...logs, session]
     setLogs(updated)
     saveLogs(updated)
+    markGoalFuerza(session.date) // auto-marca goal Fuerza si el entreno es hoy
     setActiveSession(false)
     setCurrentSets({})
     setSessionStart(null)
