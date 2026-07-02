@@ -1,8 +1,8 @@
 'use client'
 
-import { Home, UtensilsCrossed, Wallet, Dumbbell, BarChart3, ClipboardList, PersonStanding } from 'lucide-react'
+import { Home, UtensilsCrossed, Wallet, Dumbbell, BarChart3, ClipboardList } from 'lucide-react'
 
-type Tab = 'hoy' | 'food' | 'finanzas' | 'gym' | 'entrenos' | 'stats' | 'admin'
+type Tab = 'hoy' | 'food' | 'finanzas' | 'gym' | 'stats' | 'admin'
 
 interface BottomNavProps {
   activeTab: Tab
@@ -11,8 +11,8 @@ interface BottomNavProps {
 
 const tabs: { id: Tab; label: string; icon: typeof Home }[] = [
   { id: 'hoy', label: 'Hoy', icon: Home },
-  { id: 'finanzas', label: 'Dinero', icon: Wallet },
-  { id: 'entrenos', label: 'Entrenos', icon: PersonStanding },
+  { id: 'finanzas', label: 'Finanzas', icon: Wallet },
+  { id: 'food', label: 'Food', icon: UtensilsCrossed },
   { id: 'gym', label: 'Gym', icon: Dumbbell },
   { id: 'stats', label: 'Stats', icon: BarChart3 },
   { id: 'admin', label: 'Admin', icon: ClipboardList },

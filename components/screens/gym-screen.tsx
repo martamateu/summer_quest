@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { Dumbbell, Plus, Check, X, TrendingUp, ChevronDown, ChevronUp, Info, Trash2 } from 'lucide-react'
+import { Dumbbell, Plus, Check, X, TrendingUp, ChevronDown, ChevronUp, Info, Trash2, PersonStanding } from 'lucide-react'
 import type { GymSessionLog, GymExerciseLog, GymSet, GymWorkout, GymExercise } from '@/lib/types'
 import { WORKOUTS, SEED_GYM_LOGS } from '@/lib/gym-data'
+import { WorkoutScreen } from '@/components/screens/workout-screen'
 
 const GYM_LOGS_KEY = 'sq_gym_logs'
 const GYM_SEEDED_KEY = 'sq_gym_seeded'
@@ -47,6 +48,7 @@ const fmtDuration = (min: number) => {
 }
 
 export function GymScreen() {
+  const [gymTab, setGymTab] = useState<'gym' | 'entrenos'>('gym')
   const [logs, setLogs] = useState<GymSessionLog[]>([])
   const [selectedWorkout, setSelectedWorkout] = useState<string>('A')
   const [activeSession, setActiveSession] = useState(false)
@@ -358,15 +360,39 @@ export function GymScreen() {
   // Main gym view
   return (
     <div className="px-4 pt-6 pb-24">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold text-foreground">Gym</h1>
+        {gymTab === 'gym' && (
+          <button
+            onClick={() => setShowStats(s => !s)}
+            className="p-2 rounded-full hover:bg-secondary transition-colors"
+          >
+            <TrendingUp className={`w-5 h-5 ${showStats ? 'text-primary' : 'text-muted-foreground'}`} />
+          </button>
+        )}
+      </div>
+
+      {/* Sub-tab selector */}
+      <div className="flex gap-2 mb-6">
         <button
-          onClick={() => setShowStats(s => !s)}
-          className="p-2 rounded-full hover:bg-secondary transition-colors"
+          onClick={() => setGymTab('gym')}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium ${gymTab === 'gym' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
         >
-          <TrendingUp className={`w-5 h-5 ${showStats ? 'text-primary' : 'text-muted-foreground'}`} />
+          <Dumbbell className="w-4 h-4" /> Pesas
+        </button>
+        <button
+          onClick={() => setGymTab('entrenos')}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium ${gymTab === 'entrenos' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
+        >
+          <PersonStanding className="w-4 h-4" /> Entrenos
         </button>
       </div>
+
+      {/* Entrenos sub-tab */}
+      {gymTab === 'entrenos' && <WorkoutScreen embedded />}
+
+      {/* Gym content */}
+      {gymTab === 'gym' && (<>
 
       {/* Sync status */}
       {syncStatus && (
@@ -594,6 +620,7 @@ export function GymScreen() {
           </div>
         )}
       </div>
+      </>)}
     </div>
   )
 }

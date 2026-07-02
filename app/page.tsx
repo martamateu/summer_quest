@@ -90,7 +90,7 @@ function getWeeklyData(): number[] {
   } catch { return [0,0,0,0,0,0,0] }
 }
 
-type Tab = 'hoy' | 'food' | 'finanzas' | 'gym' | 'entrenos' | 'stats' | 'admin'
+type Tab = 'hoy' | 'food' | 'finanzas' | 'gym' | 'stats' | 'admin'
 
 export default function Page() {
   const [activeTab, setActiveTab] = useState<Tab>('hoy')
@@ -477,9 +477,6 @@ export default function Page() {
           </div>
           <div style={{ display: activeTab === 'gym' ? 'block' : 'none' }}>
             <GymScreen />
-          </div>
-          <div style={{ display: activeTab === 'entrenos' ? 'block' : 'none' }}>
-            <WorkoutScreen />
           </div>
           <div style={{ display: activeTab === 'admin' ? 'block' : 'none' }}>
             <AdminScreen />
