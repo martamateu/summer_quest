@@ -382,8 +382,10 @@ export function AdminScreen() {
   const monthLabel = base.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
   const weekDays = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 
+  // El calendario respeta el filtro de área activo
+  const calendarTasks = applyAreaFilter(resolvedTasks)
   const tasksByDay: Record<string, ResolvedTask[]> = {}
-  for (const t of resolvedTasks) {
+  for (const t of calendarTasks) {
     if (!tasksByDay[t.nextDue]) tasksByDay[t.nextDue] = []
     tasksByDay[t.nextDue].push(t)
   }
