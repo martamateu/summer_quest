@@ -347,9 +347,26 @@ function addDays(dateStr: string, days: number): string {
 }
 
 /**
+ * Hash numérico determinista de una cadena (djb2 simplificado).
+ * Siempre devuelve el mismo número para la misma key → reproducible entre dispositivos.
+ */
+function hashKey(key: string): number {
+  let h = 5381
+  for (let i = 0; i < key.length; i++) {
+    h = ((h << 5) + h) ^ key.charCodeAt(i)
+    h = h >>> 0 // mantener como uint32
+  }
+  return h
+}
+
+/**
  * Dado un HomeData y el historial de tareas completadas, devuelve la lista
  * completa de ResolvedTask con nextDue calculado.
  * history: Record<key, lastDone> donde key = `${objectId}::${taskId}`
+ *
+ * Para tareas sin historial (onboarding), el nextDue inicial se escala
+ * de forma determinista dentro del ciclo completo: cada tarea cae en un
+ * día distinto para evitar que todo acumule el mismo día.
  */
 export function resolveHomeTasks(
   home: HomeData,
@@ -369,9 +386,18 @@ export function resolveHomeTasks(
         const taskOverride = obj.overrides?.[task.id]
         const frequencyDays = taskOverride?.frequencyDays ?? task.frequencyDays
         const label = taskOverride?.label ?? task.label
-        // Sin historial: asume que el objeto está recién limpio (onboarding),
-        // la primera vez que toca es dentro de frequencyDays (no hoy).
-        const nextDue = lastDone ? addDays(lastDone, frequencyDays) : addDays(today, frequencyDays)
+
+        let nextDue: string
+        if (lastDone) {
+          // Con historial: siguiente vencimiento = última vez hecha + frecuencia
+          nextDue = addDays(lastDone, frequencyDays)
+        } else {
+          // Sin historial (onboarding): escalonar usando hash determinista de la key.
+          // offsetDays ∈ [1, frequencyDays] → cada tarea cae en un día distinto
+          // dentro de su propio ciclo, reproducible y estable entre dispositivos.
+          const offsetDays = (hashKey(key) % frequencyDays) + 1
+          nextDue = addDays(today, offsetDays)
+        }
 
         resolved.push({
           key,
@@ -390,4 +416,28 @@ export function resolveHomeTasks(
   }
 
   return resolved
+}
+
+/**
+ * Devuelve una tarea futura "sugerida" para un día sin tareas pendientes.
+ * La elección es determinista según la fecha (mismo resultado todo el día,
+ * distinto cada día). Prioriza las tareas con nextDue más próximo.
+ */
+export function getSuggestedTask(
+  resolvedTasks: ResolvedTask[],
+  today: string
+): ResolvedTask | null {
+  // Solo tareas futuras (nextDue > hoy) sin completar hoy
+  const future = resolvedTasks
+    .filter(t => t.nextDue > today && t.lastDone !== today)
+    .sort((a, b) => a.nextDue.localeCompare(b.nextDue))
+
+  if (future.length === 0) return null
+
+  // Pool: las 5 más próximas (para dar algo de variedad día a día)
+  const pool = future.slice(0, Math.min(5, future.length))
+
+  // Índice determinista basado en la fecha de hoy
+  const idx = hashKey(today) % pool.length
+  return pool[idx]
 }

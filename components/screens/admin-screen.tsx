@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Mic, MicOff, Send, Trash2, StickyNote, ShoppingCart, Loader2, Check, Plus, Sparkles, ChevronLeft, ChevronRight, Home, RotateCcw, Pencil, X } from 'lucide-react'
-import { resolveHomeTasks } from '@/lib/cleaning-templates'
+import { resolveHomeTasks, getSuggestedTask } from '@/lib/cleaning-templates'
 import type { HomeData, ResolvedTask } from '@/lib/cleaning-templates'
 
 const NOTES_KEY = 'sq_notes'
@@ -338,6 +338,11 @@ export function AdminScreen() {
   const pendingTasks = resolvedTasks.filter(t => t.nextDue <= today)
   const doneTodayTasks = resolvedTasks.filter(t => t.lastDone === today && t.nextDue > today)
 
+  // Sugerencia del día: solo cuando no hay pendientes ni hechas hoy
+  const suggestedTask = pendingTasks.length === 0 && doneTodayTasks.length === 0
+    ? getSuggestedTask(resolvedTasks, today)
+    : null
+
   const areas2 = homeData ? Array.from(new Set(resolvedTasks.map(t => t.areaName))) : []
 
   const applyAreaFilter = (list: ResolvedTask[]) =>
@@ -610,9 +615,34 @@ export function AdminScreen() {
 
               {/* Lista de tareas pendientes */}
               {sortedPending.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  Todo al día. Vuelve mañana.
-                </p>
+                <div className="mb-4">
+                  {suggestedTask ? (
+                    <div className="bg-card rounded-2xl p-4 border border-border">
+                      <p className="text-[10px] text-muted-foreground uppercase mb-2">Sugerencia del día</p>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-foreground truncate">{suggestedTask.label}</p>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            {suggestedTask.objectName} · toca en {(() => {
+                              const [ty, tm, td] = today.split('-').map(Number)
+                              const [ny, nm, nd] = suggestedTask.nextDue.split('-').map(Number)
+                              const diff = Math.round((new Date(ny, nm - 1, nd).getTime() - new Date(ty, tm - 1, td).getTime()) / 86400000)
+                              return diff === 1 ? 'mañana' : `${diff} días`
+                            })()}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => markDone(suggestedTask.key, today)}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium shrink-0"
+                        >
+                          <Check className="w-3.5 h-3.5" /> Adelantar
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground text-center py-8">Todo al día. Vuelve mañana.</p>
+                  )}
+                </div>
               ) : (
                 <div className="space-y-2 mb-4">
                   {sortedPending.map(t => {
