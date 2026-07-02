@@ -338,11 +338,6 @@ export function AdminScreen() {
   const pendingTasks = resolvedTasks.filter(t => t.nextDue <= today)
   const doneTodayTasks = resolvedTasks.filter(t => t.lastDone === today && t.nextDue > today)
 
-  // Sugerencia del día: cuando no hay tareas pendientes globales (con o sin filtro de área)
-  const suggestedTask = pendingTasks.length === 0
-    ? getSuggestedTask(resolvedTasks, today)
-    : null
-
   const areas2 = homeData ? Array.from(new Set(resolvedTasks.map(t => t.areaName))) : []
 
   const applyAreaFilter = (list: ResolvedTask[]) =>
@@ -350,6 +345,11 @@ export function AdminScreen() {
 
   const sortedPending = [...applyAreaFilter(pendingTasks)].sort((a, b) => a.nextDue.localeCompare(b.nextDue))
   const sortedDoneToday = [...applyAreaFilter(doneTodayTasks)].sort((a, b) => a.label.localeCompare(b.label))
+
+  // Sugerencia del día: cuando no hay pendientes en la vista actual (respeta el filtro de área)
+  const suggestedTask = sortedPending.length === 0
+    ? getSuggestedTask(resolvedTasks, today, areaFilter2)
+    : null
 
   // Calendario: pinta nextDue de TODAS las tareas (incluidas hechas hoy con nextDue futuro)
   const ref = new Date()

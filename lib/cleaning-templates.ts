@@ -420,25 +420,37 @@ export function resolveHomeTasks(
 
 /**
  * Devuelve una tarea futura "sugerida" para un día sin tareas pendientes.
- * La elección es determinista según la fecha (mismo resultado todo el día,
- * distinto cada día). Prioriza las tareas con nextDue más próximo.
+ * - Si areaFilter está activo, la sugerencia es de esa estancia.
+ * - Si no hay tareas en esa estancia, cae back al global.
+ * - La elección es determinista según la fecha (mismo resultado todo el día,
+ *   distinto cada día). Prioriza las tareas con nextDue más próximo.
  */
 export function getSuggestedTask(
   resolvedTasks: ResolvedTask[],
-  today: string
+  today: string,
+  areaFilter?: string // nombre del área activa, o undefined/'all' para global
 ): ResolvedTask | null {
-  // Solo tareas futuras (nextDue > hoy) sin completar hoy
+  const isFuturePending = (t: ResolvedTask) => t.nextDue > today && t.lastDone !== today
+
+  // Si hay filtro de área activo, intentar primero dentro de esa estancia
+  if (areaFilter && areaFilter !== 'all') {
+    const areaFuture = resolvedTasks
+      .filter(t => t.areaName === areaFilter && isFuturePending(t))
+      .sort((a, b) => a.nextDue.localeCompare(b.nextDue))
+
+    if (areaFuture.length > 0) {
+      const pool = areaFuture.slice(0, Math.min(10, areaFuture.length))
+      return pool[hashKey(today) % pool.length]
+    }
+  }
+
+  // Fallback: global
   const future = resolvedTasks
-    .filter(t => t.nextDue > today && t.lastDone !== today)
+    .filter(isFuturePending)
     .sort((a, b) => a.nextDue.localeCompare(b.nextDue))
 
   if (future.length === 0) return null
 
-  // Pool: hasta 10 más próximas para dar variedad, priorizando que no se repita
-  // área dos días seguidos (ordenar por área alterna usando el hash del día anterior)
   const pool = future.slice(0, Math.min(10, future.length))
-
-  // Índice determinista basado en la fecha de hoy (diferente cada día)
-  const idx = hashKey(today) % pool.length
-  return pool[idx]
+  return pool[hashKey(today) % pool.length]
 }
