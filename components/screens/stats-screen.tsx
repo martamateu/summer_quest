@@ -7,8 +7,6 @@ import { AREA_COLORS, AREA_LABELS, type HabitArea } from '@/lib/types'
 
 const STEPS_HISTORY_KEY = 'sq_steps_history'
 
-const MONTHS_SHORT = ['E', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D']
-
 // Local YYYY-MM-DD (avoids UTC offset issues)
 const fmtLocal = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -30,7 +28,6 @@ function getStepsHistory(): Record<string, StepsEntry> {
 
 export function StatsScreen({ habits, streak, bestStreak, weeklyData, metrics }: StatsScreenProps) {
   const [stepsHistory, setStepsHistory] = useState<Record<string, StepsEntry>>({})
-  const [stepsPeriod, setStepsPeriod] = useState<'month' | 'year'>('month')
   const [stepsOffset, setStepsOffset] = useState(0)
 
   useEffect(() => {
@@ -40,7 +37,7 @@ export function StatsScreen({ habits, streak, bestStreak, weeklyData, metrics }:
   // Save today's steps to history whenever metrics update
   useEffect(() => {
     if (metrics.steps.current > 0) {
-      const today = new Date().toISOString().split('T')[0]
+      const today = fmtLocal(new Date())
       const history = getStepsHistory()
       history[today] = { steps: metrics.steps.current, calories: 0 }
       localStorage.setItem(STEPS_HISTORY_KEY, JSON.stringify(history))
@@ -72,53 +69,32 @@ export function StatsScreen({ habits, streak, bestStreak, weeklyData, metrics }:
   for (let i = 0; i < 7; i++) {
     const d = new Date(monday)
     d.setDate(monday.getDate() + i)
-    const key = d.toISOString().split('T')[0]
+    const key = fmtLocal(d)
     weeklySteps += stepsHistory[key]?.steps || 0
   }
 
-  // Navigable month/year steps explorer
+  // Navigable month steps explorer
   const periodSteps = useMemo(() => {
     const ref = new Date()
-    if (stepsPeriod === 'month') {
-      const base = new Date(ref.getFullYear(), ref.getMonth() + stepsOffset, 1)
-      const y = base.getFullYear()
-      const m = base.getMonth()
-      const daysInMonth = new Date(y, m + 1, 0).getDate()
-      const bars: { label: string; steps: number }[] = []
-      let total = 0, daysWithData = 0, best = 0
-      for (let day = 1; day <= daysInMonth; day++) {
-        const s = stepsHistory[fmtLocal(new Date(y, m, day))]?.steps || 0
-        bars.push({ label: String(day), steps: s })
-        total += s
-        if (s > 0) { daysWithData++; if (s > best) best = s }
-      }
-      return {
-        label: base.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }),
-        total, best, bars,
-        avg: daysWithData ? Math.round(total / daysWithData) : 0,
-        avgLabel: 'Media/día',
-        showLabels: false,
-      }
-    }
-    const y = ref.getFullYear() + stepsOffset
+    const base = new Date(ref.getFullYear(), ref.getMonth() + stepsOffset, 1)
+    const y = base.getFullYear()
+    const m = base.getMonth()
+    const daysInMonth = new Date(y, m + 1, 0).getDate()
     const bars: { label: string; steps: number }[] = []
-    let total = 0, monthsWithData = 0, best = 0
-    for (let mo = 0; mo < 12; mo++) {
-      const dim = new Date(y, mo + 1, 0).getDate()
-      let mSteps = 0
-      for (let day = 1; day <= dim; day++) mSteps += stepsHistory[fmtLocal(new Date(y, mo, day))]?.steps || 0
-      bars.push({ label: MONTHS_SHORT[mo], steps: mSteps })
-      total += mSteps
-      if (mSteps > 0) { monthsWithData++; if (mSteps > best) best = mSteps }
+    let total = 0, daysWithData = 0, best = 0
+    for (let day = 1; day <= daysInMonth; day++) {
+      const s = stepsHistory[fmtLocal(new Date(y, m, day))]?.steps || 0
+      bars.push({ label: String(day), steps: s })
+      total += s
+      if (s > 0) { daysWithData++; if (s > best) best = s }
     }
     return {
-      label: String(y),
+      label: base.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }),
       total, best, bars,
-      avg: monthsWithData ? Math.round(total / monthsWithData) : 0,
-      avgLabel: 'Media/mes',
-      showLabels: true,
+      avg: daysWithData ? Math.round(total / daysWithData) : 0,
+      avgLabel: 'Media/día',
     }
-  }, [stepsHistory, stepsPeriod, stepsOffset])
+  }, [stepsHistory, stepsOffset])
 
   const maxBar = Math.max(...periodSteps.bars.map(b => b.steps), 1)
 
@@ -166,19 +142,6 @@ export function StatsScreen({ habits, streak, bestStreak, weeklyData, metrics }:
           <div className="flex items-center gap-2">
             <Footprints className="w-5 h-5 text-primary" />
             <h2 className="text-base font-semibold text-foreground">Pasos</h2>
-          </div>
-          <div className="flex gap-1 bg-secondary rounded-full p-0.5">
-            {(['month', 'year'] as const).map(p => (
-              <button
-                key={p}
-                onClick={() => { setStepsPeriod(p); setStepsOffset(0) }}
-                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                  stepsPeriod === p ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
-                }`}
-              >
-                {p === 'month' ? 'Mes' : 'Año'}
-              </button>
-            ))}
           </div>
         </div>
 
@@ -238,13 +201,6 @@ export function StatsScreen({ habits, streak, bestStreak, weeklyData, metrics }:
                 />
               ))}
             </div>
-            {periodSteps.showLabels && (
-              <div className="flex gap-0.5 mt-1">
-                {periodSteps.bars.map((b, i) => (
-                  <span key={i} className="flex-1 text-center text-[9px] text-muted-foreground">{b.label}</span>
-                ))}
-              </div>
-            )}
           </>
         ) : (
           <p className="text-sm text-muted-foreground text-center py-4">Sin datos de pasos en este periodo</p>

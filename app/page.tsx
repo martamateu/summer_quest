@@ -14,6 +14,9 @@ import { INITIAL_HABITS, INITIAL_METRICS } from '@/lib/data'
 import type { Habit, DailyMetrics } from '@/lib/types'
 
 const getTodayStr = () => new Date().toISOString().split('T')[0]
+// Local YYYY-MM-DD (matches Stats screen; avoids UTC offset writing steps to the wrong day)
+const getLocalDateStr = (d: Date = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
 // History entry: tracks non-negotiable completions per day
 interface DayHistory {
@@ -158,7 +161,7 @@ export default function Page() {
           try {
             const key = 'sq_steps_history'
             const history = JSON.parse(localStorage.getItem(key) || '{}')
-            const today = new Date().toISOString().split('T')[0]
+            const today = getLocalDateStr()
             history[today] = { steps: data.steps, calories: data.calories || 0 }
             localStorage.setItem(key, JSON.stringify(history))
           } catch {}
@@ -312,17 +315,25 @@ export default function Page() {
 
   const syncReadyRef = useRef(false)
 
+  // Reload at most once per browser session after a cloud restore.
+  // Prevents an infinite reload loop if the round-tripped data keeps looking "changed"
+  // (e.g. when Android alarms repeatedly bring the app to the foreground).
+  const reloadOnceAfterRestore = () => {
+    if (typeof window === 'undefined') return
+    if (sessionStorage.getItem('sq_synced_reload')) return
+    sessionStorage.setItem('sq_synced_reload', '1')
+    window.location.reload()
+  }
+
   useEffect(() => {
     fetchSteps() // show cached data immediately
     triggerAndroidSync() // ping Android, then re-fetch after 5s
 
     // Restore from cloud if localStorage is empty, then upload
     downloadFromCloud().then((restored) => {
-      if (restored) window.location.reload()
-      else {
-        syncReadyRef.current = true
-        uploadToCloud()
-      }
+      syncReadyRef.current = true
+      uploadToCloud()
+      if (restored) reloadOnceAfterRestore()
     })
 
     const handleVisibility = () => {
@@ -331,7 +342,7 @@ export default function Page() {
         triggerAndroidSync()
         // Merge any changes from other devices
         downloadFromCloud().then(restored => {
-          if (restored) window.location.reload()
+          if (restored) reloadOnceAfterRestore()
         })
       } else {
         // Page going to background — flush data immediately
