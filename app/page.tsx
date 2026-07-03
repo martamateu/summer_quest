@@ -13,6 +13,7 @@ import { FoodScreen } from '@/components/screens/food-screen'
 import { WorkoutScreen } from '@/components/screens/workout-screen'
 import { INITIAL_HABITS, INITIAL_METRICS } from '@/lib/data'
 import type { Habit, DailyMetrics } from '@/lib/types'
+import { readTombstones, mergeTombstones, TOMBSTONE_KEY } from '@/lib/sync-tombstones'
 
 const getTodayStr = () => new Date().toISOString().split('T')[0]
 // Local YYYY-MM-DD (matches Stats screen; avoids UTC offset writing steps to the wrong day)
@@ -241,7 +242,7 @@ export default function Page() {
   }
 
   // ── Cloud backup: sync localStorage ↔ Redis ──
-  const SYNC_KEYS = ['sq_habits', 'sq_today', 'sq_history', 'sq_expenses', 'sq_finance_started_at', 'sq_gym_logs', 'sq_gym_seeded', 'sq_steps_history', 'sq_food_log', 'sq_favorite_recipes', 'sq_notes', 'sq_super_list', 'sq_home', 'sq_cleaning_history', 'sq_cycle', 'sq_run_logs', 'sq_today_goals', 'sq_flex_log', 'sq_finance_log', 'sq_workout_logs', 'sq_tasks_list', 'sq_last_modified']
+  const SYNC_KEYS = ['sq_habits', 'sq_today', 'sq_history', 'sq_expenses', 'sq_finance_started_at', 'sq_gym_logs', 'sq_gym_seeded', 'sq_steps_history', 'sq_food_log', 'sq_favorite_recipes', 'sq_notes', 'sq_super_list', 'sq_home', 'sq_cleaning_history', 'sq_cycle', 'sq_run_logs', 'sq_today_goals', 'sq_flex_log', 'sq_finance_log', 'sq_workout_logs', 'sq_tasks_list', 'sq_tombstones', 'sq_last_modified']
 
   // Debounced upload: cancel previous pending upload so only the latest data is sent
   const uploadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -309,7 +310,26 @@ export default function Page() {
         console.log('[sync] cloud is empty')
         return false
       }
-      
+
+      const ID_ARRAY_KEYS = new Set([
+        'sq_notes', 'sq_super_list', 'sq_tasks_list',
+        'sq_workout_logs', 'sq_run_logs', 'sq_gym_logs', 'sq_expenses', 'sq_favorite_recipes',
+      ])
+      const STR_ARRAY_KEYS = new Set(['sq_flex_log', 'sq_finance_log'])
+
+      // Fusionar tombstones (borrados) locales + nube, y persistir el resultado combinado.
+      let cloudTombs: Record<string, Record<string, number>> = {}
+      try { cloudTombs = data[TOMBSTONE_KEY] ? JSON.parse(data[TOMBSTONE_KEY]) : {} } catch { cloudTombs = {} }
+      const tombs = mergeTombstones(readTombstones(), cloudTombs)
+      if (Object.keys(tombs).length > 0) localStorage.setItem(TOMBSTONE_KEY, JSON.stringify(tombs))
+
+      // Quita de un array los items cuyo id tenga tombstone.
+      const dropDeleted = (key: string, arr: any[]): any[] => {
+        const deleted = tombs[key]
+        if (!deleted) return arr
+        return arr.filter(it => !(it && typeof it === 'object' && 'id' in it && deleted[String(it.id)]))
+      }
+
       const cloudMod = parseInt(data['sq_last_modified'] || '0', 10)
       const localMod = parseInt(localStorage.getItem('sq_last_modified') || '0', 10)
 
@@ -317,9 +337,15 @@ export default function Page() {
       if (cloudMod > localMod || (cloudMod > 0 && localMod === 0)) {
         console.log('[sync] cloud is newer, restoring ALL keys')
         for (const key of SYNC_KEYS) {
-          if (data[key]) {
-            localStorage.setItem(key, data[key])
+          if (!data[key]) continue
+          // Aplicar tombstones a las claves array al restaurar.
+          if (ID_ARRAY_KEYS.has(key)) {
+            try {
+              const arr = JSON.parse(data[key])
+              if (Array.isArray(arr)) { localStorage.setItem(key, JSON.stringify(dropDeleted(key, arr))); continue }
+            } catch { /* fallback */ }
           }
+          localStorage.setItem(key, data[key])
         }
         return true
       }
@@ -327,12 +353,6 @@ export default function Page() {
       // Incluso si sq_last_modified no es mayor, fusionamos los arrays (notas, tareas,
       // súper, entrenos…) por id para no perder items creados en otro dispositivo, y
       // completamos claves locales totalmente ausentes.
-      const ID_ARRAY_KEYS = new Set([
-        'sq_notes', 'sq_super_list', 'sq_tasks_list',
-        'sq_workout_logs', 'sq_run_logs', 'sq_gym_logs', 'sq_expenses',
-      ])
-      const STR_ARRAY_KEYS = new Set(['sq_flex_log', 'sq_finance_log'])
-
       let filledMissingKeys = false
       for (const key of SYNC_KEYS) {
         const cloudVal = data[key]
@@ -340,6 +360,13 @@ export default function Page() {
         const localVal = localStorage.getItem(key)
 
         if (!localVal) {
+          // Rellenar clave ausente, aplicando tombstones a arrays.
+          if (ID_ARRAY_KEYS.has(key)) {
+            try {
+              const arr = JSON.parse(cloudVal)
+              if (Array.isArray(arr)) { localStorage.setItem(key, JSON.stringify(dropDeleted(key, arr))); filledMissingKeys = true; continue }
+            } catch { /* fallback */ }
+          }
           localStorage.setItem(key, cloudVal)
           filledMissingKeys = true
           continue
@@ -358,9 +385,9 @@ export default function Page() {
                 const byId = new Map<string, any>()
                 for (const item of local) if (item && typeof item === 'object' && 'id' in item) byId.set(String(item.id), item)
                 for (const item of cloud) if (item && typeof item === 'object' && 'id' in item && !byId.has(String(item.id))) byId.set(String(item.id), item)
-                merged = Array.from(byId.values())
+                merged = dropDeleted(key, Array.from(byId.values()))
               }
-              if (merged.length !== local.length) {
+              if (JSON.stringify(merged) !== JSON.stringify(local)) {
                 localStorage.setItem(key, JSON.stringify(merged))
                 filledMissingKeys = true
               }

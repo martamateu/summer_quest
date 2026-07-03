@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { Dumbbell, Moon, Check, ChevronLeft, ChevronRight, Sparkles, Loader2, Flame, Beef, Wheat, Droplets, Heart } from 'lucide-react'
+import { recordTombstones } from '@/lib/sync-tombstones'
 
 const FOOD_STORAGE_KEY = 'sq_food_log'
 const FAVORITE_RECIPES_STORAGE_KEY = 'sq_favorite_recipes'
@@ -157,6 +158,7 @@ export function FoodScreen() {
     const isFavorite = favoriteRecipes.some(r => r.id === recipe.id)
     let updated: FavoriteRecipe[]
     if (isFavorite) {
+      recordTombstones(FAVORITE_RECIPES_STORAGE_KEY, [String(recipe.id)])
       updated = favoriteRecipes.filter(r => r.id !== recipe.id)
     } else {
       updated = [...favoriteRecipes, recipe]

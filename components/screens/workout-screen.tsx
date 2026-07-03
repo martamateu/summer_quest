@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Camera, Trash2, ChevronLeft, ChevronRight, Loader2, Dumbbell, PersonStanding, Waves, Heart, Activity, Check, X, Plus } from 'lucide-react'
+import { recordTombstones } from '@/lib/sync-tombstones'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 export type WorkoutType = 'flexibilidad' | 'fuerza' | 'cardio' | 'natacion' | 'otro'
@@ -93,13 +94,36 @@ function logDate(key: string, date: string) {
   } catch {}
 }
 
-function markGoalDone(key: 'fuerza' | 'flexibilidad') {
+// Marca el objetivo del día ("Hoy") a partir de un entreno registrado.
+// Inicializa sq_today_goals si aún no existe para hoy, y mapea cardio→run / fuerza→fuerza.
+function markTodayGoalForWorkout(type: WorkoutType, date: string) {
+  if (typeof window === 'undefined') return
   const today = getTodayStr()
+  if (date !== today) return
   try {
     const raw = localStorage.getItem('sq_today_goals')
-    const data = raw ? JSON.parse(raw) : {}
-    if (data.date !== today) return
-    data[key] = { ...(data[key] || {}), done: true }
+    let data: any = raw ? JSON.parse(raw) : null
+    if (!data || data.date !== today) {
+      data = {
+        date: today,
+        fuerzaMode: 'fuerza',
+        fuerza: { task: '', done: false },
+        master: { task: '', done: false },
+        flexibilidad: { task: '', done: false },
+        finanzas: false,
+      }
+    }
+    if (type === 'flexibilidad') {
+      data.flexibilidad = { ...(data.flexibilidad || {}), done: true }
+    } else if (type === 'fuerza') {
+      data.fuerzaMode = 'fuerza'
+      data.fuerza = { ...(data.fuerza || {}), done: true }
+    } else if (type === 'cardio') {
+      data.fuerzaMode = 'run'
+      data.fuerza = { ...(data.fuerza || {}), done: true }
+    } else {
+      return // natación / otro no marcan el objetivo del día
+    }
     localStorage.setItem('sq_today_goals', JSON.stringify(data))
     window.dispatchEvent(new Event('sq-data-changed'))
   } catch {}
@@ -166,14 +190,13 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
     // Auto-mark logs
     if (log.activityType === 'flexibilidad') {
       logDate('sq_flex_log', log.date)
-      if (log.date === getTodayStr()) markGoalDone('flexibilidad')
     }
-    if (log.activityType === 'fuerza') {
-      if (log.date === getTodayStr()) markGoalDone('fuerza')
-    }
+    // Marca el objetivo del día "Hoy" (fuerza / run / flexibilidad)
+    markTodayGoalForWorkout(log.activityType, log.date)
   }
 
   const deleteWorkout = (id: string) => {
+    recordTombstones(WORKOUT_KEY, [id])
     const next = workouts.filter(w => w.id !== id)
     setWorkouts(next)
     saveWorkouts(next)
@@ -300,7 +323,10 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
                 <p className="text-[11px] text-green-600 mt-1 font-medium">✓ Marcará racha de flexibilidad</p>
               )}
               {pending.activityType === 'fuerza' && (
-                <p className="text-[11px] text-red-500 mt-1 font-medium">✓ Marcará goal de fuerza hoy</p>
+                <p className="text-[11px] text-red-500 mt-1 font-medium">✓ Marcará entreno (fuerza) hoy</p>
+              )}
+              {pending.activityType === 'cardio' && (
+                <p className="text-[11px] text-orange-500 mt-1 font-medium">✓ Marcará entreno (run) hoy</p>
               )}
             </div>
           </div>

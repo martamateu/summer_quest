@@ -6,6 +6,7 @@ import { resolveHomeTasks, getSuggestedTask, getSuggestedTaskPerArea } from '@/l
 import type { HomeData, ResolvedTask } from '@/lib/cleaning-templates'
 import { getLocalDateStr as cycleLocalDate, getCurrentPhase, predictNextPeriod, computeAvgCycleLen, getAveragePeriodLength } from '@/lib/cycle'
 import type { CycleData, CyclePeriod } from '@/lib/types'
+import { recordTombstones } from '@/lib/sync-tombstones'
 
 const CYCLE_KEY = 'sq_cycle'
 
@@ -176,7 +177,10 @@ export function AdminScreen() {
     setNotes(next)
     persistArr(NOTES_KEY, next)
   }
-  const deleteNote = (id: string) => saveNotes(notes.filter(n => n.id !== id))
+  const deleteNote = (id: string) => {
+    recordTombstones(NOTES_KEY, [id])
+    saveNotes(notes.filter(n => n.id !== id))
+  }
 
   // ── Tareas ─────────────────────────────────────────────────────────────────
   const saveTasks = (next: TaskItem[]) => {
@@ -185,7 +189,10 @@ export function AdminScreen() {
   }
   const toggleTask = (id: string) =>
     saveTasks(tasksList.map(t => (t.id === id ? { ...t, done: !t.done } : t)))
-  const deleteTaskItem = (id: string) => saveTasks(tasksList.filter(t => t.id !== id))
+  const deleteTaskItem = (id: string) => {
+    recordTombstones(TASKS_KEY, [id])
+    saveTasks(tasksList.filter(t => t.id !== id))
+  }
   const addManualTask = () => {
     const t = manualTask.trim()
     if (!t) return
@@ -200,8 +207,14 @@ export function AdminScreen() {
   }
   const toggleItem = (id: string) =>
     saveSuper(superList.map(i => (i.id === id ? { ...i, done: !i.done } : i)))
-  const deleteItem = (id: string) => saveSuper(superList.filter(i => i.id !== id))
-  const clearDone = () => saveSuper(superList.filter(i => !i.done))
+  const deleteItem = (id: string) => {
+    recordTombstones(SUPER_KEY, [id])
+    saveSuper(superList.filter(i => i.id !== id))
+  }
+  const clearDone = () => {
+    recordTombstones(SUPER_KEY, superList.filter(i => i.done).map(i => i.id))
+    saveSuper(superList.filter(i => !i.done))
+  }
   const addManualItem = () => {
     const t = manualItem.trim()
     if (!t) return

@@ -5,6 +5,7 @@ import { Camera, Plus, X, Check, Loader2, Receipt, TrendingDown, TrendingUp, Tra
 import type { Expense, ExpenseCategory } from '@/lib/types'
 import { EXPENSE_CATEGORY_LABELS } from '@/lib/types'
 import { ReportExportModal } from '@/components/report-export-modal'
+import { recordTombstones } from '@/lib/sync-tombstones'
 
 const EXPENSES_STORAGE_KEY = 'sq_expenses'
 const FINANCE_START_STORAGE_KEY = 'sq_finance_started_at'
@@ -492,6 +493,7 @@ _Generado por Summer Quest · ${getTodayStr()}_
 
   const deleteExpense = (id: string) => {
     const current = readExpenses()
+    recordTombstones(EXPENSES_STORAGE_KEY, [id])
     saveExpenses(current.filter(e => e.id !== id))
   }
 

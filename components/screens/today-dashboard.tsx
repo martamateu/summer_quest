@@ -265,6 +265,8 @@ export function TodayDashboard({}: TodayDashboardProps) {
   // Escuchar cambios: si se añaden gastos hoy, auto-marcar finanzas
   useEffect(() => {
     const handler = () => {
+      // Refrescar objetivos del día (p. ej. un entreno marcado desde Entrenos/OCR)
+      setDayData(readDayData(today))
       const count = countTodayExpenses()
       setTodayExpenseCount(count)
       if (count > 0) {

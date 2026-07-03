@@ -14,24 +14,54 @@ const getUserRedisKey = (email: string) => `app:data:${email.toLowerCase()}`
 // para que añadir una nota/tarea/compra en un dispositivo no borre las de otro.
 const ID_ARRAY_KEYS = new Set([
   'sq_notes', 'sq_super_list', 'sq_tasks_list',
-  'sq_workout_logs', 'sq_run_logs', 'sq_gym_logs', 'sq_expenses',
+  'sq_workout_logs', 'sq_run_logs', 'sq_gym_logs', 'sq_expenses', 'sq_favorite_recipes',
 ])
 // Claves cuyo valor es un array de strings (fechas): se fusionan por unión de valores.
 const STR_ARRAY_KEYS = new Set(['sq_flex_log', 'sq_finance_log'])
 
-// Une dos arrays JSON serializados. Devuelve el string JSON fusionado, o `incoming` si algo falla.
-function mergeArrayValue(key: string, existing: string | undefined, incoming: string): string {
-  if (!existing) return incoming
+const TOMBSTONE_KEY = 'sq_tombstones'
+type TombstoneMap = Record<string, Record<string, number>>
+
+function parseTombstones(val: unknown): TombstoneMap {
+  if (typeof val !== 'string') return {}
   try {
-    const a = JSON.parse(existing)
+    const parsed = JSON.parse(val)
+    return parsed && typeof parsed === 'object' ? (parsed as TombstoneMap) : {}
+  } catch {
+    return {}
+  }
+}
+
+function mergeTombstones(a: TombstoneMap, b: TombstoneMap): TombstoneMap {
+  const out: TombstoneMap = {}
+  for (const src of [a, b]) {
+    for (const key of Object.keys(src || {})) {
+      const ids = src[key]
+      if (!ids || typeof ids !== 'object') continue
+      out[key] = out[key] || {}
+      for (const id of Object.keys(ids)) {
+        const ts = Number(ids[id]) || 0
+        if (!out[key][id] || ts > out[key][id]) out[key][id] = ts
+      }
+    }
+  }
+  return out
+}
+
+// Une dos arrays JSON serializados, excluyendo ids con tombstone. Devuelve el string JSON fusionado.
+function mergeArrayValue(key: string, existing: string | undefined, incoming: string, tombs: TombstoneMap): string {
+  const deleted = tombs[key] || {}
+  try {
     const b = JSON.parse(incoming)
-    if (!Array.isArray(a) || !Array.isArray(b)) return incoming
+    if (!Array.isArray(b)) return incoming
+    const a = existing ? JSON.parse(existing) : []
+    if (!Array.isArray(a)) return incoming
 
     if (STR_ARRAY_KEYS.has(key)) {
       return JSON.stringify(Array.from(new Set([...a, ...b])))
     }
 
-    // Unión por id: el item entrante (más reciente) prevalece si el id coincide.
+    // Unión por id: el item entrante (más reciente) prevalece; se descartan los borrados.
     const byId = new Map<string, any>()
     for (const item of a) {
       if (item && typeof item === 'object' && 'id' in item) byId.set(String(item.id), item)
@@ -39,6 +69,7 @@ function mergeArrayValue(key: string, existing: string | undefined, incoming: st
     for (const item of b) {
       if (item && typeof item === 'object' && 'id' in item) byId.set(String(item.id), item)
     }
+    for (const id of Object.keys(deleted)) byId.delete(id)
     return JSON.stringify(Array.from(byId.values()))
   } catch {
     return incoming
@@ -83,10 +114,14 @@ export async function POST(request: Request) {
   const existing = existingUser || legacy || {}
   const merged = { ...existing, ...data }
 
+  // Fusionar tombstones (borrados) de ambos lados para descartar items borrados en cualquier dispositivo.
+  const tombs = mergeTombstones(parseTombstones(existing[TOMBSTONE_KEY]), parseTombstones(data[TOMBSTONE_KEY]))
+  if (Object.keys(tombs).length > 0) merged[TOMBSTONE_KEY] = JSON.stringify(tombs)
+
   // Fusionar por id/valor las claves array para no perder items creados en otro dispositivo.
   for (const key of Object.keys(data)) {
     if (ID_ARRAY_KEYS.has(key) || STR_ARRAY_KEYS.has(key)) {
-      merged[key] = mergeArrayValue(key, existing[key], data[key])
+      merged[key] = mergeArrayValue(key, existing[key], data[key], tombs)
     }
   }
 
