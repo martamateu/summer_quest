@@ -586,34 +586,43 @@ export function AdminScreen() {
       {status && <p className="text-xs text-muted-foreground mb-3">{status}</p>}
 
       {/* Sub-tabs */}
-      <div className="flex gap-2 my-4 overflow-x-auto pb-1 scrollbar-none">
+      <div className="grid grid-cols-5 gap-1.5 my-4">
         <button
           onClick={() => setTab('notas')}
-          className={`flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap shrink-0 ${tab === 'notas' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
+          className={`flex flex-col items-center justify-center gap-1 px-1 py-2 rounded-xl text-[11px] font-medium ${tab === 'notas' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
         >
           <StickyNote className="w-4 h-4" /> Notas
         </button>
         <button
           onClick={() => setTab('tareas')}
-          className={`flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap shrink-0 ${tab === 'tareas' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
+          className={`relative flex flex-col items-center justify-center gap-1 px-1 py-2 rounded-xl text-[11px] font-medium ${tab === 'tareas' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
         >
-          <Check className="w-4 h-4" /> Tareas {tasksList.filter(t => !t.done).length > 0 && `(${tasksList.filter(t => !t.done).length})`}
+          <Check className="w-4 h-4" /> Tareas
+          {tasksList.filter(t => !t.done).length > 0 && (
+            <span className="absolute top-1 right-1 bg-primary text-primary-foreground text-[9px] rounded-full px-1 min-w-3.5 text-center border border-background">{tasksList.filter(t => !t.done).length}</span>
+          )}
         </button>
         <button
           onClick={() => setTab('super')}
-          className={`flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap shrink-0 ${tab === 'super' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
+          className={`relative flex flex-col items-center justify-center gap-1 px-1 py-2 rounded-xl text-[11px] font-medium ${tab === 'super' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
         >
-          <ShoppingCart className="w-4 h-4" /> Súper {superList.length > 0 && `(${superList.filter(i => !i.done).length})`}
+          <ShoppingCart className="w-4 h-4" /> Súper
+          {superList.filter(i => !i.done).length > 0 && (
+            <span className="absolute top-1 right-1 bg-primary text-primary-foreground text-[9px] rounded-full px-1 min-w-3.5 text-center border border-background">{superList.filter(i => !i.done).length}</span>
+          )}
         </button>
         <button
           onClick={() => setTab('limpieza')}
-          className={`flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap shrink-0 ${tab === 'limpieza' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
+          className={`relative flex flex-col items-center justify-center gap-1 px-1 py-2 rounded-xl text-[11px] font-medium ${tab === 'limpieza' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
         >
-          <Sparkles className="w-4 h-4" /> Casa {overdueCount > 0 && <span className="bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5 ml-0.5">{overdueCount}</span>}
+          <Sparkles className="w-4 h-4" /> Casa
+          {overdueCount > 0 && (
+            <span className="absolute top-1 right-1 bg-red-500 text-white text-[9px] rounded-full px-1 min-w-3.5 text-center border border-background">{overdueCount}</span>
+          )}
         </button>
         <button
           onClick={() => setTab('periodo')}
-          className={`flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap shrink-0 ${tab === 'periodo' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
+          className={`flex flex-col items-center justify-center gap-1 px-1 py-2 rounded-xl text-[11px] font-medium ${tab === 'periodo' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
         >
           <Droplets className="w-4 h-4" /> Periodo
         </button>
