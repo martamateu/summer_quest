@@ -28,6 +28,7 @@ function buildAreaColorMap(areas: string[]): Record<string, string> {
 }
 
 const NOTES_KEY = 'sq_notes'
+const TASKS_KEY = 'sq_tasks_list'
 const SUPER_KEY = 'sq_super_list'
 const HOME_KEY = 'sq_home'
 const HISTORY_KEY = 'sq_cleaning_history'
@@ -44,6 +45,13 @@ interface ListItem {
   id: string
   text: string
   done: boolean
+}
+
+interface TaskItem {
+  id: string
+  text: string
+  done: boolean
+  date: string // YYYY-MM-DD
 }
 
 // Fecha local YYYY-MM-DD (nunca toISOString: evita el desfase de día por UTC en madrugada)
@@ -100,7 +108,13 @@ function persistArr<T>(key: string, data: T[]) {
 }
 
 export function AdminScreen() {
-  const [tab, setTab] = useState<'notas' | 'super' | 'limpieza' | 'periodo'>('notas')
+  const [tab, setTab] = useState<'notas' | 'tareas' | 'super' | 'limpieza' | 'periodo'>('notas')
+
+  // Tareas
+  const [tasksList, setTasksList] = useState<TaskItem[]>([])
+  const [tasksView, setTasksView] = useState<'dia' | 'semana' | 'mes'>('semana')
+  const [tasksOffset, setTasksOffset] = useState(0)
+  const [manualTask, setManualTask] = useState('')
 
   // Notas
   const [notes, setNotes] = useState<Note[]>([])
@@ -146,6 +160,7 @@ export function AdminScreen() {
 
   useEffect(() => {
     setNotes(readArr<Note>(NOTES_KEY))
+    setTasksList(readArr<TaskItem>(TASKS_KEY))
     setSuperList(readArr<ListItem>(SUPER_KEY))
     setHomeData(readObj<HomeData | null>(HOME_KEY, null))
     setCleaningHistory(readObj<Record<string, string>>(HISTORY_KEY, {}))
@@ -162,6 +177,21 @@ export function AdminScreen() {
     persistArr(NOTES_KEY, next)
   }
   const deleteNote = (id: string) => saveNotes(notes.filter(n => n.id !== id))
+
+  // ── Tareas ─────────────────────────────────────────────────────────────────
+  const saveTasks = (next: TaskItem[]) => {
+    setTasksList(next)
+    persistArr(TASKS_KEY, next)
+  }
+  const toggleTask = (id: string) =>
+    saveTasks(tasksList.map(t => (t.id === id ? { ...t, done: !t.done } : t)))
+  const deleteTaskItem = (id: string) => saveTasks(tasksList.filter(t => t.id !== id))
+  const addManualTask = () => {
+    const t = manualTask.trim()
+    if (!t) return
+    saveTasks([{ id: uid(), text: t, done: false, date: getLocalDateStr() }, ...tasksList])
+    setManualTask('')
+  }
 
   // ── Súper ──────────────────────────────────────────────────────────────────
   const saveSuper = (next: ListItem[]) => {
@@ -199,6 +229,12 @@ export function AdminScreen() {
         saveSuper([...newItems, ...superList])
         setTab('super')
         setStatus(`✓ ${newItems.length} añadido(s) a la lista del súper`)
+      } else if (data.kind === 'tarea') {
+        const itemsToSave = Array.isArray(data.items) && data.items.length > 0 ? data.items : [data.title || trimmed]
+        const newTasks: TaskItem[] = itemsToSave.map((t: string) => ({ id: uid(), text: t, done: false, date: getLocalDateStr() }))
+        saveTasks([...newTasks, ...tasksList])
+        setTab('tareas')
+        setStatus(`✓ ${newTasks.length} tarea(s) guardada(s)`)
       } else {
         const note: Note = {
           id: uid(),
@@ -418,6 +454,34 @@ export function AdminScreen() {
     cancelTaskEdit()
   }
 
+  const deleteTask = (t: ResolvedTask) => {
+    if (!homeData) return
+    if (!window.confirm(`¿Seguro que quieres eliminar la tarea "${t.label}"?`)) return
+    const updatedHome: HomeData = {
+      ...homeData,
+      areas: homeData.areas.map(area => ({
+        ...area,
+        objects: area.objects.map(obj => {
+          if (obj.id !== t.objectId) return obj
+          const currentOverrides = obj.overrides ?? {}
+          const taskOverride = currentOverrides[t.taskId] ?? {}
+          return {
+            ...obj,
+            overrides: {
+              ...currentOverrides,
+              [t.taskId]: {
+                ...taskOverride,
+                deleted: true,
+              },
+            },
+          }
+        }),
+      })),
+    }
+    saveHome(updatedHome)
+    if (editingTaskKey === t.key) cancelTaskEdit()
+  }
+
   // Derivados para la UI de limpieza
   const resolvedTasks = homeData ? resolveHomeTasks(homeData, cleaningHistory) : []
   const today = getLocalDateStr()
@@ -521,29 +585,35 @@ export function AdminScreen() {
       </div>
       {status && <p className="text-xs text-muted-foreground mb-3">{status}</p>}
 
-      {/* Sub-tabs — 2×2 grid */}
-      <div className="grid grid-cols-2 gap-2 my-4">
+      {/* Sub-tabs */}
+      <div className="flex gap-2 my-4 overflow-x-auto pb-1 scrollbar-none">
         <button
           onClick={() => setTab('notas')}
-          className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium ${tab === 'notas' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
+          className={`flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap shrink-0 ${tab === 'notas' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
         >
           <StickyNote className="w-4 h-4" /> Notas
         </button>
         <button
+          onClick={() => setTab('tareas')}
+          className={`flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap shrink-0 ${tab === 'tareas' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
+        >
+          <Check className="w-4 h-4" /> Tareas {tasksList.filter(t => !t.done).length > 0 && `(${tasksList.filter(t => !t.done).length})`}
+        </button>
+        <button
           onClick={() => setTab('super')}
-          className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium ${tab === 'super' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
+          className={`flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap shrink-0 ${tab === 'super' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
         >
           <ShoppingCart className="w-4 h-4" /> Súper {superList.length > 0 && `(${superList.filter(i => !i.done).length})`}
         </button>
         <button
           onClick={() => setTab('limpieza')}
-          className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium ${tab === 'limpieza' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
+          className={`flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap shrink-0 ${tab === 'limpieza' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
         >
           <Sparkles className="w-4 h-4" /> Casa {overdueCount > 0 && <span className="bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5 ml-0.5">{overdueCount}</span>}
         </button>
         <button
           onClick={() => setTab('periodo')}
-          className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium ${tab === 'periodo' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
+          className={`flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap shrink-0 ${tab === 'periodo' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
         >
           <Droplets className="w-4 h-4" /> Periodo
         </button>
@@ -599,6 +669,105 @@ export function AdminScreen() {
           )}
         </>
       )}
+
+      {/* Tareas */}
+      {tab === 'tareas' && (() => {
+        const now = new Date()
+        const range = tasksView === 'dia'
+          ? (() => { const d = new Date(now); d.setDate(d.getDate() + tasksOffset); const s = getLocalDateStr(d); return { start: s, end: s } })()
+          : tasksView === 'semana'
+          ? (() => {
+              const d = new Date(now)
+              const dayOfWeek = d.getDay()
+              const monday = new Date(d)
+              monday.setDate(d.getDate() - ((dayOfWeek + 6) % 7) + tasksOffset * 7)
+              const sunday = new Date(monday)
+              sunday.setDate(monday.getDate() + 6)
+              return { start: getLocalDateStr(monday), end: getLocalDateStr(sunday) }
+            })()
+          : (() => {
+              const year = now.getFullYear()
+              const month = now.getMonth() + tasksOffset
+              const start = new Date(year, month, 1)
+              const end = new Date(year, month + 1, 0)
+              return { start: getLocalDateStr(start), end: getLocalDateStr(end) }
+            })()
+
+        const rangeLabel = tasksView === 'dia'
+          ? (() => { const d = new Date(now); d.setDate(d.getDate() + tasksOffset); return d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }) })()
+          : tasksView === 'semana'
+          ? `${range.start.split('-')[2]}/${range.start.split('-')[1]} – ${range.end.split('-')[2]}/${range.end.split('-')[1]}`
+          : new Date(now.getFullYear(), now.getMonth() + tasksOffset, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
+
+        const filteredTasks = tasksList.filter(t => t.date >= range.start && t.date <= range.end)
+        const sortedTasks = [...filteredTasks].sort((a, b) => {
+          if (a.done !== b.done) return Number(a.done) - Number(b.done)
+          return b.date.localeCompare(a.date)
+        })
+
+        return (
+          <>
+            <div className="flex items-center gap-2 mb-3">
+              <input
+                type="text"
+                value={manualTask}
+                onChange={e => setManualTask(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && addManualTask()}
+                placeholder="Añadir tarea para hoy…"
+                className="flex-1 p-2.5 rounded-xl bg-secondary text-foreground outline-none focus:ring-2 focus:ring-primary text-sm"
+              />
+              <button onClick={addManualTask} disabled={!manualTask.trim()} className="p-2.5 rounded-xl bg-primary text-primary-foreground disabled:opacity-50">
+                <Plus className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* View toggle */}
+            <div className="flex gap-1 bg-secondary rounded-xl p-1 mb-4">
+              {(['dia', 'semana', 'mes'] as const).map(v => (
+                <button key={v} onClick={() => { setTasksView(v); setTasksOffset(0) }}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium capitalize transition-colors ${tasksView === v ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'}`}>
+                  {v === 'dia' ? 'Día' : v === 'semana' ? 'Semana' : 'Mes'}
+                </button>
+              ))}
+            </div>
+
+            {/* Period navigator */}
+            <div className="flex items-center justify-between mb-4">
+              <button onClick={() => setTasksOffset(o => o - 1)} className="p-1.5 rounded-full hover:bg-secondary">
+                <ChevronLeft className="w-4 h-4 text-muted-foreground" />
+              </button>
+              <p className="text-sm font-medium text-foreground capitalize">{rangeLabel}</p>
+              <button onClick={() => setTasksOffset(o => o + 1)} className="p-1.5 rounded-full hover:bg-secondary">
+                <ChevronRight className="w-4 h-4 text-muted-foreground" />
+              </button>
+            </div>
+
+            {filteredTasks.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-10">No hay tareas en este periodo.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {sortedTasks.map(item => (
+                  <div key={item.id} className="flex items-center gap-3 bg-card rounded-xl p-3">
+                    <button
+                      onClick={() => toggleTask(item.id)}
+                      className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${item.done ? 'bg-primary text-primary-foreground' : 'border-2 border-muted-foreground/40'}`}
+                    >
+                      {item.done && <Check className="w-3.5 h-3.5" />}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm ${item.done ? 'line-through text-muted-foreground' : 'text-foreground'}`}>{item.text}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{item.date.split('-').reverse().join('/')}</p>
+                    </div>
+                    <button onClick={() => deleteTaskItem(item.id)} className="p-1 rounded-full hover:bg-secondary shrink-0">
+                      <Trash2 className="w-4 h-4 text-muted-foreground" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )
+      })()}
 
       {/* Súper */}
       {tab === 'super' && (
@@ -831,6 +1000,13 @@ export function AdminScreen() {
                             </div>
                             <div className="flex gap-2">
                               <button
+                                onClick={() => deleteTask(t)}
+                                className="px-3 py-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 text-sm font-medium"
+                                title="Eliminar tarea"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                              <button
                                 onClick={cancelTaskEdit}
                                 className="flex-1 py-2 rounded-xl bg-secondary text-foreground text-sm font-medium"
                               >
@@ -1046,6 +1222,13 @@ export function AdminScreen() {
                                     />
                                   </div>
                                   <div className="flex gap-1.5">
+                                    <button
+                                      onClick={() => deleteTask(t)}
+                                      className="px-2 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 text-xs font-medium"
+                                      title="Eliminar tarea"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
                                     <button
                                       onClick={cancelTaskEdit}
                                       className="flex-1 py-1.5 rounded-lg bg-card text-foreground text-xs font-medium"

@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     const mimeType = audio.type || 'audio/webm'
 
     const { object } = await generateObject({
-      model: google('gemini-2.5-flash'),
+      model: google('gemini-1.5-flash'),
       schema: TranscriptSchema,
       messages: [
         {
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
             {
               type: 'file',
               data: `data:${mimeType};base64,${base64}`,
-              mimeType,
+              mediaType: mimeType,
             },
             {
               type: 'text',

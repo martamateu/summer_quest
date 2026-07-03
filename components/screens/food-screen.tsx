@@ -149,7 +149,7 @@ export function FoodScreen() {
     const current = getDayLog(todayStr)
     saveDayLog(todayStr, {
       ...current,
-      customMeals: { ...current.customMeals, [mealId]: text },
+      customMeals: { ...(current.customMeals || {}), [mealId]: text } as Record<MealId, string>,
     })
   }
 

@@ -21,7 +21,7 @@ export interface HomeObject {
   name: string        // nombre personalizado (ej. "Armario superior 1")
   templateId: string
   config?: Record<string, unknown>
-  overrides?: Record<string, { frequencyDays?: number; label?: string }> // override por taskId
+  overrides?: Record<string, { frequencyDays?: number; label?: string; deleted?: boolean }> // override por taskId
 }
 
 export interface HomeArea {
@@ -384,6 +384,9 @@ export function resolveHomeTasks(
         const key = `${obj.id}::${task.id}`
         const lastDone = history[key]
         const taskOverride = obj.overrides?.[task.id]
+        
+        if (taskOverride?.deleted) continue
+
         const frequencyDays = taskOverride?.frequencyDays ?? task.frequencyDays
         const label = taskOverride?.label ?? task.label
 

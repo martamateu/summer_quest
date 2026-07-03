@@ -1,77 +1,112 @@
-# Summer Quest 🏆
+# Summer Quest
 
-Personal all-in-one productivity app that gamifies daily habits, finances, nutrition, gym training and health metrics into a single mobile-first dashboard.
+Summer Quest es una app personal de productividad y salud que une hábitos, finanzas, comida, gimnasio, pasos, foco y administración diaria en un dashboard mobile-first.
 
-Built with **Next.js 16 · React 19 · TypeScript · Tailwind 4**. Offline-first (localStorage) with cloud sync (Upstash Redis) and an Android companion for health data.
+Construida con **Next.js 16**, **React 19**, **TypeScript**, **Tailwind 4** y **shadcn/ui**. La app es offline-first: guarda estado en `localStorage`, sincroniza con **Upstash Redis** y usa **Gemini** a través del SDK `ai` para tareas de IA.
 
----
+## Qué resuelve
 
-## Architecture
+- Registrar el día a día sin abrir diez apps distintas.
+- Mantener datos locales y sincronizarlos en la nube sin perder el modo offline.
+- Convertir texto, voz y capturas en información estructurada.
+- Ver progreso real: hábitos, pasos, gym, finanzas, ciclo y foco.
 
-![Summer Quest software architecture](public/13104984850435557546.jpg)
+## Pantallas
 
-**Data flow:** Solid arrows are synchronous requests; dashed arrows are asynchronous background sync (health data + push triggers). The web app works offline (localStorage) and reconciles with Upstash Redis on foreground.
+### Hoy
 
----
+- Hábitos no negociables por área.
+- Anillo de progreso del día.
+- Pasos, tiempo de pantalla y foco / Pomodoro.
+- Ayuda 2 min para romper tareas bloqueadas en mini pasos.
+- Modo de día para orientar rutinas según energía, calma, productividad o admin.
 
-## Screens
+### Food
 
-| Tab | Description |
-|-----|-------------|
-| 🏠 **Hoy** | Daily non-negotiable habits (6 areas), progress ring, steps, screen time, Pomodoro timer · **Ayuda 2 min** (AI breaks a blocking task into mini-steps) |
-| 🍽️ **Food** | 5 meals/day with macros for training vs rest days · Spoonacular recipe ideas + saved recipes |
-| 💰 **Finanzas** | Receipt OCR (Gemini), manual entry, 27 categories, auto-categorization (supermarket · café · horchata), income tracking, day/week/month views + 50/30/20 insights · **monthly report export** (Markdown for NotebookLM / PDF) |
-| 🏋️ **Gym** | A/B/C workout rotation, weight×reps tracking, progression analytics, **week/month stats** (workout types + time trained), Google Sheets sync |
-| 📊 **Stats** | Habit completion %, streaks, per-area breakdowns, **navigable steps explorer** (month/year totals, average, best day + bar chart) |
-| 🗂️ **Admin Life** | Voice/text capture → AI routes to notes or shopping list · **Casa**: AI-generated home cleaning plan from natural language description (32 object templates, deterministic scheduler, per-area colour-coded calendar with inline edit + mark-done) · **Ciclo**: menstrual cycle data model + phase helpers + AI insights endpoint |
+- Plan de comidas con macros para días de entrenamiento y descanso.
+- Recetas sugeridas por IA y recetas guardadas.
 
-Secondary tabs: **Carrera** (career habits) and **Quests** (non-daily habits by area).
+### Finanzas
 
----
+- Gastos e ingresos con captura manual y OCR de tickets.
+- Auto-categorización por palabras clave.
+- Vista por día, mes y resumen mensual exportable.
+- Informe mensual en Markdown o PDF.
 
-## Tech Stack
+### Gym
 
-| Layer | Technology |
-|-------|------------|
-| Framework | Next.js 16 (App Router) · React 19 · TypeScript |
-| Styling | Tailwind CSS 4 · shadcn/ui · Lucide icons |
-| Auth | NextAuth v5 (beta) · Google OAuth + email whitelist |
-| Storage | localStorage (offline) + Upstash Redis (merge-by-ID cloud sync) |
-| AI / APIs | Gemini 2.5 Flash (OCR + Zod) · Spoonacular (recipes) · Google Sheets (gym) |
-| Push | Firebase Cloud Messaging → Android companion |
-| Companion | Android (Kotlin) — Health Connect steps + UsageStatsManager screen time |
-| Deploy | Vercel (auto-deploy from `main`) |
+- Rutina A/B/C y registro de series.
+- Analítica semanal y mensual.
+- Sincronización con Google Sheets.
+- Base lista para OCR de entrenos y coach con IA sensible al ciclo.
 
----
+### Stats
 
-## API Routes
+- Resumen de hábitos y métricas clave.
+- Explorador de pasos con navegación por meses y años.
+- Espacio para evolucionar hacia rutinas hechas, foco y métricas más claras.
 
-| Route | Method | Purpose | Auth |
-|-------|--------|---------|------|
-| `/api/analyze-receipt` | POST | Receipt OCR → expense items (Gemini) | Session |
-| `/api/break-task` | POST | Break a task into mini-steps (Gemini) | Session |
-| `/api/recipe-suggest` | POST | Recipes by macro constraints (Spoonacular) | Bypass |
-| `/api/sync-data` | GET/POST | Cloud backup/restore of localStorage (Redis) | Session |
-| `/api/sync-sheet` | GET/POST | Write gym workouts to Google Sheets | Session |
-| `/api/steps` · `/api/screen-time` | GET/POST | Health data from Android | Bearer |
-| `/api/fcm-token` | GET/POST | Store Firebase push token | Bearer |
-| `/api/trigger-sync` | POST | Silent FCM push to wake Android | Bypass |
-| `/api/home-config` | POST | Natural language description → home inventory JSON (Gemini + Zod) | Session |
-| `/api/cycle-insights` | POST | Cycle history → regularity + phase insights (Gemini + Zod) | Session |
-| `/api/note-capture` | POST | Raw text/voice → structured note or shopping items (Gemini) | Session |
+### Admin Life
 
-**Sync model:** upload debounced (300 ms) + `sendBeacon` on page hide; download on mount/foreground. Array keys (`sq_expenses`, `sq_gym_logs`, `sq_notes`, `sq_super_list`, `sq_cleaning_tasks`) merge by `id`; object keys (`sq_home`, `sq_cleaning_history`, `sq_cycle`) local-wins on conflict.
+- Captura de notas y lista de la compra por texto o voz.
+- Base para limpieza, ciclo y otras pantallas de administración personal.
 
----
+### Carreras secundarias
 
-## Environment Variables
+- Carrera.
+- Quests.
+
+## Arquitectura
+
+La app sigue este flujo:
+
+1. El usuario interactúa en la web.
+2. La app guarda el estado localmente en `localStorage`.
+3. Un evento `sq-data-changed` dispara la sincronización.
+4. Los datos se suben a **Upstash Redis**.
+5. Al montar la app o volver al foreground, se descarga la versión de nube.
+6. Android aporta pasos y, según el caso, otras métricas de salud.
+7. Los endpoints de IA procesan OCR, clasificación y resúmenes.
+
+### Sync model
+
+- Las claves tipo array se fusionan por `id`.
+- Las claves tipo objeto usan estrategia local-wins.
+- Los históricos relevantes, como pasos, se guardan por fecha para permitir backfill real.
+
+## Stack
+
+- **Framework:** Next.js 16 + React 19 + TypeScript
+- **UI:** Tailwind 4 + shadcn/ui + Lucide
+- **Storage:** `localStorage` + Upstash Redis
+- **IA:** Gemini con `ai` + `zod`
+- **Gym sync:** Google Sheets
+- **Mobile companion:** Android/Kotlin
+- **Deploy:** Vercel desde `main`
+
+## APIs
+
+- `POST /api/analyze-receipt` - OCR de tickets a gastos
+- `POST /api/break-task` - desglosar una tarea en mini pasos
+- `POST /api/recipe-suggest` - sugerencias de recetas
+- `GET/POST /api/sync-data` - backup/restore del estado local
+- `GET/POST /api/sync-sheet` - sincronización con Google Sheets
+- `GET/POST /api/steps` - pasos y calorías
+- `GET/POST /api/screen-time` - tiempo de pantalla
+- `GET/POST /api/fcm-token` - guardar token FCM
+- `POST /api/trigger-sync` - despertar Android
+- `POST /api/home-config` - convertir texto en configuración estructurada
+- `POST /api/note-capture` - texto o voz a nota / compra
+- `POST /api/cycle-insights` - regularidad del ciclo + insights suaves con IA
+
+## Variables de entorno
 
 ```env
 # Auth
 AUTH_SECRET=
 AUTH_GOOGLE_ID=
 AUTH_GOOGLE_SECRET=
-ALLOWED_EMAILS=                      # comma-separated whitelist
+ALLOWED_EMAILS=
 
 # AI / APIs
 GOOGLE_GENERATIVE_AI_API_KEY=
@@ -83,57 +118,64 @@ UPSTASH_REDIS_REST_TOKEN=
 
 # Android sync
 STEPS_API_TOKEN=
-FIREBASE_SERVICE_ACCOUNT_JSON=       # single-line JSON
+FIREBASE_SERVICE_ACCOUNT_JSON=
 
 # Gym sync
 GOOGLE_SHEETS_CLIENT_EMAIL=
 GOOGLE_SHEETS_PRIVATE_KEY=
 ```
 
----
-
-## Local Development
+## Desarrollo local
 
 ```bash
 npm install
-npm run dev          # http://localhost:3000
+npm run dev
 ```
 
----
+## Estado actual del roadmap
 
-## Roadmap
+### Ya entregado
 
-Actively expanding towards a full life-tracker.
+- Ayuda 2 min.
+- Export mensual de finanzas.
+- Stats de gym semana / mes.
+- Explorador de pasos por meses y años.
+- Admin Life base con notas y súper.
+- Histórico de pasos multi-año vía `steps:daily`.
+- Home / dashboard con métricas clave, Pomodoro y acceso a todas las áreas.
+- Admin Life con base de limpieza automática y `sq_cycle` ya modelado.
 
-### Recently shipped
+### En curso
 
-- **Ayuda 2 min** — AI breaks a blocking task into a 2-minute first action + mini-step checklist
-- **Finanzas monthly report** — export a month as Markdown (for NotebookLM) / PDF
-- **Gym week/month stats** — workout types + time trained (with session-duration tracking)
-- **Steps explorer** — navigable month/year totals, average, best day + bar chart
-- **New finance categories** — café, horchata, psicólogo, entrenador, Urban Sports, lentillas, uni, cine, libros + keyword auto-categorization
-- **Admin Life – Casa** — AI-generated cleaning plan from a natural language home description; 32 object templates (floor, fridge, washing_machine…); deterministic hash scheduler distributes tasks across the cycle; per-area colour-coded calendar with filter, inline edit (name + frequency), mark-done from list or calendar, daily suggestion per area, overdue badges
-- **Admin Life – Ciclo** — `sq_cycle` data model (`CyclePeriod`, `CycleData`, `CyclePhase`), pure phase/prediction helpers (`lib/cycle.ts`), `/api/cycle-insights` endpoint (Gemini regularity + phase insights)
+- Calendario de limpieza en Admin Life.
+- `sq_cycle` compartido + calendario del periodo.
+- Deep Work persistente fuera del modal.
+- Rediseño de Hoy con modos de día.
+- Overhaul de Stats para rutinas.
+- Pantalla de metas anuales.
+- OCR de entrenos en Gym.
 
-### Next up (near-term)
+### Más adelante
 
-- **Cycle calendar UI** — period calendar in Admin Life using `sq_cycle` + `lib/cycle.ts`
-- **CSV import** — bulk-backfill past months of expenses/income from a bank export
-- **Gym weight tracker** — manual log + chart (Renpho mock → Google Health later)
-- **Study tracker** — AI master's degree progress screen
-- **Books tracker** — reading log + "20 pages/day" habit (manual first, Goodreads later)
-- **Payroll tracker** — nómina screen + payslip PDF OCR
+- Import CSV de finanzas.
+- Tracking de peso.
+- Screen de libros.
+- Nómina + OCR de PDF.
+- Food photo OCR.
+- Gym coach con IA sensible al ciclo.
+- Wishlist con tracking de precios.
 
-### Planned (larger / AI-heavy)
+## Cómo evoluciona
 
-- **Home redesign** — day-type routines (energía / calma / productividad / admin) with morning + evening flows, stored in Redis, per-routine stats
-- **Gym workout OCR diary** — photograph a workout → structured log
-- **Gym AI coach** — load progression, cycle-aware
-- **Food photo OCR** — meal photo → macros & quantities
-- **Voice recorder** — transcript → categorized notes + shopping list
-- **Health tracker + RAG** — weight, food, cycle, workouts, steps, medical records → weekly health report
-- **Wishlist** — voice + photos, price estimation and **price tracking** of wanted products
-- **Jefe Final** — weekly boss challenge aggregating steps / finance / deep-work; reward = a small wishlist item
-- **Auto NotebookLM sync** — end-of-month report pushed to a Google Doc source (no public NotebookLM upload API yet)
+La idea es construir el producto por capas:
 
-This is a private project — not for redistribution.
+1. Guardar lo básico de forma local.
+2. Sincronizar bien entre dispositivos.
+3. Convertir entradas manuales en datos estructurados con IA.
+4. Llevar esos datos a pantallas más útiles: rutinas, ciclo, focus, salud y objetivos.
+
+Si un bloque ya está en **Ya entregado**, no hace falta rehacerlo antes de seguir avanzando.
+
+## Nota
+
+Proyecto privado. No redistribuir.

@@ -38,6 +38,42 @@ function saveToAdminNotes(title: string, text: string, area: string) {
   } catch {}
 }
 
+function saveToTasks(items: string[]) {
+  if (typeof window === 'undefined' || items.length === 0) return
+  try {
+    const now = getLocalDateStr()
+    const current = JSON.parse(localStorage.getItem('sq_tasks_list') || '[]')
+    const prepared = items
+      .map((text) => text.trim())
+      .filter(Boolean)
+      .map((text) => ({
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+        text,
+        done: false,
+        date: now,
+      }))
+    localStorage.setItem('sq_tasks_list', JSON.stringify([...prepared, ...current]))
+    window.dispatchEvent(new Event('sq-data-changed'))
+  } catch {}
+}
+
+function saveToSuper(items: string[]) {
+  if (typeof window === 'undefined' || items.length === 0) return
+  try {
+    const current = JSON.parse(localStorage.getItem('sq_super_list') || '[]')
+    const prepared = items
+      .map((text) => text.trim())
+      .filter(Boolean)
+      .map((text) => ({
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+        text,
+        done: false,
+      }))
+    localStorage.setItem('sq_super_list', JSON.stringify([...prepared, ...current]))
+    window.dispatchEvent(new Event('sq-data-changed'))
+  } catch {}
+}
+
 function logToday(key: string) {
   if (typeof window === 'undefined') return
   const today = getLocalDateStr()
@@ -212,6 +248,7 @@ export function TodayDashboard({}: TodayDashboardProps) {
   // Grabadora de voz
   const [recording, setRecording] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
+  const [savingTranscript, setSavingTranscript] = useState(false)
   const [transcript, setTranscript] = useState<{ text: string; title: string; area: string } | null>(null)
   const [transcriptError, setTranscriptError] = useState<string | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -355,10 +392,41 @@ export function TodayDashboard({}: TodayDashboardProps) {
     setRecording(false)
   }
 
-  const saveTranscriptToAdmin = () => {
+  const saveTranscriptToAdmin = async () => {
     if (!transcript) return
-    saveToAdminNotes(transcript.title, transcript.text, transcript.area)
-    setTranscript(null)
+    setSavingTranscript(true)
+    setTranscriptError(null)
+    try {
+      const res = await fetch('/api/note-capture', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: transcript.text }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Error')
+
+      if (data.kind === 'tarea') {
+        const items = Array.isArray(data.items) && data.items.length > 0
+          ? data.items
+          : [data.title || transcript.text]
+        saveToTasks(items)
+      } else if (data.kind === 'compra') {
+        const items = Array.isArray(data.items) && data.items.length > 0
+          ? data.items
+          : [data.title || transcript.text]
+        saveToSuper(items)
+      } else {
+        saveToAdminNotes(data.title || transcript.title, transcript.text, data.area || transcript.area)
+      }
+
+      setTranscript(null)
+    } catch {
+      // Fallback: nunca perder la nota aunque falle la clasificación.
+      saveToAdminNotes(transcript.title, transcript.text, transcript.area)
+      setTranscript(null)
+    } finally {
+      setSavingTranscript(false)
+    }
   }
 
   // Date string
@@ -501,9 +569,10 @@ export function TodayDashboard({}: TodayDashboardProps) {
               </button>
               <button
                 onClick={saveTranscriptToAdmin}
+                disabled={savingTranscript}
                 className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium"
               >
-                <Save className="w-4 h-4" /> Guardar en Admin
+                {savingTranscript ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar en Admin
               </button>
             </div>
           </div>

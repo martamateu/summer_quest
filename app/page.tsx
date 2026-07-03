@@ -241,7 +241,7 @@ export default function Page() {
   }
 
   // ── Cloud backup: sync localStorage ↔ Redis ──
-  const SYNC_KEYS = ['sq_habits', 'sq_today', 'sq_history', 'sq_expenses', 'sq_finance_started_at', 'sq_gym_logs', 'sq_gym_seeded', 'sq_steps_history', 'sq_food_log', 'sq_favorite_recipes', 'sq_notes', 'sq_super_list', 'sq_home', 'sq_cleaning_history', 'sq_cycle', 'sq_run_logs', 'sq_today_goals', 'sq_flex_log', 'sq_finance_log', 'sq_workout_logs']
+  const SYNC_KEYS = ['sq_habits', 'sq_today', 'sq_history', 'sq_expenses', 'sq_finance_started_at', 'sq_gym_logs', 'sq_gym_seeded', 'sq_steps_history', 'sq_food_log', 'sq_favorite_recipes', 'sq_notes', 'sq_super_list', 'sq_home', 'sq_cleaning_history', 'sq_cycle', 'sq_run_logs', 'sq_today_goals', 'sq_flex_log', 'sq_finance_log', 'sq_workout_logs', 'sq_tasks_list', 'sq_last_modified']
 
   // Debounced upload: cancel previous pending upload so only the latest data is sent
   const uploadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -297,21 +297,6 @@ export default function Page() {
     }, 300)
   }
 
-  // Keys that contain arrays of items with `id` fields — need merge by ID
-  const ARRAY_KEYS = new Set(['sq_expenses', 'sq_gym_logs', 'sq_notes', 'sq_super_list', 'sq_cleaning_tasks', 'sq_run_logs', 'sq_workout_logs'])
-
-  // Merge two JSON arrays by `id`, keeping all unique items
-  const mergeArraysById = (localJson: string, cloudJson: string): string => {
-    try {
-      const local = JSON.parse(localJson) as { id: string }[]
-      const cloud = JSON.parse(cloudJson) as { id: string }[]
-      if (!Array.isArray(local) || !Array.isArray(cloud)) return cloudJson
-      const ids = new Set(local.map(i => i.id))
-      const merged = [...local, ...cloud.filter(i => !ids.has(i.id))]
-      return JSON.stringify(merged)
-    } catch { return cloudJson }
-  }
-
   const downloadFromCloud = async () => {
     try {
       const res = await fetch('/api/sync-data')
@@ -324,30 +309,40 @@ export default function Page() {
         console.log('[sync] cloud is empty')
         return false
       }
-      console.log('[sync] cloud has', Object.keys(data).length, 'keys')
-      let restored = false
-      for (const key of SYNC_KEYS) {
-        const cloudVal = data[key]
-        const localVal = localStorage.getItem(key)
-        if (!cloudVal) continue
+      
+      const cloudMod = parseInt(data['sq_last_modified'] || '0', 10)
+      const localMod = parseInt(localStorage.getItem('sq_last_modified') || '0', 10)
 
-        if (!localVal || localVal === '[]' || localVal === '{}') {
-          // Local is empty — restore from cloud
-          console.log('[sync] restoring', key, 'from cloud')
-          localStorage.setItem(key, cloudVal)
-          restored = true
-        } else if (ARRAY_KEYS.has(key)) {
-          // Both have data — merge arrays by ID
-          const merged = mergeArraysById(localVal, cloudVal)
-          if (merged !== localVal) {
-            console.log('[sync] merging', key, 'with cloud data')
-            localStorage.setItem(key, merged)
-            restored = true
+      // Si la nube tiene datos más recientes (o igual, pero local no tiene fecha), restauramos todo de la nube
+      if (cloudMod > localMod || (cloudMod > 0 && localMod === 0)) {
+        console.log('[sync] cloud is newer, restoring ALL keys')
+        for (const key of SYNC_KEYS) {
+          if (data[key]) {
+            localStorage.setItem(key, data[key])
           }
         }
-        // For non-array keys (sq_today, sq_habits, etc.), local wins — don't overwrite
+        return true
       }
-      return restored
+
+      // Incluso si sq_last_modified no es mayor, completar claves locales ausentes
+      // evita perder datos creados en otro dispositivo que no haya actualizado ese timestamp.
+      let filledMissingKeys = false
+      for (const key of SYNC_KEYS) {
+        const cloudVal = data[key]
+        if (!cloudVal) continue
+        const localVal = localStorage.getItem(key)
+        if (!localVal) {
+          localStorage.setItem(key, cloudVal)
+          filledMissingKeys = true
+        }
+      }
+
+      if (filledMissingKeys) {
+        console.log('[sync] filled missing local keys from cloud')
+        return true
+      }
+      
+      return false
     } catch (e) {
       console.error('[sync] download error:', e)
       return false
@@ -393,7 +388,10 @@ export default function Page() {
       }
     }
     const handlePageHide = () => flushToCloud()
-    const handleDataChanged = () => uploadToCloud()
+    const handleDataChanged = () => {
+      localStorage.setItem('sq_last_modified', Date.now().toString())
+      uploadToCloud()
+    }
     document.addEventListener('visibilitychange', handleVisibility)
     window.addEventListener('pagehide', handlePageHide)
     window.addEventListener('sq-data-changed', handleDataChanged)

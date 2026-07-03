@@ -36,7 +36,31 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function readWorkouts(): WorkoutLog[] {
   if (typeof window === 'undefined') return []
-  try { return JSON.parse(localStorage.getItem(WORKOUT_KEY) || '[]') } catch { return [] }
+  try {
+    const parsed = JSON.parse(localStorage.getItem(WORKOUT_KEY) || '[]')
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .filter((it): it is Partial<WorkoutLog> => !!it && typeof it === 'object')
+      .map((it) => ({
+        id: typeof it.id === 'string' ? it.id : uid(),
+        date: typeof it.date === 'string' ? it.date : getTodayStr(),
+        activityName: typeof it.activityName === 'string' ? it.activityName : 'Entreno',
+        activityType:
+          it.activityType === 'flexibilidad' ||
+          it.activityType === 'fuerza' ||
+          it.activityType === 'cardio' ||
+          it.activityType === 'natacion' ||
+          it.activityType === 'otro'
+            ? it.activityType
+            : 'otro',
+        studio: typeof it.studio === 'string' ? it.studio : undefined,
+        durationMinutes: typeof it.durationMinutes === 'number' ? it.durationMinutes : undefined,
+        instructor: typeof it.instructor === 'string' ? it.instructor : undefined,
+        addedManually: Boolean(it.addedManually),
+      }))
+  } catch {
+    return []
+  }
 }
 
 function saveWorkouts(logs: WorkoutLog[]) {
@@ -254,17 +278,19 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
       )}
 
       {/* Pending OCR result */}
-      {pending && (
+      {pending && (() => {
+        const meta = TYPE_META[pending.activityType] || TYPE_META['otro']
+        return (
         <div className="bg-card rounded-2xl p-4 mb-4 border-2 border-primary">
           <p className="text-[10px] text-muted-foreground uppercase mb-2">Entreno detectado — ¿confirmar?</p>
           <div className="flex items-start gap-3 mb-3">
-            <span style={{ color: TYPE_META[pending.activityType].color }}>
-              {TYPE_META[pending.activityType].icon}
+            <span style={{ color: meta.color }}>
+              {meta.icon}
             </span>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-foreground">{pending.activityName}</p>
               <p className="text-[11px] text-muted-foreground mt-0.5">
-                {TYPE_META[pending.activityType].label}
+                {meta.label}
                 {pending.studio && ` · ${pending.studio}`}
                 {pending.durationMinutes && ` · ${pending.durationMinutes} min`}
                 {pending.instructor && ` · ${pending.instructor}`}
@@ -287,7 +313,7 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
             </button>
           </div>
         </div>
-      )}
+      )})()}
 
       {/* Manual add */}
       <button
@@ -356,13 +382,16 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
       {/* Type summary */}
       {filtered.length > 0 && (
         <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
-          {(Object.keys(typeCounts) as WorkoutType[]).map(t => (
-            <div key={t} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-white shrink-0"
-              style={{ backgroundColor: TYPE_META[t].color }}>
-              {TYPE_META[t].icon}
-              {typeCounts[t]} {TYPE_META[t].label}
-            </div>
-          ))}
+          {(Object.keys(typeCounts) as WorkoutType[]).map(t => {
+            const meta = TYPE_META[t] || TYPE_META['otro']
+            return (
+              <div key={t} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-white shrink-0"
+                style={{ backgroundColor: meta.color }}>
+                {meta.icon}
+                {typeCounts[t]} {meta.label}
+              </div>
+            )
+          })}
         </div>
       )}
 
@@ -373,29 +402,32 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
         </p>
       ) : (
         <div className="space-y-2">
-          {filtered.map(w => (
-            <div key={w.id} className="bg-card rounded-2xl p-4 flex items-start justify-between gap-2"
-              style={{ borderLeft: `3px solid ${TYPE_META[w.activityType].color}` }}>
-              <div className="flex items-start gap-3 flex-1 min-w-0">
-                <span className="mt-0.5 shrink-0" style={{ color: TYPE_META[w.activityType].color }}>
-                  {TYPE_META[w.activityType].icon}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-foreground truncate">{w.activityName}</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
-                    {TYPE_META[w.activityType].label}
-                    {w.studio && ` · ${w.studio}`}
-                    {w.durationMinutes && ` · ${w.durationMinutes} min`}
-                    {w.instructor && ` · ${w.instructor}`}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">{fmtDate(w.date)}</p>
+          {filtered.map(w => {
+            const meta = TYPE_META[w.activityType] || TYPE_META['otro']
+            return (
+              <div key={w.id} className="bg-card rounded-2xl p-4 flex items-start justify-between gap-2"
+                style={{ borderLeft: `3px solid ${meta.color}` }}>
+                <div className="flex items-start gap-3 flex-1 min-w-0">
+                  <span className="mt-0.5 shrink-0" style={{ color: meta.color }}>
+                    {meta.icon}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-foreground truncate">{w.activityName}</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      {meta.label}
+                      {w.studio && ` · ${w.studio}`}
+                      {w.durationMinutes && ` · ${w.durationMinutes} min`}
+                      {w.instructor && ` · ${w.instructor}`}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{fmtDate(w.date)}</p>
+                  </div>
                 </div>
+                <button onClick={() => deleteWorkout(w.id)} className="p-1.5 rounded-full hover:bg-secondary shrink-0">
+                  <Trash2 className="w-4 h-4 text-muted-foreground" />
+                </button>
               </div>
-              <button onClick={() => deleteWorkout(w.id)} className="p-1.5 rounded-full hover:bg-secondary shrink-0">
-                <Trash2 className="w-4 h-4 text-muted-foreground" />
-              </button>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

@@ -16,8 +16,8 @@ const HomeObjectSchema = z.object({
   id: z.string(),
   name: z.string(),
   templateId: z.enum(VALID_TEMPLATE_IDS),
-  config: z.record(z.unknown()).optional(),
-  overrides: z.record(z.object({ frequencyDays: z.number().optional() })).optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
+  overrides: z.record(z.string(), z.object({ frequencyDays: z.number().optional() })).optional(),
 })
 
 const HomeAreaSchema = z.object({
@@ -72,7 +72,7 @@ export async function POST(request: Request) {
     }
 
     const { object } = await generateObject({
-      model: google('gemini-2.5-flash'),
+      model: google('gemini-1.5-flash'),
       schema: HomeDataSchema,
       messages: [
         { role: 'user', content: SYSTEM_PROMPT },

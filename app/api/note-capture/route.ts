@@ -17,6 +17,13 @@ const NoteSchema = z.object({
     .describe('Si es "compra" o "tarea" con varios elementos, cada elemento por separado y limpio (sin "y", sin números). Si no aplica, array vacío.'),
 })
 
+function splitItems(raw: string): string[] {
+  return raw
+    .split(/,| y | e |;|\n|\.|\-/gi)
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
 export async function POST(request: Request) {
   try {
     const { text } = await request.json()
@@ -25,8 +32,38 @@ export async function POST(request: Request) {
       return Response.json({ error: 'No text provided' }, { status: 400 })
     }
 
+    const normalized = text.trim().toLowerCase()
+
+    // Reglas directas: evita depender del modelo para comandos muy explícitos.
+    if (normalized.startsWith('tarea ') || normalized === 'tarea' || normalized.startsWith('tareas ')) {
+      const clean = text.trim().replace(/^tareas?\s*[:\-]?\s*/i, '')
+      const items = splitItems(clean)
+      return Response.json({
+        kind: 'tarea',
+        area: 'personal',
+        title: items[0] || 'Nueva tarea',
+        items,
+      })
+    }
+
+    if (
+      normalized.includes('comprar ') ||
+      normalized.includes('compra ') ||
+      normalized.includes('super ') ||
+      normalized.includes('supermercado')
+    ) {
+      const clean = text.trim().replace(/^(comprar|compra|lista de la compra|lista del super)\s*[:\-]?\s*/i, '')
+      const items = splitItems(clean)
+      return Response.json({
+        kind: 'compra',
+        area: 'compra',
+        title: items[0] || 'Lista de compra',
+        items,
+      })
+    }
+
     const { object } = await generateObject({
-      model: google('gemini-2.5-flash'),
+      model: google('gemini-1.5-flash'),
       schema: NoteSchema,
       messages: [
         {
