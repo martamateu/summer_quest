@@ -324,21 +324,53 @@ export default function Page() {
         return true
       }
 
-      // Incluso si sq_last_modified no es mayor, completar claves locales ausentes
-      // evita perder datos creados en otro dispositivo que no haya actualizado ese timestamp.
+      // Incluso si sq_last_modified no es mayor, fusionamos los arrays (notas, tareas,
+      // súper, entrenos…) por id para no perder items creados en otro dispositivo, y
+      // completamos claves locales totalmente ausentes.
+      const ID_ARRAY_KEYS = new Set([
+        'sq_notes', 'sq_super_list', 'sq_tasks_list',
+        'sq_workout_logs', 'sq_run_logs', 'sq_gym_logs', 'sq_expenses',
+      ])
+      const STR_ARRAY_KEYS = new Set(['sq_flex_log', 'sq_finance_log'])
+
       let filledMissingKeys = false
       for (const key of SYNC_KEYS) {
         const cloudVal = data[key]
         if (!cloudVal) continue
         const localVal = localStorage.getItem(key)
+
         if (!localVal) {
           localStorage.setItem(key, cloudVal)
           filledMissingKeys = true
+          continue
+        }
+
+        // Fusión por id/valor para las claves array
+        if (ID_ARRAY_KEYS.has(key) || STR_ARRAY_KEYS.has(key)) {
+          try {
+            const local = JSON.parse(localVal)
+            const cloud = JSON.parse(cloudVal)
+            if (Array.isArray(local) && Array.isArray(cloud)) {
+              let merged: unknown[]
+              if (STR_ARRAY_KEYS.has(key)) {
+                merged = Array.from(new Set([...local, ...cloud]))
+              } else {
+                const byId = new Map<string, any>()
+                for (const item of local) if (item && typeof item === 'object' && 'id' in item) byId.set(String(item.id), item)
+                for (const item of cloud) if (item && typeof item === 'object' && 'id' in item && !byId.has(String(item.id))) byId.set(String(item.id), item)
+                merged = Array.from(byId.values())
+              }
+              if (merged.length !== local.length) {
+                localStorage.setItem(key, JSON.stringify(merged))
+                filledMissingKeys = true
+              }
+            }
+          } catch { /* ignorar valores no parseables */ }
         }
       }
 
       if (filledMissingKeys) {
-        console.log('[sync] filled missing local keys from cloud')
+        console.log('[sync] merged/filled keys from cloud')
         return true
       }
       

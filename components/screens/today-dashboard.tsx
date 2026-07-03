@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Dumbbell, GraduationCap, PersonStanding, CheckCircle2, Circle, Wallet, CloudRain, Sun, Cloud, CloudSnow, Wind, Loader2, Mic, MicOff, X, Save } from 'lucide-react'
+import { Dumbbell, GraduationCap, PersonStanding, CheckCircle2, Circle, Wallet, CloudRain, Sun, Cloud, CloudSnow, Wind, Loader2, Mic, MicOff } from 'lucide-react'
 import { TaskBreakdown } from '@/components/task-breakdown'
 
 // ── localStorage helpers ───────────────────────────────────────────────────────
@@ -245,19 +245,21 @@ export function TodayDashboard({}: TodayDashboardProps) {
   const [showTaskHelp, setShowTaskHelp] = useState(false)
   const [todayExpenseCount, setTodayExpenseCount] = useState(0)
 
-  // Grabadora de voz
-  const [recording, setRecording] = useState(false)
-  const [transcribing, setTranscribing] = useState(false)
-  const [savingTranscript, setSavingTranscript] = useState(false)
-  const [transcript, setTranscript] = useState<{ text: string; title: string; area: string } | null>(null)
-  const [transcriptError, setTranscriptError] = useState<string | null>(null)
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const chunksRef = useRef<Blob[]>([])
+  // Grabadora de voz (reconocimiento en vivo + autoguardado, como Admin Life)
+  const [listening, setListening] = useState(false)
+  const [processing, setProcessing] = useState(false)
+  const [voiceInput, setVoiceInput] = useState('')
+  const [voiceStatus, setVoiceStatus] = useState<string | null>(null)
+  const recognitionRef = useRef<any>(null)
+  const speechSupported = useRef(false)
 
   // Load today's data from localStorage
   useEffect(() => {
     setDayData(readDayData(today))
     setTodayExpenseCount(countTodayExpenses())
+    const SR = (typeof window !== 'undefined' &&
+      ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)) || null
+    speechSupported.current = !!SR
   }, [today])
 
   // Escuchar cambios: si se añaden gastos hoy, auto-marcar finanzas
@@ -353,80 +355,83 @@ export function TodayDashboard({}: TodayDashboardProps) {
     else removeToday('sq_finance_log')
   }
 
-  // Grabadora helpers
-  const startRecording = async () => {
-    setTranscript(null)
-    setTranscriptError(null)
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mr = new MediaRecorder(stream)
-      chunksRef.current = []
-      mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
-      mr.onstop = async () => {
-        stream.getTracks().forEach(t => t.stop())
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
-        setTranscribing(true)
-        try {
-          const fd = new FormData()
-          fd.append('audio', blob, 'nota.webm')
-          const res = await fetch('/api/transcribe', { method: 'POST', body: fd })
-          const data = await res.json()
-          if (!res.ok) throw new Error(data.error || 'Error')
-          setTranscript(data)
-        } catch (e: any) {
-          setTranscriptError(e?.message || 'Error al transcribir. Solo funciona en producción.')
-        } finally {
-          setTranscribing(false)
-        }
-      }
-      mediaRecorderRef.current = mr
-      mr.start()
-      setRecording(true)
-    } catch {
-      setTranscriptError('No se pudo acceder al micrófono.')
-    }
-  }
-
-  const stopRecording = () => {
-    mediaRecorderRef.current?.stop()
-    setRecording(false)
-  }
-
-  const saveTranscriptToAdmin = async () => {
-    if (!transcript) return
-    setSavingTranscript(true)
-    setTranscriptError(null)
+  // Voz: reconocimiento en vivo. Transcribe mientras hablas y guarda solo al terminar.
+  const processInput = async (text: string) => {
+    const clean = text.trim()
+    if (!clean) return
+    setProcessing(true)
+    setVoiceStatus(null)
     try {
       const res = await fetch('/api/note-capture', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: transcript.text }),
+        body: JSON.stringify({ text: clean }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Error')
 
       if (data.kind === 'tarea') {
-        const items = Array.isArray(data.items) && data.items.length > 0
-          ? data.items
-          : [data.title || transcript.text]
+        const items = Array.isArray(data.items) && data.items.length > 0 ? data.items : [data.title || clean]
         saveToTasks(items)
+        setVoiceStatus(`✓ Tarea guardada${items.length > 1 ? `s (${items.length})` : ''}`)
       } else if (data.kind === 'compra') {
-        const items = Array.isArray(data.items) && data.items.length > 0
-          ? data.items
-          : [data.title || transcript.text]
+        const items = Array.isArray(data.items) && data.items.length > 0 ? data.items : [data.title || clean]
         saveToSuper(items)
+        setVoiceStatus(`✓ Añadido al súper${items.length > 1 ? ` (${items.length})` : ''}`)
       } else {
-        saveToAdminNotes(data.title || transcript.title, transcript.text, data.area || transcript.area)
+        saveToAdminNotes(data.title || clean.slice(0, 40), clean, data.area || 'general')
+        setVoiceStatus('✓ Nota guardada')
       }
-
-      setTranscript(null)
     } catch {
       // Fallback: nunca perder la nota aunque falle la clasificación.
-      saveToAdminNotes(transcript.title, transcript.text, transcript.area)
-      setTranscript(null)
+      saveToAdminNotes(clean.slice(0, 40), clean, 'general')
+      setVoiceStatus('✓ Nota guardada')
     } finally {
-      setSavingTranscript(false)
+      setProcessing(false)
+      setVoiceInput('')
     }
+  }
+
+  const startListening = () => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SR) {
+      setVoiceStatus('El reconocimiento de voz no está disponible en este dispositivo.')
+      return
+    }
+    setVoiceStatus(null)
+    setVoiceInput('')
+    const recognition = new SR()
+    recognition.lang = 'es-ES'
+    recognition.interimResults = true
+    recognition.continuous = false
+    let finalText = ''
+    recognition.onresult = (event: any) => {
+      let interim = ''
+      finalText = ''
+      for (let i = 0; i < event.results.length; i++) {
+        const t = event.results[i][0].transcript
+        if (event.results[i].isFinal) finalText += t
+        else interim += t
+      }
+      setVoiceInput(finalText || interim)
+    }
+    recognition.onerror = () => {
+      setListening(false)
+      setVoiceStatus('No se pudo escuchar. Revisa el micrófono.')
+    }
+    recognition.onend = () => {
+      setListening(false)
+      recognitionRef.current = null
+      if (finalText.trim()) processInput(finalText)
+    }
+    recognitionRef.current = recognition
+    recognition.start()
+    setListening(true)
+  }
+
+  const stopListening = () => {
+    recognitionRef.current?.stop()
+    setListening(false)
   }
 
   // Date string
@@ -479,6 +484,7 @@ export function TodayDashboard({}: TodayDashboardProps) {
             onToggle={() => toggleGoal('fuerza')}
             modeBadge={{ emoji: mode.emoji, label: mode.label }}
             onCycleMode={cycleFuerzaMode}
+            noTask
           />
         )
       })()}
@@ -525,57 +531,43 @@ export function TodayDashboard({}: TodayDashboardProps) {
         </div>
       </div>
 
-      {/* Nota rápida — línea compacta + panel expandible */}
+      {/* Nota rápida — reconocimiento en vivo + autoguardado */}
       <div className="bg-card rounded-2xl p-4">
         {/* Fila compacta siempre visible */}
         <div className="flex items-center justify-between">
-          <p className="text-sm font-semibold text-foreground">Nota rápida</p>
-          <div className="flex items-center gap-2">
-            {transcribing && <Loader2 className="w-4 h-4 text-muted-foreground animate-spin" />}
-            {transcript && (
-              <button onClick={() => setTranscript(null)} className="p-1 rounded-full hover:bg-secondary">
-                <X className="w-4 h-4 text-muted-foreground" />
-              </button>
-            )}
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-foreground">Nota rápida por voz</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {listening ? 'Escuchando… se guarda al terminar de hablar' : 'Habla y se guarda solo (nota, tarea o súper)'}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 ml-3">
+            {processing && <Loader2 className="w-4 h-4 text-muted-foreground animate-spin" />}
             <button
-              onClick={recording ? stopRecording : startRecording}
-              disabled={transcribing}
+              onClick={listening ? stopListening : startListening}
+              disabled={processing}
               className={`p-2 rounded-full transition-colors ${
-                recording ? 'bg-red-500 text-white animate-pulse' : 'bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground'
+                listening ? 'bg-red-500 text-white animate-pulse' : 'bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground'
               }`}
-              aria-label={recording ? 'Parar grabación' : 'Grabar nota'}
+              aria-label={listening ? 'Parar' : 'Hablar'}
             >
-              {recording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              {listening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
             </button>
           </div>
         </div>
 
-        {/* Panel expandible: error, transcribiendo o resultado */}
-        {transcriptError && (
-          <p className="text-xs text-red-500 mt-2">{transcriptError}</p>
-        )}
-        {transcript && (
-          <div className="mt-3 space-y-2">
-            <div className="bg-secondary rounded-xl p-3">
-              <p className="text-xs font-medium text-muted-foreground mb-1">{transcript.title}</p>
-              <p className="text-sm text-foreground">{transcript.text}</p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setTranscript(null)}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-secondary text-foreground text-sm"
-              >
-                <X className="w-4 h-4" /> Borrar
-              </button>
-              <button
-                onClick={saveTranscriptToAdmin}
-                disabled={savingTranscript}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium"
-              >
-                {savingTranscript ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar en Admin
-              </button>
-            </div>
+        {/* Transcripción en vivo */}
+        {(listening || voiceInput) && (
+          <div className="mt-3 bg-secondary rounded-xl p-3">
+            <p className="text-sm text-foreground">
+              {voiceInput || <span className="text-muted-foreground">…</span>}
+            </p>
           </div>
+        )}
+
+        {/* Estado del guardado */}
+        {voiceStatus && !listening && (
+          <p className="text-xs text-muted-foreground mt-2">{voiceStatus}</p>
         )}
       </div>
 
