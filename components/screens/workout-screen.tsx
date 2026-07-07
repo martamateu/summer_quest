@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Camera, Trash2, ChevronLeft, ChevronRight, Loader2, Dumbbell, PersonStanding, Waves, Heart, Activity, Check, X, Plus } from 'lucide-react'
+import { Camera, Trash2, ChevronLeft, ChevronRight, Loader2, Dumbbell, PersonStanding, Waves, Heart, Activity, Check, X, Plus, Footprints, RefreshCw } from 'lucide-react'
 import { recordTombstones } from '@/lib/sync-tombstones'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -67,6 +67,55 @@ function readWorkouts(): WorkoutLog[] {
 function saveWorkouts(logs: WorkoutLog[]) {
   localStorage.setItem(WORKOUT_KEY, JSON.stringify(logs))
   window.dispatchEvent(new Event('sq-data-changed'))
+}
+
+// ── Runs (Strava) ─────────────────────────────────────────────────────────────
+const RUN_KEY = 'sq_run_logs'
+
+interface RunSession {
+  id: string
+  date: string
+  startTime: string
+  durationSecs: number
+  distanceMeters: number
+  calories: number
+  avgPaceSecPerKm: number
+  type: string
+}
+
+function readRuns(): RunSession[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const parsed = JSON.parse(localStorage.getItem(RUN_KEY) || '[]')
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((r): r is RunSession => !!r && typeof r === 'object' && typeof r.id === 'string')
+  } catch {
+    return []
+  }
+}
+
+// Fusiona runs nuevos (de Strava) en sq_run_logs por id, sin duplicar.
+function mergeRuns(incoming: RunSession[]) {
+  const local = readRuns()
+  const byId = new Map<string, RunSession>()
+  for (const r of local) byId.set(r.id, r)
+  for (const r of incoming) byId.set(r.id, r)
+  localStorage.setItem(RUN_KEY, JSON.stringify(Array.from(byId.values())))
+  window.dispatchEvent(new Event('sq-data-changed'))
+}
+
+const fmtKm = (m: number) => `${(m / 1000).toFixed(2)} km`
+const fmtPace = (secPerKm: number) => {
+  if (!secPerKm || secPerKm <= 0) return '—'
+  const m = Math.floor(secPerKm / 60)
+  const s = Math.round(secPerKm % 60)
+  return `${m}:${String(s).padStart(2, '0')} /km`
+}
+const fmtRunDuration = (secs: number) => {
+  const h = Math.floor(secs / 3600)
+  const m = Math.floor((secs % 3600) / 60)
+  const s = secs % 60
+  return h > 0 ? `${h}h ${m}m` : `${m}:${String(s).padStart(2, '0')}`
 }
 
 function logToday(key: string) {
@@ -176,12 +225,49 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
   const [manualDate, setManualDate] = useState(getTodayStr())
   const [manualDuration, setManualDuration] = useState('')
 
+  // Runs / Strava state
+  const [runs, setRuns] = useState<RunSession[]>([])
+  const [stravaConnected, setStravaConnected] = useState(false)
+  const [stravaConfigured, setStravaConfigured] = useState(true)
+  const [syncingStrava, setSyncingStrava] = useState(false)
+  const [stravaMsg, setStravaMsg] = useState<string | null>(null)
+
   useEffect(() => {
     setWorkouts(readWorkouts())
-    const handler = () => setWorkouts(readWorkouts())
+    setRuns(readRuns())
+    const handler = () => { setWorkouts(readWorkouts()); setRuns(readRuns()) }
     window.addEventListener('sq-data-changed', handler)
+    // Estado de conexión con Strava
+    fetch('/api/strava/status')
+      .then(r => r.json())
+      .then(d => { setStravaConnected(!!d.connected); setStravaConfigured(d.configured !== false) })
+      .catch(() => {})
     return () => window.removeEventListener('sq-data-changed', handler)
   }, [])
+
+  const connectStrava = () => { window.location.href = '/api/strava/authorize' }
+
+  const syncStrava = async () => {
+    setSyncingStrava(true)
+    setStravaMsg(null)
+    try {
+      const res = await fetch('/api/strava/sync')
+      const data = await res.json()
+      if (!res.ok) {
+        if (data.error === 'not_connected') { setStravaConnected(false); throw new Error('Conecta tu cuenta de Strava primero.') }
+        throw new Error(data.error || 'Error al sincronizar con Strava')
+      }
+      if (Array.isArray(data.runs) && data.runs.length > 0) mergeRuns(data.runs)
+      setRuns(readRuns())
+      setStravaConnected(true)
+      setStravaMsg(`✓ ${data.count} carrera${data.count === 1 ? '' : 's'} importada${data.count === 1 ? '' : 's'}`)
+    } catch (e: any) {
+      setStravaMsg(`✗ ${e?.message || 'Error'}`)
+    } finally {
+      setSyncingStrava(false)
+      setTimeout(() => setStravaMsg(null), 5000)
+    }
+  }
 
   const addWorkout = (log: Omit<WorkoutLog, 'id'>) => {
     const next = [{ ...log, id: uid() }, ...workouts]
@@ -277,6 +363,21 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
     acc[w.activityType] = (acc[w.activityType] || 0) + 1
     return acc
   }, {} as Record<WorkoutType, number>)
+
+  // Carreras del periodo (Strava)
+  const runsInRange = runs
+    .filter(r => r.date >= range.start && r.date <= range.end)
+    .sort((a, b) => b.startTime.localeCompare(a.startTime))
+  const runTotals = runsInRange.reduce(
+    (acc, r) => {
+      acc.count += 1
+      acc.distance += r.distanceMeters
+      acc.duration += r.durationSecs
+      return acc
+    },
+    { count: 0, distance: 0, duration: 0 }
+  )
+  const runAvgPace = runTotals.distance > 0 ? Math.round(runTotals.duration / (runTotals.distance / 1000)) : 0
 
   return (
     <div className={embedded ? '' : 'px-4 pt-6 pb-24'}>
@@ -407,7 +508,76 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
         </button>
       </div>
 
-      {/* Type summary */}
+      {/* Carreras (Strava) */}
+      <div className="bg-card rounded-2xl p-4 mb-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Footprints className="w-4 h-4 text-orange-500" />
+            <p className="text-sm font-semibold text-foreground">Carreras</p>
+            <span className="text-[10px] text-muted-foreground">Strava</span>
+          </div>
+          {stravaConfigured && (
+            stravaConnected ? (
+              <button
+                onClick={syncStrava}
+                disabled={syncingStrava}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange-500 text-white text-xs font-medium disabled:opacity-60"
+              >
+                {syncingStrava ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                Sincronizar
+              </button>
+            ) : (
+              <button
+                onClick={connectStrava}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange-500 text-white text-xs font-medium"
+              >
+                Conectar Strava
+              </button>
+            )
+          )}
+        </div>
+
+        {!stravaConfigured && (
+          <p className="text-[11px] text-muted-foreground">Strava aún no está configurado en el servidor.</p>
+        )}
+        {stravaMsg && <p className="text-[11px] text-muted-foreground mb-2">{stravaMsg}</p>}
+
+        {/* Resumen del periodo */}
+        {runTotals.count > 0 ? (
+          <>
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              <div className="bg-secondary rounded-xl p-2 text-center">
+                <p className="text-base font-bold text-foreground">{runTotals.count}</p>
+                <p className="text-[10px] text-muted-foreground">carreras</p>
+              </div>
+              <div className="bg-secondary rounded-xl p-2 text-center">
+                <p className="text-base font-bold text-foreground">{(runTotals.distance / 1000).toFixed(1)}</p>
+                <p className="text-[10px] text-muted-foreground">km totales</p>
+              </div>
+              <div className="bg-secondary rounded-xl p-2 text-center">
+                <p className="text-base font-bold text-foreground">{fmtPace(runAvgPace).replace(' /km', '')}</p>
+                <p className="text-[10px] text-muted-foreground">ritmo medio</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {runsInRange.map(r => (
+                <div key={r.id} className="flex items-center justify-between bg-secondary rounded-xl p-2.5">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground">{fmtKm(r.distanceMeters)}</p>
+                    <p className="text-[11px] text-muted-foreground">{fmtDate(r.date)} · {fmtRunDuration(r.durationSecs)}</p>
+                  </div>
+                  <span className="text-xs font-medium text-orange-500 shrink-0">{fmtPace(r.avgPaceSecPerKm)}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <p className="text-[11px] text-muted-foreground">
+            {stravaConnected ? 'No hay carreras en este periodo.' : 'Conecta Strava para importar tus carreras.'}
+          </p>
+        )}
+      </div>
+
       {filtered.length > 0 && (
         <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
           {(Object.keys(typeCounts) as WorkoutType[]).map(t => {

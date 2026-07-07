@@ -98,6 +98,10 @@ La app sigue este flujo:
 - `POST /api/home-config` - convertir texto en configuración estructurada
 - `POST /api/note-capture` - texto o voz a nota / compra
 - `POST /api/cycle-insights` - regularidad del ciclo + insights suaves con IA
+- `GET /api/strava/authorize` - inicia OAuth con Strava
+- `GET /api/strava/callback` - callback OAuth de Strava
+- `GET /api/strava/sync` - importa carreras de Strava
+- `GET/DELETE /api/strava/status` - estado / desconexión de Strava
 
 ## Variables de entorno
 
@@ -111,6 +115,10 @@ ALLOWED_EMAILS=
 # AI / APIs
 GOOGLE_GENERATIVE_AI_API_KEY=
 SPOONACULAR_API_KEY=
+
+# Strava
+STRAVA_CLIENT_ID=
+STRAVA_CLIENT_SECRET=
 
 # Cloud storage
 UPSTASH_REDIS_REST_URL=

@@ -113,6 +113,7 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
   const [financeLog, setFinanceLog] = useState<string[]>([])
   const [workoutLogs, setWorkoutLogs] = useState<{ date: string; activityType: string }[]>([])
   const [gymLogs, setGymLogs] = useState<{ date: string }[]>([])
+  const [runLogs, setRunLogs] = useState<{ date: string; distanceMeters?: number }[]>([])
   const [cleaningHistory, setCleaningHistory] = useState<Record<string, string>>({})
   const [masterLog, setMasterLog] = useState<string[]>([])
 
@@ -122,6 +123,7 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
     setFinanceLog(readArr<string>('sq_finance_log'))
     setWorkoutLogs(readArr<{ date: string; activityType: string }>('sq_workout_logs'))
     setGymLogs(readArr<{ date: string }>('sq_gym_logs'))
+    setRunLogs(readArr<{ date: string; distanceMeters?: number }>('sq_run_logs'))
     setCleaningHistory(readObj('sq_cleaning_history', {}))
     // Build master log from sq_today_goals history — only today available
     const todayGoals = readObj<{ date: string; master?: { done: boolean } }>('sq_today_goals', { date: '' })
@@ -135,6 +137,7 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
       setFinanceLog(readArr<string>('sq_finance_log'))
       setWorkoutLogs(readArr<{ date: string; activityType: string }>('sq_workout_logs'))
       setGymLogs(readArr<{ date: string }>('sq_gym_logs'))
+      setRunLogs(readArr<{ date: string; distanceMeters?: number }>('sq_run_logs'))
       setCleaningHistory(readObj('sq_cleaning_history', {}))
     }
     window.addEventListener('sq-data-changed', handler)
@@ -179,8 +182,16 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
   }, [gymLogs, workoutLogs])
 
   const runDates = useMemo(() => {
-    return new Set(workoutLogs.filter(l => l.activityType === 'cardio' || l.activityType === 'run').map(l => l.date))
-  }, [workoutLogs])
+    const wRun = workoutLogs.filter(l => l.activityType === 'cardio' || l.activityType === 'run').map(l => l.date)
+    const stravaRun = runLogs.map(l => l.date)
+    return new Set([...wRun, ...stravaRun])
+  }, [workoutLogs, runLogs])
+
+  // Distancia total de carreras (Strava) en el rango
+  const runKmInRange = useMemo(() => {
+    const inRange = runLogs.filter(l => l.date >= range.start && l.date <= range.end)
+    return inRange.reduce((s, r) => s + (r.distanceMeters || 0), 0) / 1000
+  }, [runLogs, range])
 
   const descansoLog = useMemo(() => {
     // Días marcados como descanso desde el goal de Hoy
@@ -437,6 +448,9 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
           <div className="flex items-center gap-2 mb-3">
             <span style={{ color: meta.color }}>{meta.icon}</span>
             <p className="text-sm font-semibold text-foreground">{meta.label}</p>
+            {meta.id === 'run' && runKmInRange > 0 && (
+              <span className="text-xs font-medium text-orange-500">{runKmInRange.toFixed(1)} km</span>
+            )}
             <span className="ml-auto text-xs text-muted-foreground">
               {rows.filter(r => getMetricDone(r, meta.id)).length}/{dates.length} días
             </span>
