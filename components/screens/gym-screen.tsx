@@ -39,8 +39,18 @@ function markGoalFuerza(date: string) {
   if (date !== today) return
   try {
     const raw = localStorage.getItem('sq_today_goals')
-    const data = raw ? JSON.parse(raw) : {}
-    if (data.date !== today) return
+    let data: any = raw ? JSON.parse(raw) : null
+    if (!data || data.date !== today) {
+      data = {
+        date: today,
+        fuerzaMode: 'fuerza',
+        fuerza: { task: '', done: false },
+        master: { task: '', done: false },
+        flexibilidad: { task: '', done: false },
+        finanzas: false,
+      }
+    }
+    data.fuerzaMode = 'fuerza'
     data.fuerza = { ...(data.fuerza || {}), done: true }
     localStorage.setItem('sq_today_goals', JSON.stringify(data))
     window.dispatchEvent(new Event('sq-data-changed'))

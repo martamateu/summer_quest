@@ -303,6 +303,8 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
       {/* Pending OCR result */}
       {pending && (() => {
         const meta = TYPE_META[pending.activityType] || TYPE_META['otro']
+        const isToday = pending.date === getTodayStr()
+        const whenLabel = isToday ? 'hoy' : `el ${fmtDate(pending.date)}`
         return (
         <div className="bg-card rounded-2xl p-4 mb-4 border-2 border-primary">
           <p className="text-[10px] text-muted-foreground uppercase mb-2">Entreno detectado — ¿confirmar?</p>
@@ -320,12 +322,12 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
                 {' · '}{fmtDate(pending.date)}
               </p>
               {pending.activityType === 'flexibilidad' && (
-                <p className="text-[11px] text-green-600 mt-1 font-medium">✓ Marcará racha de flexibilidad</p>
+                <p className="text-[11px] text-green-600 mt-1 font-medium">✓ Marcará racha de flexibilidad {whenLabel}</p>
               )}
-              {pending.activityType === 'fuerza' && (
+              {pending.activityType === 'fuerza' && isToday && (
                 <p className="text-[11px] text-red-500 mt-1 font-medium">✓ Marcará entreno (fuerza) hoy</p>
               )}
-              {pending.activityType === 'cardio' && (
+              {pending.activityType === 'cardio' && isToday && (
                 <p className="text-[11px] text-orange-500 mt-1 font-medium">✓ Marcará entreno (run) hoy</p>
               )}
             </div>

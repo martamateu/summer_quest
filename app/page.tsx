@@ -382,10 +382,19 @@ export default function Page() {
               if (STR_ARRAY_KEYS.has(key)) {
                 merged = Array.from(new Set([...local, ...cloud]))
               } else {
-                const byId = new Map<string, any>()
-                for (const item of local) if (item && typeof item === 'object' && 'id' in item) byId.set(String(item.id), item)
-                for (const item of cloud) if (item && typeof item === 'object' && 'id' in item && !byId.has(String(item.id))) byId.set(String(item.id), item)
-                merged = dropDeleted(key, Array.from(byId.values()))
+                // Clave de dedup: por id si existe, o por contenido (items sin id como gym logs).
+                const keyOf = (item: any): string | null => {
+                  if (item == null) return null
+                  if (typeof item === 'object') {
+                    if ('id' in item && item.id != null && item.id !== '') return `id:${item.id}`
+                    return `c:${JSON.stringify(item)}`
+                  }
+                  return `v:${JSON.stringify(item)}`
+                }
+                const byKey = new Map<string, any>()
+                for (const item of local) { const k = keyOf(item); if (k) byKey.set(k, item) }
+                for (const item of cloud) { const k = keyOf(item); if (k && !byKey.has(k)) byKey.set(k, item) }
+                merged = dropDeleted(key, Array.from(byKey.values()))
               }
               if (JSON.stringify(merged) !== JSON.stringify(local)) {
                 localStorage.setItem(key, JSON.stringify(merged))

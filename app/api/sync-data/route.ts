@@ -61,16 +61,27 @@ function mergeArrayValue(key: string, existing: string | undefined, incoming: st
       return JSON.stringify(Array.from(new Set([...a, ...b])))
     }
 
-    // Unión por id: el item entrante (más reciente) prevalece; se descartan los borrados.
-    const byId = new Map<string, any>()
-    for (const item of a) {
-      if (item && typeof item === 'object' && 'id' in item) byId.set(String(item.id), item)
+    // Clave de deduplicación: por `id` si existe, o por contenido si el item no tiene id
+    // (p. ej. los logs de gym no tienen id — así no se descartan ni se pierden).
+    const keyOf = (item: any): string | null => {
+      if (item == null) return null
+      if (typeof item === 'object') {
+        if ('id' in item && item.id != null && item.id !== '') return `id:${item.id}`
+        return `c:${JSON.stringify(item)}`
+      }
+      return `v:${JSON.stringify(item)}`
     }
-    for (const item of b) {
-      if (item && typeof item === 'object' && 'id' in item) byId.set(String(item.id), item)
-    }
-    for (const id of Object.keys(deleted)) byId.delete(id)
-    return JSON.stringify(Array.from(byId.values()))
+
+    // Unión: el item entrante (más reciente) prevalece si la clave coincide.
+    const byKey = new Map<string, any>()
+    for (const item of a) { const k = keyOf(item); if (k) byKey.set(k, item) }
+    for (const item of b) { const k = keyOf(item); if (k) byKey.set(k, item) }
+    // Descartar items borrados (tombstones se registran por id).
+    return JSON.stringify(
+      Array.from(byKey.values()).filter(
+        (item: any) => !(item && typeof item === 'object' && 'id' in item && deleted[String(item.id)])
+      )
+    )
   } catch {
     return incoming
   }
