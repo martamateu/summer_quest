@@ -1,11 +1,11 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Camera, Trash2, ChevronLeft, ChevronRight, Loader2, Dumbbell, PersonStanding, Waves, Heart, Activity, Check, X, Plus, Footprints, RefreshCw } from 'lucide-react'
+import { Camera, Trash2, ChevronLeft, ChevronRight, Loader2, Dumbbell, PersonStanding, Waves, Heart, Activity, Check, X, Plus, Footprints, RefreshCw, Moon } from 'lucide-react'
 import { recordTombstones } from '@/lib/sync-tombstones'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
-export type WorkoutType = 'flexibilidad' | 'fuerza' | 'cardio' | 'natacion' | 'otro'
+export type WorkoutType = 'flexibilidad' | 'fuerza' | 'cardio' | 'natacion' | 'descanso' | 'otro'
 
 export interface WorkoutLog {
   id: string
@@ -26,6 +26,7 @@ const TYPE_META: Record<WorkoutType, { label: string; color: string; icon: React
   fuerza:       { label: 'Fuerza',       color: '#ef4444', icon: <Dumbbell className="w-4 h-4" /> },
   cardio:       { label: 'Cardio',       color: '#f59e0b', icon: <Heart className="w-4 h-4" /> },
   natacion:     { label: 'Natación',     color: '#3b82f6', icon: <Waves className="w-4 h-4" /> },
+  descanso:     { label: 'Descanso',     color: '#6b7280', icon: <Moon className="w-4 h-4" /> },
   otro:         { label: 'Otro',         color: '#8b5cf6', icon: <Activity className="w-4 h-4" /> },
 }
 
@@ -51,6 +52,7 @@ function readWorkouts(): WorkoutLog[] {
           it.activityType === 'fuerza' ||
           it.activityType === 'cardio' ||
           it.activityType === 'natacion' ||
+          it.activityType === 'descanso' ||
           it.activityType === 'otro'
             ? it.activityType
             : 'otro',
