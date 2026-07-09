@@ -5,6 +5,7 @@ import { Dumbbell, Plus, Check, X, TrendingUp, ChevronDown, ChevronUp, Info, Tra
 import type { GymSessionLog, GymExerciseLog, GymSet, GymWorkout, GymExercise } from '@/lib/types'
 import { WORKOUTS, SEED_GYM_LOGS } from '@/lib/gym-data'
 import { WorkoutScreen } from '@/components/screens/workout-screen'
+import { recordTombstones } from '@/lib/sync-tombstones'
 
 // Entreno C leído del Google Sheet del entrenador
 interface EntrenoCWeek { week: number; column: string; date?: string; value: string }
@@ -12,6 +13,7 @@ interface EntrenoCExercise { id: string; name: string; weeks: EntrenoCWeek[] }
 interface EntrenoCData { updatedAt: string; exercises: EntrenoCExercise[] }
 
 // Marca como día de fuerza (en sq_workout_logs) cada semana con datos del Entreno C.
+// Reconcilia: quita las entradas de C obsoletas (fechas viejas) y añade las actuales.
 function markEntrenoCAsFuerza(data: EntrenoCData) {
   if (typeof window === 'undefined') return
   const dates = new Set<string>()
@@ -20,11 +22,23 @@ function markEntrenoCAsFuerza(data: EntrenoCData) {
       if (w.value && w.date) dates.add(w.date)
     }
   }
-  if (dates.size === 0) return
+  const desiredIds = new Set(Array.from(dates).map(d => `entrenoc-${d}`))
   try {
-    const logs = JSON.parse(localStorage.getItem('sq_workout_logs') || '[]') as { id?: string }[]
-    const ids = new Set(logs.map(l => l.id))
+    let logs = JSON.parse(localStorage.getItem('sq_workout_logs') || '[]') as { id?: string }[]
     let changed = false
+
+    // Quitar entradas entrenoc- que ya no corresponden (fechas corregidas)
+    const stale = logs
+      .filter(l => typeof l.id === 'string' && l.id.startsWith('entrenoc-') && !desiredIds.has(l.id))
+      .map(l => l.id as string)
+    if (stale.length > 0) {
+      recordTombstones('sq_workout_logs', stale)
+      logs = logs.filter(l => !(typeof l.id === 'string' && stale.includes(l.id)))
+      changed = true
+    }
+
+    // Añadir las fechas actuales que falten
+    const ids = new Set(logs.map(l => l.id))
     for (const date of dates) {
       const id = `entrenoc-${date}`
       if (!ids.has(id)) {
@@ -32,6 +46,7 @@ function markEntrenoCAsFuerza(data: EntrenoCData) {
         changed = true
       }
     }
+
     if (changed) {
       localStorage.setItem('sq_workout_logs', JSON.stringify(logs))
       window.dispatchEvent(new Event('sq-data-changed'))

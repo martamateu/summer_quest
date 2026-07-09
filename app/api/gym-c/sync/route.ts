@@ -11,13 +11,15 @@ const SPREADSHEET_ID = '1JbxSNW5xmxQKljWyxzCJZdFiH07J7L4LrWeQqrDyWOs'
 const WEEK1_COL = 6 // columna G (0-based)
 const MAX_WEEKS = 20
 const REDIS_KEY = 'gym:entrenoC'
-const BLOCK_START = '2026-06-03' // Semana 1 (mismo bloque que A/B)
 
-// Fecha aproximada de cada semana: inicio de bloque + (semana-1)*7 días → cuenta como día de fuerza.
-function weekDate(week: number): string {
-  const [y, m, d] = BLOCK_START.split('-').map(Number)
+const todayLocal = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+const addDays = (dateStr: string, days: number): string => {
+  const [y, m, d] = dateStr.split('-').map(Number)
   const dt = new Date(y, m - 1, d)
-  dt.setDate(dt.getDate() + (week - 1) * 7)
+  dt.setDate(dt.getDate() + days)
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
 }
 
@@ -64,9 +66,10 @@ export interface EntrenoCExercise {
 export interface EntrenoCData {
   updatedAt: string
   exercises: EntrenoCExercise[]
+  weekDates?: Record<number, string> // fecha estable estampada por columna/sesión
 }
 
-async function readEntrenoC(): Promise<EntrenoCData> {
+async function readEntrenoC(prev: EntrenoCData | null): Promise<EntrenoCData> {
   const sheetsAuth = getSheetsAuth()
   const sheets = google.sheets({ version: 'v4', auth: sheetsAuth })
 
@@ -80,24 +83,44 @@ async function readEntrenoC(): Promise<EntrenoCData> {
   // Texto de etiqueta por fila (columnas A-F combinadas) para localizar cada ejercicio.
   const labelOf = (row: string[]) => normalize((row.slice(0, 6) || []).join(' '))
 
-  const exercises: EntrenoCExercise[] = C_EXERCISES.map(ex => {
+  // 1ª pasada: leer valores por ejercicio/columna (sin fecha todavía).
+  type RawWeek = { week: number; column: string; value: string }
+  const rawExercises = C_EXERCISES.map(ex => {
     const target = normalize(ex.name)
     const rowIdx = rows.findIndex(r => labelOf(r).includes(target))
-    const weeks: EntrenoCWeek[] = []
+    const weeks: RawWeek[] = []
     if (rowIdx !== -1) {
       const row = rows[rowIdx]
       for (let w = 1; w <= MAX_WEEKS; w++) {
         const colIdx = WEEK1_COL + (w - 1) * 2
         const raw = (row[colIdx] ?? '').toString().trim()
-        if (raw) {
-          weeks.push({ week: w, column: colLetter(colIdx), date: weekDate(w), value: raw })
-        }
+        if (raw) weeks.push({ week: w, column: colLetter(colIdx), value: raw })
       }
     }
     return { id: ex.id, name: ex.name, weeks }
   })
 
-  return { updatedAt: new Date().toISOString(), exercises }
+  // Semanas (columnas) con algún dato.
+  const presentWeeks = Array.from(
+    new Set(rawExercises.flatMap(e => e.weeks.map(w => w.week)))
+  ).sort((a, b) => a - b)
+  const maxWeek = presentWeeks.length ? presentWeeks[presentWeeks.length - 1] : 0
+
+  // Fechas estables: reutiliza la ya estampada; si es nueva, ancla la última a hoy y retrocede 7 días por sesión.
+  const prevDates = prev?.weekDates || {}
+  const today = todayLocal()
+  const weekDates: Record<number, string> = {}
+  for (const w of presentWeeks) {
+    weekDates[w] = prevDates[w] || addDays(today, -(maxWeek - w) * 7)
+  }
+
+  const exercises: EntrenoCExercise[] = rawExercises.map(e => ({
+    id: e.id,
+    name: e.name,
+    weeks: e.weeks.map(w => ({ ...w, date: weekDates[w.week] })),
+  }))
+
+  return { updatedAt: new Date().toISOString(), exercises, weekDates }
 }
 
 function colLetter(idx: number): string {
@@ -124,7 +147,8 @@ export async function GET(request: Request) {
   }
 
   try {
-    const data = await readEntrenoC()
+    const prev = (await redis.get<EntrenoCData>(REDIS_KEY)) || null
+    const data = await readEntrenoC(prev)
     await redis.set(REDIS_KEY, data)
     const totalWeeks = data.exercises.reduce((m, e) => Math.max(m, e.weeks.length), 0)
     return Response.json({ ok: true, weeks: totalWeeks, data })
