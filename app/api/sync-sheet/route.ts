@@ -2,8 +2,19 @@ import { google } from 'googleapis'
 import { NextRequest } from 'next/server'
 
 const SPREADSHEET_ID = '1JbxSNW5xmxQKljWyxzCJZdFiH07J7L4LrWeQqrDyWOs'
-const BLOCK_START = '2026-06-03' // Bloque 01 starts
 const WEEK1_COL = 6 // column G = index 6 (0-based)
+const MAX_WEEKS = 30 // hasta dónde buscar columnas semanales (G, I, K, M, O, …)
+
+// Índice de columna (0-based) → letra (G=6, I=8, K=10, M=12, O=14, …)
+function colLetterOf(idx: number): string {
+  let n = idx
+  let s = ''
+  do {
+    s = String.fromCharCode(65 + (n % 26)) + s
+    n = Math.floor(n / 26) - 1
+  } while (n >= 0)
+  return s
+}
 
 // Exercise name → search string (substring match in column A)
 const EXERCISE_NAMES: Record<string, string> = {
@@ -34,14 +45,6 @@ function getAuth() {
     credentials: creds,
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   })
-}
-
-function getWeekNumber(sessionDate: string): number {
-  const start = new Date(BLOCK_START)
-  const session = new Date(sessionDate)
-  const diffMs = session.getTime() - start.getTime()
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-  return Math.floor(diffDays / 7) + 1 // 1-indexed
 }
 
 function formatSets(sets: { weight: number; reps: number }[]): string {
@@ -84,57 +87,63 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: 'Missing fields' }, { status: 400 })
     }
 
-    const weekNum = getWeekNumber(date)
-    if (weekNum < 1 || weekNum > 8) {
-      return Response.json({ error: `Week ${weekNum} out of range (1-8)` }, { status: 400 })
-    }
-
-    const colIndex = WEEK1_COL + (weekNum - 1) * 2 // G=6 for week 1, I=8 for week 2, K=10 for week 3, etc.
-    const colLetter = String.fromCharCode(65 + colIndex)
-
     const auth = getAuth()
     const sheets = google.sheets({ version: 'v4', auth })
 
-    // Read columns A-B to find exercise rows (some sheets have data in B)
+    // Leer una rejilla amplia: etiquetas (A-B) + columnas semanales (G, I, K, …)
     const readRes = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'A1:B100',
+      range: 'A1:BZ100',
     })
     const rows = readRes.data.values || []
 
-    // Build a searchable list combining A and B columns
+    // Lista buscable combinando columnas A y B
     const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     const rowTexts = rows.map((r, i) => ({
       row: i + 1,
-      text: normalize((r[0] || '') + ' ' + (r[1] || '')),
+      text: normalize(((r[0] as string) || '') + ' ' + ((r[1] as string) || '')),
     }))
 
-    const updates: { range: string; values: string[][] }[] = []
-    const matched: string[] = []
+    // Emparejar cada ejercicio con su fila en la hoja
+    const matches: { searchTerm: string; row: number; sets: { weight: number; reps: number }[] }[] = []
     const unmatched: string[] = []
-
     for (const ex of exercises) {
       const searchTerm = EXERCISE_NAMES[ex.exerciseId]
       if (!searchTerm) { unmatched.push(ex.exerciseId); continue }
-
       const found = rowTexts.find(r => r.text.includes(normalize(searchTerm)))
       if (!found) { unmatched.push(`${ex.exerciseId}:${searchTerm}`); continue }
-
-      const formatted = formatSets(ex.sets)
-      updates.push({
-        range: `${colLetter}${found.row}`,
-        values: [[formatted]],
-      })
-      matched.push(`${searchTerm} → ${colLetter}${found.row}`)
+      matches.push({ searchTerm, row: found.row, sets: ex.sets })
     }
 
-    if (updates.length === 0) {
+    if (matches.length === 0) {
       return Response.json({
         error: 'No exercises matched in sheet',
         unmatched,
         rowSample: rowTexts.slice(0, 20),
       }, { status: 404 })
     }
+
+    // Columna destino = primera columna semanal vacía a la derecha para las filas de este entreno.
+    // Así el siguiente entreno se guarda en la columna que toca aunque se hayan saltado semanas.
+    const matchedRows = matches.map(m => m.row)
+    let maxUsed = 0
+    for (let w = 1; w <= MAX_WEEKS; w++) {
+      const colIdx = WEEK1_COL + (w - 1) * 2
+      const used = matchedRows.some(r => {
+        const arr = rows[r - 1] || []
+        return ((arr[colIdx] as string) ?? '').toString().trim() !== ''
+      })
+      if (used) maxUsed = w
+    }
+    const targetWeek = maxUsed + 1
+    const colIndex = WEEK1_COL + (targetWeek - 1) * 2
+    const colLetter = colLetterOf(colIndex)
+
+    const updates = matches.map(m => ({
+      range: `${colLetter}${m.row}`,
+      values: [[formatSets(m.sets)]],
+    }))
+    const matched = matches.map(m => `${m.searchTerm} → ${colLetter}${m.row}`)
 
     await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: SPREADSHEET_ID,
@@ -146,7 +155,7 @@ export async function POST(request: NextRequest) {
 
     return Response.json({
       ok: true,
-      week: weekNum,
+      week: targetWeek,
       column: colLetter,
       updated: updates.length,
       matched,
