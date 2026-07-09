@@ -247,8 +247,8 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
 
   const connectStrava = () => { window.location.href = '/api/strava/authorize' }
 
-  const syncStrava = async () => {
-    setSyncingStrava(true)
+  const syncStrava = async (silent = false) => {
+    if (!silent) setSyncingStrava(true)
     setStravaMsg(null)
     try {
       const res = await fetch('/api/strava/sync')
@@ -265,14 +265,26 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
       if (Array.isArray(data.runs) && data.runs.some((r: RunSession) => r.date === today)) {
         markTodayGoalForWorkout('cardio', today)
       }
-      setStravaMsg(`✓ ${data.count} carrera${data.count === 1 ? '' : 's'} importada${data.count === 1 ? '' : 's'}`)
+      if (!silent) setStravaMsg(`✓ ${data.count} carrera${data.count === 1 ? '' : 's'} importada${data.count === 1 ? '' : 's'}`)
     } catch (e: any) {
-      setStravaMsg(`✗ ${e?.message || 'Error'}`)
+      if (!silent) setStravaMsg(`✗ ${e?.message || 'Error'}`)
     } finally {
-      setSyncingStrava(false)
-      setTimeout(() => setStravaMsg(null), 5000)
+      if (!silent) {
+        setSyncingStrava(false)
+        setTimeout(() => setStravaMsg(null), 5000)
+      }
     }
   }
+
+  // Auto-sincronización con Strava al abrir la app (una vez por sesión si está conectado).
+  const autoSyncedRef = useRef(false)
+  useEffect(() => {
+    if (stravaConnected && !autoSyncedRef.current) {
+      autoSyncedRef.current = true
+      syncStrava(true)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stravaConnected])
 
   const addWorkout = (log: Omit<WorkoutLog, 'id'>) => {
     const next = [{ ...log, id: uid() }, ...workouts]
@@ -524,7 +536,7 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
           {stravaConfigured && (
             stravaConnected ? (
               <button
-                onClick={syncStrava}
+                onClick={() => syncStrava()}
                 disabled={syncingStrava}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange-500 text-white text-xs font-medium disabled:opacity-60"
               >
