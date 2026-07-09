@@ -102,6 +102,8 @@ La app sigue este flujo:
 - `GET /api/strava/callback` - callback OAuth de Strava
 - `GET /api/strava/sync` - importa carreras de Strava
 - `GET/DELETE /api/strava/status` - estado / desconexión de Strava
+- `GET /api/gym-c` - lee el Entreno C guardado (del entrenador)
+- `GET /api/gym-c/sync` - lee el Entreno C del Google Sheet (cron jueves noche)
 
 ## Variables de entorno
 
@@ -131,6 +133,9 @@ FIREBASE_SERVICE_ACCOUNT_JSON=
 # Gym sync
 GOOGLE_SHEETS_CLIENT_EMAIL=
 GOOGLE_SHEETS_PRIVATE_KEY=
+
+# Cron (lectura semanal del Entreno C)
+CRON_SECRET=
 ```
 
 ## Desarrollo local

@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/gym-c/sync",
+      "schedule": "0 20 * * 4"
+    }
+  ]
+}

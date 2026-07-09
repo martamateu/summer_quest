@@ -1,10 +1,15 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { Dumbbell, Plus, Check, X, TrendingUp, ChevronDown, ChevronUp, Info, Trash2, PersonStanding } from 'lucide-react'
+import { Dumbbell, Plus, Check, X, TrendingUp, ChevronDown, ChevronUp, Info, Trash2, PersonStanding, RefreshCw, Loader2, ClipboardList } from 'lucide-react'
 import type { GymSessionLog, GymExerciseLog, GymSet, GymWorkout, GymExercise } from '@/lib/types'
 import { WORKOUTS, SEED_GYM_LOGS } from '@/lib/gym-data'
 import { WorkoutScreen } from '@/components/screens/workout-screen'
+
+// Entreno C leído del Google Sheet del entrenador
+interface EntrenoCWeek { week: number; column: string; value: string }
+interface EntrenoCExercise { id: string; name: string; weeks: EntrenoCWeek[] }
+interface EntrenoCData { updatedAt: string; exercises: EntrenoCExercise[] }
 
 const GYM_LOGS_KEY = 'sq_gym_logs'
 const GYM_SEEDED_KEY = 'sq_gym_seeded'
@@ -88,6 +93,35 @@ export function GymScreen() {
   const [statsPeriod, setStatsPeriod] = useState<'week' | 'month'>('week')
   const [sessionStart, setSessionStart] = useState<number | null>(null)
   const [syncStatus, setSyncStatus] = useState<string | null>(null)
+
+  // Entreno C (lo apunta el entrenador en el Sheet; se lee cada jueves por la noche)
+  const [entrenoC, setEntrenoC] = useState<EntrenoCData | null>(null)
+  const [loadingC, setLoadingC] = useState(false)
+  const [cMsg, setCMsg] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/api/gym-c')
+      .then(r => r.json())
+      .then(d => { if (d?.data) setEntrenoC(d.data) })
+      .catch(() => {})
+  }, [])
+
+  const refreshEntrenoC = async () => {
+    setLoadingC(true)
+    setCMsg(null)
+    try {
+      const res = await fetch('/api/gym-c/sync')
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Error')
+      if (data.data) setEntrenoC(data.data)
+      setCMsg('✓ Actualizado desde el Sheet')
+    } catch (e: any) {
+      setCMsg(`✗ ${e?.message || 'Error al leer el Sheet'}`)
+    } finally {
+      setLoadingC(false)
+      setTimeout(() => setCMsg(null), 5000)
+    }
+  }
 
   useEffect(() => { setLogs(loadLogs()) }, [])
 
@@ -430,6 +464,59 @@ export function GymScreen() {
           {syncStatus}
         </div>
       )}
+
+      {/* Entreno C — lo apunta el entrenador en el Sheet, se lee cada jueves por la noche */}
+      <div className="bg-card rounded-2xl p-4 mb-4">
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-2">
+            <ClipboardList className="w-4 h-4 text-primary" />
+            <p className="text-sm font-semibold text-foreground">Entreno C · entrenador</p>
+          </div>
+          <button
+            onClick={refreshEntrenoC}
+            disabled={loadingC}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-secondary text-foreground text-xs font-medium disabled:opacity-60"
+          >
+            {loadingC ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            Actualizar
+          </button>
+        </div>
+        <p className="text-[11px] text-muted-foreground mb-3">
+          Se actualiza solo los jueves por la noche. Progresión por ejercicio (semana a semana).
+        </p>
+        {cMsg && <p className="text-[11px] text-muted-foreground mb-2">{cMsg}</p>}
+
+        {entrenoC && entrenoC.exercises.some(e => e.weeks.length > 0) ? (
+          <div className="space-y-3">
+            {entrenoC.exercises.filter(e => e.weeks.length > 0).map(ex => {
+              const last = ex.weeks[ex.weeks.length - 1]
+              return (
+                <div key={ex.id} className="border-b border-border/50 pb-2 last:border-0 last:pb-0">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <p className="text-sm font-medium text-foreground">{ex.name}</p>
+                    <span className="text-[10px] text-muted-foreground">{ex.weeks.length} sem.</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {ex.weeks.map(w => (
+                      <span
+                        key={w.week}
+                        className={`px-2 py-1 rounded-lg text-[11px] ${w.week === last.week ? 'bg-primary/15 text-foreground font-medium' : 'bg-secondary text-muted-foreground'}`}
+                        title={`Semana ${w.week}`}
+                      >
+                        <span className="opacity-60 mr-1">S{w.week}</span>{w.value}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <p className="text-[11px] text-muted-foreground">
+            Aún no hay datos de Entreno C. Pulsa “Actualizar” o espera al próximo jueves.
+          </p>
+        )}
+      </div>
 
       {/* Workout Selector */}
       <div className="flex gap-2 mb-4">

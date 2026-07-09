@@ -16,6 +16,7 @@ export default auth((req) => {
     pathname.startsWith('/api/sync-data') ||
     pathname.startsWith('/api/recipe-suggest') ||
     pathname.startsWith('/api/analyze-receipt') ||
+    pathname.startsWith('/api/gym-c/sync') ||
     pathname.startsWith('/_next') ||
     pathname.includes('.')
   ) {

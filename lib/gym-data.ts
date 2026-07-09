@@ -27,12 +27,12 @@ export const WORKOUTS: GymWorkout[] = [
   },
   {
     id: 'C',
-    name: 'Entrenamiento C (LB Dual)',
+    name: 'Entrenamiento C (entrenador)',
     exercises: [
-      { id: 'c1', name: 'Plancha', setsReps: '3x30-60s' },
-      { id: 'c2', name: 'Peso muerto rumano', setsReps: '3x8-12' },
+      { id: 'c1', name: 'Crunch abdominal', setsReps: '3x8-12' },
+      { id: 'c2', name: 'Prensa', setsReps: '3x10-12' },
       { id: 'c3', name: 'Dominadas', setsReps: '3x max' },
-      { id: 'c4', name: 'Prensa', setsReps: '3x10-12' },
+      { id: 'c4', name: 'Peso muerto rumano', setsReps: '3x8-12' },
       { id: 'c5', name: 'Flexiones', setsReps: '3x max' },
     ],
   },
