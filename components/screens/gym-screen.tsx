@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { Dumbbell, Plus, Check, X, TrendingUp, ChevronDown, ChevronUp, Info, Trash2, PersonStanding, RefreshCw, Loader2, ClipboardList } from 'lucide-react'
+import { Dumbbell, Plus, Check, X, TrendingUp, ChevronDown, ChevronUp, Info, Trash2, PersonStanding, RefreshCw, Loader2 } from 'lucide-react'
 import type { GymSessionLog, GymExerciseLog, GymSet, GymWorkout, GymExercise } from '@/lib/types'
 import { WORKOUTS, SEED_GYM_LOGS } from '@/lib/gym-data'
 import { WorkoutScreen } from '@/components/screens/workout-screen'
@@ -508,59 +508,6 @@ export function GymScreen() {
         </div>
       )}
 
-      {/* Entreno C — lo apunta el entrenador en el Sheet, se lee cada jueves por la noche */}
-      <div className="bg-card rounded-2xl p-4 mb-4">
-        <div className="flex items-center justify-between mb-1">
-          <div className="flex items-center gap-2">
-            <ClipboardList className="w-4 h-4 text-primary" />
-            <p className="text-sm font-semibold text-foreground">Entreno C · entrenador</p>
-          </div>
-          <button
-            onClick={refreshEntrenoC}
-            disabled={loadingC}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-secondary text-foreground text-xs font-medium disabled:opacity-60"
-          >
-            {loadingC ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-            Actualizar
-          </button>
-        </div>
-        <p className="text-[11px] text-muted-foreground mb-3">
-          Se actualiza solo los jueves por la noche. Progresión por ejercicio (semana a semana).
-        </p>
-        {cMsg && <p className="text-[11px] text-muted-foreground mb-2">{cMsg}</p>}
-
-        {entrenoC && entrenoC.exercises.some(e => e.weeks.length > 0) ? (
-          <div className="space-y-3">
-            {entrenoC.exercises.filter(e => e.weeks.length > 0).map(ex => {
-              const last = ex.weeks[ex.weeks.length - 1]
-              return (
-                <div key={ex.id} className="border-b border-border/50 pb-2 last:border-0 last:pb-0">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <p className="text-sm font-medium text-foreground">{ex.name}</p>
-                    <span className="text-[10px] text-muted-foreground">{ex.weeks.length} sem.</span>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {ex.weeks.map(w => (
-                      <span
-                        key={w.week}
-                        className={`px-2 py-1 rounded-lg text-[11px] ${w.week === last.week ? 'bg-primary/15 text-foreground font-medium' : 'bg-secondary text-muted-foreground'}`}
-                        title={`Semana ${w.week}`}
-                      >
-                        <span className="opacity-60 mr-1">S{w.week}</span>{w.value}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        ) : (
-          <p className="text-[11px] text-muted-foreground">
-            Aún no hay datos de Entreno C. Pulsa “Actualizar” o espera al próximo jueves.
-          </p>
-        )}
-      </div>
-
       {/* Workout Selector */}
       <div className="flex gap-2 mb-4">
         {WORKOUTS.map(w => (
@@ -582,31 +529,75 @@ export function GymScreen() {
       <div className="bg-card rounded-2xl p-4 mb-4">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-base font-semibold text-foreground">{workout.name}</h2>
-          <button
-            onClick={startSession}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium"
-          >
-            <Dumbbell className="w-4 h-4" />
-            Empezar
-          </button>
+          <div className="flex items-center gap-2">
+            {selectedWorkout === 'C' && (
+              <button
+                onClick={refreshEntrenoC}
+                disabled={loadingC}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-secondary text-foreground text-sm font-medium disabled:opacity-60"
+              >
+                {loadingC ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                Actualizar
+              </button>
+            )}
+            <button
+              onClick={startSession}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium"
+            >
+              <Dumbbell className="w-4 h-4" />
+              Empezar
+            </button>
+          </div>
         </div>
+        {selectedWorkout === 'C' && (
+          <p className="text-[11px] text-muted-foreground mb-2">
+            Lo apunta el entrenador. Se actualiza solo los jueves por la noche.
+          </p>
+        )}
+        {selectedWorkout === 'C' && cMsg && <p className="text-[11px] text-muted-foreground mb-2">{cMsg}</p>}
         <div className="space-y-3">
           {workout.exercises.map(ex => {
             const prev = getPreviousLog(ex.id)
+            const ecWeeks = selectedWorkout === 'C'
+              ? (entrenoC?.exercises.find(e => e.id === ex.id)?.weeks ?? [])
+              : []
+            const ecLast = ecWeeks[ecWeeks.length - 1]
             return (
               <div key={ex.id} className="py-2 border-b border-border/50 last:border-0">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium text-foreground">{ex.name}</p>
                   <p className="text-xs text-muted-foreground">{ex.setsReps}</p>
                 </div>
-                {prev && (
-                  <div className="flex gap-1.5 mt-1 flex-wrap">
-                    {prev.map((s, i) => (
-                      <span key={i} className="text-[11px] text-primary bg-accent px-2 py-0.5 rounded-full">
-                        {s.weight}kg × {s.reps}
-                      </span>
-                    ))}
-                  </div>
+                {selectedWorkout === 'C' ? (
+                  ecLast ? (
+                    <div className="mt-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Última</span>
+                        <span className="text-[11px] text-primary bg-accent px-2 py-0.5 rounded-full font-medium">{ecLast.value}</span>
+                      </div>
+                      {ecWeeks.length > 1 && (
+                        <div className="flex gap-1 mt-1 flex-wrap">
+                          {ecWeeks.slice(0, -1).map(w => (
+                            <span key={w.week} className="text-[10px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">
+                              <span className="opacity-60 mr-0.5">S{w.week}</span>{w.value}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground mt-1">Sin datos del entrenador aún</p>
+                  )
+                ) : (
+                  prev && (
+                    <div className="flex gap-1.5 mt-1 flex-wrap">
+                      {prev.map((s, i) => (
+                        <span key={i} className="text-[11px] text-primary bg-accent px-2 py-0.5 rounded-full">
+                          {s.weight}kg × {s.reps}
+                        </span>
+                      ))}
+                    </div>
+                  )
                 )}
               </div>
             )
