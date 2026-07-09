@@ -11,6 +11,9 @@ const SPREADSHEET_ID = '1JbxSNW5xmxQKljWyxzCJZdFiH07J7L4LrWeQqrDyWOs'
 const WEEK1_COL = 6 // columna G (0-based)
 const MAX_WEEKS = 20
 const REDIS_KEY = 'gym:entrenoC'
+// Ancla para el primer arranque: la última sesión conocida (miércoles 8 jul 2026).
+// Solo se usa si aún no hay fechas guardadas; a partir de ahí cada sesión se fecha sola.
+const INITIAL_ANCHOR = '2026-07-08'
 
 const todayLocal = () => {
   const d = new Date()
@@ -108,7 +111,9 @@ async function readEntrenoC(prev: EntrenoCData | null): Promise<EntrenoCData> {
 
   // Fechas estables: reutiliza la ya estampada; si es nueva, ancla la última a hoy y retrocede 7 días por sesión.
   const prevDates = prev?.weekDates || {}
-  const today = todayLocal()
+  const isFirstRun = Object.keys(prevDates).length === 0
+  const anchor = isFirstRun ? INITIAL_ANCHOR : todayLocal()
+  const today = anchor
   const weekDates: Record<number, string> = {}
   for (const w of presentWeeks) {
     weekDates[w] = prevDates[w] || addDays(today, -(maxWeek - w) * 7)
