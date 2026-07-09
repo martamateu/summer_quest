@@ -260,6 +260,11 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
       if (Array.isArray(data.runs) && data.runs.length > 0) mergeRuns(data.runs)
       setRuns(readRuns())
       setStravaConnected(true)
+      // Si hay una carrera de hoy, marca el objetivo "Entreno (run)" en Hoy.
+      const today = getTodayStr()
+      if (Array.isArray(data.runs) && data.runs.some((r: RunSession) => r.date === today)) {
+        markTodayGoalForWorkout('cardio', today)
+      }
       setStravaMsg(`✓ ${data.count} carrera${data.count === 1 ? '' : 's'} importada${data.count === 1 ? '' : 's'}`)
     } catch (e: any) {
       setStravaMsg(`✗ ${e?.message || 'Error'}`)
