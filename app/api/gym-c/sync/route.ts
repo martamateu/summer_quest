@@ -11,6 +11,15 @@ const SPREADSHEET_ID = '1JbxSNW5xmxQKljWyxzCJZdFiH07J7L4LrWeQqrDyWOs'
 const WEEK1_COL = 6 // columna G (0-based)
 const MAX_WEEKS = 20
 const REDIS_KEY = 'gym:entrenoC'
+const BLOCK_START = '2026-06-03' // Semana 1 (mismo bloque que A/B)
+
+// Fecha aproximada de cada semana: inicio de bloque + (semana-1)*7 días → cuenta como día de fuerza.
+function weekDate(week: number): string {
+  const [y, m, d] = BLOCK_START.split('-').map(Number)
+  const dt = new Date(y, m - 1, d)
+  dt.setDate(dt.getDate() + (week - 1) * 7)
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+}
 
 // Ejercicios de Entreno C, en el orden en que quieres verlos.
 const C_EXERCISES = [
@@ -42,6 +51,7 @@ const normalize = (s: string) =>
 export interface EntrenoCWeek {
   week: number
   column: string
+  date: string
   value: string
 }
 
@@ -80,7 +90,7 @@ async function readEntrenoC(): Promise<EntrenoCData> {
         const colIdx = WEEK1_COL + (w - 1) * 2
         const raw = (row[colIdx] ?? '').toString().trim()
         if (raw) {
-          weeks.push({ week: w, column: colLetter(colIdx), value: raw })
+          weeks.push({ week: w, column: colLetter(colIdx), date: weekDate(w), value: raw })
         }
       }
     }

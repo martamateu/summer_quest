@@ -7,9 +7,37 @@ import { WORKOUTS, SEED_GYM_LOGS } from '@/lib/gym-data'
 import { WorkoutScreen } from '@/components/screens/workout-screen'
 
 // Entreno C leído del Google Sheet del entrenador
-interface EntrenoCWeek { week: number; column: string; value: string }
+interface EntrenoCWeek { week: number; column: string; date?: string; value: string }
 interface EntrenoCExercise { id: string; name: string; weeks: EntrenoCWeek[] }
 interface EntrenoCData { updatedAt: string; exercises: EntrenoCExercise[] }
+
+// Marca como día de fuerza (en sq_workout_logs) cada semana con datos del Entreno C.
+function markEntrenoCAsFuerza(data: EntrenoCData) {
+  if (typeof window === 'undefined') return
+  const dates = new Set<string>()
+  for (const ex of data.exercises) {
+    for (const w of ex.weeks) {
+      if (w.value && w.date) dates.add(w.date)
+    }
+  }
+  if (dates.size === 0) return
+  try {
+    const logs = JSON.parse(localStorage.getItem('sq_workout_logs') || '[]') as { id?: string }[]
+    const ids = new Set(logs.map(l => l.id))
+    let changed = false
+    for (const date of dates) {
+      const id = `entrenoc-${date}`
+      if (!ids.has(id)) {
+        logs.push({ id, date, activityName: 'Entreno C (entrenador)', activityType: 'fuerza', source: 'entrenoC', addedManually: false } as any)
+        changed = true
+      }
+    }
+    if (changed) {
+      localStorage.setItem('sq_workout_logs', JSON.stringify(logs))
+      window.dispatchEvent(new Event('sq-data-changed'))
+    }
+  } catch {}
+}
 
 const GYM_LOGS_KEY = 'sq_gym_logs'
 const GYM_SEEDED_KEY = 'sq_gym_seeded'
@@ -102,7 +130,7 @@ export function GymScreen() {
   useEffect(() => {
     fetch('/api/gym-c')
       .then(r => r.json())
-      .then(d => { if (d?.data) setEntrenoC(d.data) })
+      .then(d => { if (d?.data) { setEntrenoC(d.data); markEntrenoCAsFuerza(d.data) } })
       .catch(() => {})
   }, [])
 
@@ -113,7 +141,7 @@ export function GymScreen() {
       const res = await fetch('/api/gym-c/sync')
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Error')
-      if (data.data) setEntrenoC(data.data)
+      if (data.data) { setEntrenoC(data.data); markEntrenoCAsFuerza(data.data) }
       setCMsg('✓ Actualizado desde el Sheet')
     } catch (e: any) {
       setCMsg(`✗ ${e?.message || 'Error al leer el Sheet'}`)
