@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { Footprints, PersonStanding, Wallet, Dumbbell, GraduationCap, ChevronLeft, ChevronRight, Smartphone, Timer } from 'lucide-react'
+import { Footprints, PersonStanding, Wallet, Dumbbell, GraduationCap, ChevronLeft, ChevronRight, Smartphone, Timer, Brain } from 'lucide-react'
 import type { DailyMetrics } from '@/lib/types'
+import { FOCUS_GOAL_MIN } from '@/components/screens/focus-screen'
 
 // ── Date helpers ───────────────────────────────────────────────────────────────
 const fmtLocal = (d: Date) =>
@@ -51,7 +52,7 @@ function readObj<T>(key: string, fallback: T): T {
 }
 
 // ── Metric definitions ─────────────────────────────────────────────────────────
-type MetricId = 'pasos' | 'flexibilidad' | 'gastos' | 'fuerza' | 'run' | 'descanso' | 'master' | 'screentime'
+type MetricId = 'pasos' | 'flexibilidad' | 'gastos' | 'fuerza' | 'run' | 'descanso' | 'master' | 'focus' | 'screentime'
 
 interface MetricMeta {
   id: MetricId
@@ -69,6 +70,7 @@ const METRICS: MetricMeta[] = [
   { id: 'run',          label: 'Run',            color: '#f97316', icon: <Timer className="w-4 h-4" />,          hasHistory: true },
   { id: 'descanso',     label: 'Descanso',       color: '#6b7280', icon: <span className="text-sm">😴</span>,    hasHistory: true },
   { id: 'master',       label: 'Máster',         color: '#8b5cf6', icon: <GraduationCap className="w-4 h-4" />,  hasHistory: true },
+  { id: 'focus',        label: 'Focus',          color: '#6366f1', icon: <Brain className="w-4 h-4" />,         hasHistory: true },
   { id: 'screentime',   label: 'Pantalla',       color: '#f97316', icon: <Smartphone className="w-4 h-4" />,     hasHistory: false },
 ]
 
@@ -116,6 +118,7 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
   const [runLogs, setRunLogs] = useState<{ date: string; distanceMeters?: number }[]>([])
   const [cleaningHistory, setCleaningHistory] = useState<Record<string, string>>({})
   const [masterLog, setMasterLog] = useState<string[]>([])
+  const [focusLog, setFocusLog] = useState<Record<string, number>>({})
 
   useEffect(() => {
     setStepsHistory(readObj('sq_steps_history', {}))
@@ -125,6 +128,7 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
     setGymLogs(readArr<{ date: string }>('sq_gym_logs'))
     setRunLogs(readArr<{ date: string; distanceMeters?: number }>('sq_run_logs'))
     setCleaningHistory(readObj('sq_cleaning_history', {}))
+    setFocusLog(readObj('sq_focus_log', {}))
     // Build master log from sq_today_goals history — only today available
     const todayGoals = readObj<{ date: string; master?: { done: boolean } }>('sq_today_goals', { date: '' })
     if (todayGoals.date && todayGoals.master?.done) {
@@ -139,6 +143,7 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
       setGymLogs(readArr<{ date: string }>('sq_gym_logs'))
       setRunLogs(readArr<{ date: string; distanceMeters?: number }>('sq_run_logs'))
       setCleaningHistory(readObj('sq_cleaning_history', {}))
+      setFocusLog(readObj('sq_focus_log', {}))
     }
     window.addEventListener('sq-data-changed', handler)
     return () => window.removeEventListener('sq-data-changed', handler)
@@ -211,8 +216,9 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
     const run = runDates.has(date)
     const descanso = descansoLog.includes(date)
     const master = masterLog.includes(date)
-    return { date, steps, flex, finance, fuerza, run, descanso, master }
-  }), [dates, stepsHistory, flexLog, financeLog, forceDates, runDates, descansoLog, masterLog])
+    const focus = focusLog[date] ?? 0
+    return { date, steps, flex, finance, fuerza, run, descanso, master, focus }
+  }), [dates, stepsHistory, flexLog, financeLog, forceDates, runDates, descansoLog, masterLog, focusLog])
 
   // Summary counts for the period
   const summary = useMemo(() => ({
@@ -223,8 +229,12 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
     run: rows.filter(r => r.run).length,
     descanso: rows.filter(r => r.descanso).length,
     master: rows.filter(r => r.master).length,
+    focus: rows.filter(r => r.focus >= FOCUS_GOAL_MIN).length,
     totalSteps: rows.reduce((s, r) => s + r.steps, 0),
   }), [rows])
+
+  // Minutos de foco acumulados en el rango
+  const focusMinInRange = useMemo(() => rows.reduce((s, r) => s + r.focus, 0), [rows])
 
   // Streaks
   const streaks = useMemo(() => ({
@@ -235,7 +245,8 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
     run: calcStreak(Array.from(runDates)),
     descanso: calcStreak(descansoLog),
     master: calcStreak(masterLog),
-  }), [stepsHistory, flexLog, financeLog, forceDates, runDates, descansoLog, masterLog])
+    focus: calcStreak(Object.keys(focusLog).filter(d => focusLog[d] >= FOCUS_GOAL_MIN)),
+  }), [stepsHistory, flexLog, financeLog, forceDates, runDates, descansoLog, masterLog, focusLog])
 
   const visibleMetrics = activeMetric === 'all'
     ? METRICS.filter(m => m.hasHistory)
@@ -256,6 +267,7 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
     if (id === 'run') return row.run
     if (id === 'descanso') return row.descanso
     if (id === 'master') return row.master
+    if (id === 'focus') return row.focus >= FOCUS_GOAL_MIN
     return false
   }
 
@@ -280,7 +292,7 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
 
       {/* Streaks row */}
       <div className="grid grid-cols-3 gap-2 mb-4">
-        {(['pasos', 'flexibilidad', 'gastos', 'fuerza', 'run', 'master'] as MetricId[]).map(id => {
+        {(['pasos', 'flexibilidad', 'gastos', 'fuerza', 'run', 'focus'] as MetricId[]).map(id => {
           const meta = METRICS.find(m => m.id === id)!
           return (
             <div key={id} className="bg-card rounded-2xl p-3 text-center">
@@ -450,6 +462,11 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
             <p className="text-sm font-semibold text-foreground">{meta.label}</p>
             {meta.id === 'run' && runKmInRange > 0 && (
               <span className="text-xs font-medium text-orange-500">{runKmInRange.toFixed(1)} km</span>
+            )}
+            {meta.id === 'focus' && focusMinInRange > 0 && (
+              <span className="text-xs font-medium text-indigo-500">
+                {focusMinInRange >= 60 ? `${Math.floor(focusMinInRange / 60)}h ${focusMinInRange % 60}m` : `${focusMinInRange}m`}
+              </span>
             )}
             <span className="ml-auto text-xs text-muted-foreground">
               {rows.filter(r => getMetricDone(r, meta.id)).length}/{dates.length} días

@@ -10,6 +10,7 @@ import { GymScreen } from '@/components/screens/gym-screen'
 import { StatsScreen } from '@/components/screens/stats-screen'
 import { AdminScreen } from '@/components/screens/admin-screen'
 import { FoodScreen } from '@/components/screens/food-screen'
+import { FocusScreen } from '@/components/screens/focus-screen'
 import { WorkoutScreen } from '@/components/screens/workout-screen'
 import { INITIAL_HABITS, INITIAL_METRICS } from '@/lib/data'
 import type { Habit, DailyMetrics } from '@/lib/types'
@@ -91,7 +92,7 @@ function getWeeklyData(): number[] {
   } catch { return [0,0,0,0,0,0,0] }
 }
 
-type Tab = 'hoy' | 'food' | 'finanzas' | 'gym' | 'stats' | 'admin'
+type Tab = 'hoy' | 'food' | 'finanzas' | 'gym' | 'focus' | 'stats' | 'admin'
 
 export default function Page() {
   const [activeTab, setActiveTab] = useState<Tab>('hoy')
@@ -242,7 +243,7 @@ export default function Page() {
   }
 
   // ── Cloud backup: sync localStorage ↔ Redis ──
-  const SYNC_KEYS = ['sq_habits', 'sq_today', 'sq_history', 'sq_expenses', 'sq_finance_started_at', 'sq_gym_logs', 'sq_gym_seeded', 'sq_steps_history', 'sq_food_log', 'sq_favorite_recipes', 'sq_notes', 'sq_super_list', 'sq_home', 'sq_cleaning_history', 'sq_cycle', 'sq_run_logs', 'sq_today_goals', 'sq_flex_log', 'sq_finance_log', 'sq_workout_logs', 'sq_tasks_list', 'sq_tombstones', 'sq_last_modified']
+  const SYNC_KEYS = ['sq_habits', 'sq_today', 'sq_history', 'sq_expenses', 'sq_finance_started_at', 'sq_gym_logs', 'sq_gym_seeded', 'sq_steps_history', 'sq_food_log', 'sq_favorite_recipes', 'sq_notes', 'sq_super_list', 'sq_home', 'sq_cleaning_history', 'sq_cycle', 'sq_run_logs', 'sq_today_goals', 'sq_flex_log', 'sq_finance_log', 'sq_workout_logs', 'sq_tasks_list', 'sq_focus_log', 'sq_tombstones', 'sq_last_modified']
 
   // Debounced upload: cancel previous pending upload so only the latest data is sent
   const uploadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -544,6 +545,9 @@ export default function Page() {
           </div>
           <div style={{ display: activeTab === 'gym' ? 'block' : 'none' }}>
             <GymScreen />
+          </div>
+          <div style={{ display: activeTab === 'focus' ? 'block' : 'none' }}>
+            <FocusScreen />
           </div>
           <div style={{ display: activeTab === 'admin' ? 'block' : 'none' }}>
             <AdminScreen />

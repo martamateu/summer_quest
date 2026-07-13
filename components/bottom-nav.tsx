@@ -1,8 +1,8 @@
 'use client'
 
-import { Home, UtensilsCrossed, Wallet, Dumbbell, BarChart3, ClipboardList } from 'lucide-react'
+import { Home, UtensilsCrossed, Wallet, Dumbbell, BarChart3, ClipboardList, Brain } from 'lucide-react'
 
-type Tab = 'hoy' | 'food' | 'finanzas' | 'gym' | 'stats' | 'admin'
+type Tab = 'hoy' | 'food' | 'finanzas' | 'gym' | 'focus' | 'stats' | 'admin'
 
 interface BottomNavProps {
   activeTab: Tab
@@ -14,6 +14,7 @@ const tabs: { id: Tab; label: string; icon: typeof Home }[] = [
   { id: 'finanzas', label: 'Finanzas', icon: Wallet },
   { id: 'food', label: 'Food', icon: UtensilsCrossed },
   { id: 'gym', label: 'Gym', icon: Dumbbell },
+  { id: 'focus', label: 'Focus', icon: Brain },
   { id: 'stats', label: 'Stats', icon: BarChart3 },
   { id: 'admin', label: 'Admin', icon: ClipboardList },
 ]
@@ -28,7 +29,7 @@ export function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
             <button
               key={id}
               onClick={() => onTabChange(id)}
-              className={`flex flex-col items-center gap-0.5 px-2.5 py-2 rounded-xl transition-colors ${
+              className={`flex flex-col items-center gap-0.5 px-1.5 py-2 rounded-xl transition-colors ${
                 isActive ? 'text-primary' : 'text-muted-foreground'
               }`}
               aria-current={isActive ? 'page' : undefined}
