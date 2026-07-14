@@ -108,6 +108,61 @@ function persistArr<T>(key: string, data: T[]) {
   window.dispatchEvent(new Event('sq-data-changed'))
 }
 
+function normalizeFloDate(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const m = raw.match(/^(\d{4}-\d{2}-\d{2})/)
+  return m ? m[1] : null
+}
+
+// Extrae periodos reales del export de Flo y los normaliza a {start, end?}.
+function extractFloPeriods(payload: unknown): CyclePeriod[] {
+  const found: CyclePeriod[] = []
+  const stack: unknown[] = [payload]
+
+  while (stack.length > 0) {
+    const node = stack.pop()
+    if (!node) continue
+
+    if (Array.isArray(node)) {
+      for (const item of node) stack.push(item)
+      continue
+    }
+
+    if (typeof node === 'object') {
+      const rec = node as Record<string, unknown>
+      const start = normalizeFloDate(rec.period_start_date)
+      const end = normalizeFloDate(rec.period_end_date)
+
+      if (start) {
+        found.push(end && end >= start ? { start, end } : { start })
+      }
+
+      for (const value of Object.values(rec)) {
+        if (value && typeof value === 'object') stack.push(value)
+      }
+    }
+  }
+
+  // Dedup por start; preferimos la versión con end (y si hay varias, el end más tardío).
+  const byStart = new Map<string, CyclePeriod>()
+  for (const p of found) {
+    const prev = byStart.get(p.start)
+    if (!prev) {
+      byStart.set(p.start, p)
+      continue
+    }
+    if (!prev.end && p.end) {
+      byStart.set(p.start, p)
+      continue
+    }
+    if (prev.end && p.end && p.end > prev.end) {
+      byStart.set(p.start, p)
+    }
+  }
+
+  return Array.from(byStart.values()).sort((a, b) => a.start.localeCompare(b.start))
+}
+
 export function AdminScreen() {
   const [tab, setTab] = useState<'notas' | 'tareas' | 'super' | 'limpieza' | 'periodo'>('notas')
 
@@ -152,6 +207,8 @@ export function AdminScreen() {
   const [cycleInsights, setCycleInsights] = useState<{ summary: string; cycleRegularity: string; insights: string[] } | null>(null)
   const [insightsLoading, setInsightsLoading] = useState(false)
   const [insightsError, setInsightsError] = useState<string | null>(null)
+  const [floImportMsg, setFloImportMsg] = useState<string | null>(null)
+  const [floImportError, setFloImportError] = useState<string | null>(null)
 
   // Edición de tarea
   const [editingTaskKey, setEditingTaskKey] = useState<string | null>(null)
@@ -336,6 +393,39 @@ export function AdminScreen() {
 
   const deletePeriod = (start: string) => {
     saveCycle({ ...cycle, periods: cycle.periods.filter(p => p.start !== start) })
+  }
+
+  const importFloFile = async (e: any) => {
+    const file = e?.target?.files?.[0] as File | undefined
+    if (!file) return
+
+    setFloImportMsg(null)
+    setFloImportError(null)
+
+    try {
+      const text = await file.text()
+      const parsed = JSON.parse(text)
+      const imported = extractFloPeriods(parsed)
+      const importedPast = imported.filter(p => p.start <= todayStr)
+
+      if (importedPast.length === 0) {
+        throw new Error('No encontré ciclos pasados en ese JSON de Flo.')
+      }
+
+      // Importación segura: conservar lo que ya existe en la app y añadir solo inicios nuevos.
+      const existingStarts = new Set(cycle.periods.map(p => p.start))
+      const toAdd = importedPast.filter(p => !existingStarts.has(p.start))
+      const merged = [...cycle.periods, ...toAdd].sort((a, b) => a.start.localeCompare(b.start))
+      saveCycle({ ...cycle, periods: merged })
+      setFloImportMsg(
+        `Importación Flo completada: ${toAdd.length} ciclos nuevos añadidos sin reemplazar tus datos. El futuro se gestiona solo desde la app.`
+      )
+      setCycleMonthOffset(0)
+    } catch (err: any) {
+      setFloImportError(err?.message || 'No se pudo importar el archivo de Flo.')
+    } finally {
+      if (e?.target) e.target.value = ''
+    }
   }
 
   const fetchCycleInsights = async () => {
@@ -1294,6 +1384,9 @@ export function AdminScreen() {
           onStartToday={startPeriodToday}
           onAddManual={addManualPeriod}
           onDelete={deletePeriod}
+          onImportFloFile={importFloFile}
+          floImportMsg={floImportMsg}
+          floImportError={floImportError}
           cycleInsights={cycleInsights}
           insightsLoading={insightsLoading}
           insightsError={insightsError}
@@ -1318,6 +1411,9 @@ interface PeriodoViewProps {
   onStartToday: () => void
   onAddManual: () => void
   onDelete: (start: string) => void
+  onImportFloFile: (e: any) => void
+  floImportMsg: string | null
+  floImportError: string | null
   cycleInsights: { summary: string; cycleRegularity: string; insights: string[] } | null
   insightsLoading: boolean
   insightsError: string | null
@@ -1350,6 +1446,7 @@ function PeriodoView({
   cycle, todayStr, monthOffset, setMonthOffset,
   manualStart, setManualStart, manualEnd, setManualEnd,
   onStartToday, onAddManual, onDelete,
+  onImportFloFile, floImportMsg, floImportError,
   cycleInsights, insightsLoading, insightsError, onFetchInsights,
 }: PeriodoViewProps) {
   const phaseInfo = getCurrentPhase(cycle, todayStr)
@@ -1487,6 +1584,18 @@ function PeriodoView({
         >
           Añadir
         </button>
+
+        <label className="mt-2 w-full py-2.5 rounded-xl bg-secondary text-foreground text-sm font-medium text-center block cursor-pointer">
+          Importar datos de Flo (JSON)
+          <input
+            type="file"
+            accept="application/json,.json"
+            onChange={onImportFloFile}
+            className="hidden"
+          />
+        </label>
+        {floImportMsg && <p className="text-[11px] text-green-600 mt-2">{floImportMsg}</p>}
+        {floImportError && <p className="text-[11px] text-red-500 mt-2">{floImportError}</p>}
       </div>
 
       {/* C) Calendario mensual */}
