@@ -198,6 +198,7 @@ export function AdminScreen() {
   const [editTaskTag, setEditTaskTag] = useState('')
   const [editTaskRecurrence, setEditTaskRecurrence] = useState<'' | 'semanal' | 'quincenal'>('')
   const [showDoneTasks, setShowDoneTasks] = useState(false)
+  const [recurrenceConfirm, setRecurrenceConfirm] = useState<string | null>(null) // fecha próxima tarea
   const [tasksTagFilter, setTasksTagFilter] = useState<string>('all')
   const [newTagInput, setNewTagInput] = useState('')
 
@@ -324,6 +325,10 @@ export function AdminScreen() {
       const nextDateStr = getLocalDateStr(nextDate)
       const nextTask: TaskItem = { id: uid(), text: updated.text, done: false, date: nextDateStr, tag: updated.tag, recurrence: updated.recurrence }
       next = [nextTask, ...next]
+      // Mostrar confirmación con la fecha de la próxima
+      const label = nextDate.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })
+      setRecurrenceConfirm(`🔁 Próxima "${updated.text.slice(0, 30)}${updated.text.length > 30 ? '…' : ''}" programada para el ${label}`)
+      setTimeout(() => setRecurrenceConfirm(null), 5000)
     }
     saveTasks(next)
   }
@@ -343,6 +348,7 @@ export function AdminScreen() {
     saveTasks([task, ...tasksList])
     setManualTask('')
     setNewTaskDate('')
+    setNewTaskRecurrence('')
   }
 
   const startEditTask = (item: TaskItem) => {
@@ -1095,6 +1101,13 @@ export function AdminScreen() {
                     {tag}
                   </button>
                 ))}
+              </div>
+            )}
+
+            {/* ── Confirmación recurrencia ──────────────────────────── */}
+            {recurrenceConfirm && (
+              <div className="mb-3 px-3 py-2.5 rounded-xl bg-indigo-50 text-indigo-700 text-xs font-medium">
+                {recurrenceConfirm}
               </div>
             )}
 
