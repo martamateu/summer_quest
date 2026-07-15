@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
-import { Dumbbell, Moon, Check, ChevronLeft, ChevronRight, Sparkles, Loader2, Flame, Beef, Wheat, Droplets, Heart } from 'lucide-react'
+import { useEffect, useState, useMemo, useRef } from 'react'
+import { Dumbbell, Moon, Check, ChevronLeft, ChevronRight, Sparkles, Loader2, Flame, Beef, Wheat, Droplets, Heart, Camera, X, Bot } from 'lucide-react'
 import { recordTombstones } from '@/lib/sync-tombstones'
 
 const FOOD_STORAGE_KEY = 'sq_food_log'
@@ -100,6 +100,16 @@ function writeFavoriteRecipes(recipes: FavoriteRecipe[]) {
 
 type FoodView = 'hoy' | 'semana'
 
+interface FoodPhotoResult {
+  foodName: string
+  estimatedKcal: number
+  estimatedProtein: number
+  estimatedCarbs: number
+  estimatedFat: number
+  portionNotes: string
+  aiCoachFeedback: string
+}
+
 export function FoodScreen() {
   const [foodLog, setFoodLog] = useState<FoodLog>({})
   const [view, setView] = useState<FoodView>('hoy')
@@ -108,6 +118,13 @@ export function FoodScreen() {
   const [recipeSuggestions, setRecipeSuggestions] = useState<{ mealId: MealId; recipes: { id: number; title: string; image: string; calories: number; protein: string; carbs: string; fat: string }[] } | null>(null)
   const [favoriteRecipes, setFavoriteRecipes] = useState<FavoriteRecipe[]>([])
   const [showFavorites, setShowFavorites] = useState(false)
+
+  // Food photo OCR + AI coach
+  const [photoLoading, setPhotoLoading] = useState(false)
+  const [photoResult, setPhotoResult] = useState<FoodPhotoResult | null>(null)
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [photoError, setPhotoError] = useState<string | null>(null)
+  const photoInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     setFoodLog(readFoodLog())
@@ -169,6 +186,58 @@ export function FoodScreen() {
 
   const isFavoriteRecipe = (recipeId: number): boolean => {
     return favoriteRecipes.some(r => r.id === recipeId)
+  }
+
+  // Food photo analysis
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (photoInputRef.current) photoInputRef.current.value = ''
+
+    setPhotoError(null)
+    setPhotoResult(null)
+    setPhotoPreview(URL.createObjectURL(file))
+    setPhotoLoading(true)
+
+    try {
+      const log = getDayLog(todayStr)
+      const currentTarget = TARGETS[log.dayType]
+      const currentEaten = (() => {
+        const r = { kcal: 0, protein: 0, carbs: 0, fat: 0 }
+        for (const meal of MEALS) {
+          if (log.meals[meal.id]) {
+            const d = meal[log.dayType]
+            r.kcal += d.kcal; r.protein += d.protein; r.carbs += d.carbs; r.fat += d.fat
+          }
+        }
+        return r
+      })()
+
+      const fd = new FormData()
+      fd.append('image', file)
+      fd.append('eatenKcal', String(currentEaten.kcal))
+      fd.append('targetKcal', String(currentTarget.kcal))
+      fd.append('remainingKcal', String(Math.max(0, currentTarget.kcal - currentEaten.kcal)))
+      fd.append('remainingProtein', String(Math.max(0, currentTarget.protein - currentEaten.protein)))
+      fd.append('remainingCarbs', String(Math.max(0, currentTarget.carbs - currentEaten.carbs)))
+      fd.append('remainingFat', String(Math.max(0, currentTarget.fat - currentEaten.fat)))
+      fd.append('dayType', log.dayType)
+
+      const res = await fetch('/api/food-photo', { method: 'POST', body: fd })
+      if (!res.ok) throw new Error('Error al analizar')
+      const data = await res.json()
+      setPhotoResult(data)
+    } catch {
+      setPhotoError('No se pudo analizar la foto. Inténtalo de nuevo.')
+    } finally {
+      setPhotoLoading(false)
+    }
+  }
+
+  const clearPhotoResult = () => {
+    setPhotoResult(null)
+    setPhotoPreview(null)
+    setPhotoError(null)
   }
 
   // Calculate eaten macros
@@ -281,10 +350,30 @@ export function FoodScreen() {
 
   return (
     <div className="px-4 pt-6 pb-24">
+      {/* Hidden photo input */}
+      <input
+        ref={photoInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handlePhotoChange}
+        aria-label="Subir foto de comida"
+      />
+
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold text-foreground">Nutrición</h1>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => photoInputRef.current?.click()}
+            disabled={photoLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-secondary text-muted-foreground hover:bg-secondary/80 disabled:opacity-50 transition-colors"
+            aria-label="Analizar foto de comida"
+          >
+            {photoLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
+            Analizar
+          </button>
           <button
             onClick={() => setShowFavorites(!showFavorites)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
@@ -340,6 +429,59 @@ export function FoodScreen() {
               </div>
             ))}
           </div>
+          )}
+        </div>
+      )}
+
+      {/* Food photo analysis result */}
+      {(photoLoading || photoResult || photoError) && (
+        <div className="bg-card rounded-2xl p-4 mb-4 relative">
+          <button
+            onClick={clearPhotoResult}
+            className="absolute top-3 right-3 p-1 rounded-full hover:bg-secondary text-muted-foreground"
+            aria-label="Cerrar análisis"
+          >
+            <X className="w-4 h-4" />
+          </button>
+
+          {photoLoading && (
+            <div className="flex flex-col items-center gap-3 py-4">
+              {photoPreview && (
+                <img src={photoPreview} alt="Foto analizando" className="w-24 h-24 rounded-xl object-cover opacity-60" />
+              )}
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="text-sm">Analizando tu comida…</span>
+              </div>
+            </div>
+          )}
+
+          {photoError && (
+            <p className="text-sm text-red-500 text-center py-2">{photoError}</p>
+          )}
+
+          {photoResult && (
+            <div className="space-y-3">
+              <div className="flex items-start gap-3">
+                {photoPreview && (
+                  <img src={photoPreview} alt={photoResult.foodName} className="w-16 h-16 rounded-xl object-cover shrink-0" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-foreground">{photoResult.foodName}</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">{photoResult.portionNotes}</p>
+                  <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                    <span className="text-xs font-bold text-orange-500">{photoResult.estimatedKcal} kcal</span>
+                    <span className="text-[11px] text-red-500">P:{photoResult.estimatedProtein}g</span>
+                    <span className="text-[11px] text-amber-500">C:{photoResult.estimatedCarbs}g</span>
+                    <span className="text-[11px] text-blue-500">G:{photoResult.estimatedFat}g</span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-start gap-2 bg-primary/5 rounded-xl p-3">
+                <Bot className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+                <p className="text-xs text-foreground leading-relaxed">{photoResult.aiCoachFeedback}</p>
+              </div>
+            </div>
           )}
         </div>
       )}
