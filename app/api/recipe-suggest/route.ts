@@ -23,6 +23,8 @@ export async function POST(request: Request) {
     const params = new URLSearchParams({
       apiKey,
       number: String(number),
+      // Fuerza que la respuesta incluya todos los campos de macros (protein, carbs, fat, calories)
+      addRecipeNutrition: 'true',
     })
 
     if (minProtein) params.set('minProtein', String(minProtein))
@@ -43,15 +45,41 @@ export async function POST(request: Request) {
 
     const recipes = await res.json()
 
-    const simplified = recipes.map((r: { id: number; title: string; image: string; calories: number; protein: string; carbs: string; fat: string }) => ({
-      id: r.id,
-      title: r.title,
-      image: r.image,
-      calories: r.calories,
-      protein: r.protein,
-      carbs: r.carbs,
-      fat: r.fat,
-    }))
+    type Nutrient = { name: string; amount: number; unit: string }
+    type RawRecipe = {
+      id: number
+      title: string
+      image: string
+      // Campos planos (sin addRecipeNutrition)
+      calories?: number
+      protein?: string
+      carbs?: string
+      fat?: string
+      // Campos anidados (con addRecipeNutrition=true)
+      nutrition?: { nutrients?: Nutrient[] }
+    }
+
+    const getNutrient = (nutrients: Nutrient[], name: string): string => {
+      const n = nutrients.find(n => n.name.toLowerCase() === name.toLowerCase())
+      return n ? `${Math.round(n.amount)}g` : '—'
+    }
+    const getCalories = (nutrients: Nutrient[]): number => {
+      const n = nutrients.find(n => n.name.toLowerCase() === 'calories')
+      return n ? Math.round(n.amount) : 0
+    }
+
+    const simplified = recipes.map((r: RawRecipe) => {
+      const nutrients = r.nutrition?.nutrients ?? []
+      return {
+        id: r.id,
+        title: r.title,
+        image: r.image,
+        calories: nutrients.length > 0 ? getCalories(nutrients) : (r.calories ?? 0),
+        protein: nutrients.length > 0 ? getNutrient(nutrients, 'Protein') : (r.protein ?? '—'),
+        carbs: nutrients.length > 0 ? getNutrient(nutrients, 'Carbohydrates') : (r.carbs ?? '—'),
+        fat: nutrients.length > 0 ? getNutrient(nutrients, 'Fat') : (r.fat ?? '—'),
+      }
+    })
 
     return Response.json({ recipes: simplified })
   } catch (error) {
