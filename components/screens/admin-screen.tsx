@@ -254,8 +254,16 @@ export function AdminScreen() {
     setCleaningHistory(readObj<Record<string, string>>(HISTORY_KEY, {}))
     setCycle(readObj<CycleData>(CYCLE_KEY, { periods: [] }))
 
-    // Refrescar tags si llegan de Redis
-    const onSync = () => setTaskTags(readArr<string>(TASK_TAGS_KEY))
+    // Refrescar todos los datos cuando llegan cambios de Redis (sync entre dispositivos)
+    const onSync = () => {
+      setTaskTags(readArr<string>(TASK_TAGS_KEY))
+      setTasksList(readArr<TaskItem>(TASKS_KEY))
+      setNotes(readArr<Note>(NOTES_KEY))
+      setSuperList(readArr<ListItem>(SUPER_KEY))
+      setHomeData(readObj<HomeData | null>(HOME_KEY, null))
+      setCleaningHistory(readObj<Record<string, string>>(HISTORY_KEY, {}))
+      setCycle(readObj<CycleData>(CYCLE_KEY, { periods: [] }))
+    }
     window.addEventListener('sq-data-changed', onSync)
 
     const SR = (typeof window !== 'undefined' &&
@@ -306,7 +314,11 @@ export function AdminScreen() {
     // Si se marca como hecha y es recurrente → crear la siguiente
     if (updated.done && updated.recurrence) {
       const days = updated.recurrence === 'semanal' ? 7 : 14
-      const [y, m, d] = updated.date.split('-').map(Number)
+      // Fallback a hoy si la fecha está vacía o es inválida
+      const baseDate = updated.date && /^\d{4}-\d{2}-\d{2}$/.test(updated.date)
+        ? updated.date
+        : getLocalDateStr()
+      const [y, m, d] = baseDate.split('-').map(Number)
       const nextDate = new Date(y, m - 1, d)
       nextDate.setDate(nextDate.getDate() + days)
       const nextDateStr = getLocalDateStr(nextDate)

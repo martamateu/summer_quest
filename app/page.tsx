@@ -393,8 +393,10 @@ export default function Page() {
                   return `v:${JSON.stringify(item)}`
                 }
                 const byKey = new Map<string, any>()
+                // Local va primero, cloud sobreescribe (igual que el servidor): así ediciones
+                // hechas en otro dispositivo a un item existente llegan al cliente.
                 for (const item of local) { const k = keyOf(item); if (k) byKey.set(k, item) }
-                for (const item of cloud) { const k = keyOf(item); if (k && !byKey.has(k)) byKey.set(k, item) }
+                for (const item of cloud) { const k = keyOf(item); if (k) byKey.set(k, item) }
                 merged = dropDeleted(key, Array.from(byKey.values()))
               }
               if (JSON.stringify(merged) !== JSON.stringify(local)) {
