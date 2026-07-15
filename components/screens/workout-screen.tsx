@@ -218,6 +218,8 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
   const [ocrLoading, setOcrLoading] = useState(false)
   const [ocrError, setOcrError] = useState<string | null>(null)
   const [pending, setPending] = useState<Omit<WorkoutLog, 'id'> | null>(null)
+  const [pendingType, setPendingType] = useState<WorkoutType>('otro')
+  const [pendingDate, setPendingDate] = useState(getTodayStr())
   const fileRef = useRef<HTMLInputElement>(null)
 
   // Manual add state
@@ -329,6 +331,8 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
         durationMinutes: data.durationMinutes,
         instructor: data.instructor,
       })
+      setPendingType(data.activityType)
+      setPendingDate(data.date || getTodayStr())
     } catch (e: any) {
       setOcrError(e?.message || 'No se pudo analizar la imagen. Solo funciona en producción.')
     } finally {
@@ -338,7 +342,7 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
 
   const confirmPending = () => {
     if (!pending) return
-    addWorkout(pending)
+    addWorkout({ ...pending, activityType: pendingType, date: pendingDate })
     setPending(null)
   }
 
@@ -422,12 +426,12 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
 
       {/* Pending OCR result */}
       {pending && (() => {
-        const meta = TYPE_META[pending.activityType] || TYPE_META['otro']
-        const isToday = pending.date === getTodayStr()
-        const whenLabel = isToday ? 'hoy' : `el ${fmtDate(pending.date)}`
+        const meta = TYPE_META[pendingType] || TYPE_META['otro']
+        const isToday = pendingDate === getTodayStr()
+        const whenLabel = isToday ? 'hoy' : `el ${fmtDate(pendingDate)}`
         return (
         <div className="bg-card rounded-2xl p-4 mb-4 border-2 border-primary">
-          <p className="text-[10px] text-muted-foreground uppercase mb-2">Entreno detectado — ¿confirmar?</p>
+          <p className="text-[10px] text-muted-foreground uppercase mb-2">Entreno detectado — corrige si es necesario</p>
           <div className="flex items-start gap-3 mb-3">
             <span style={{ color: meta.color }}>
               {meta.icon}
@@ -435,29 +439,55 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-foreground">{pending.activityName}</p>
               <p className="text-[11px] text-muted-foreground mt-0.5">
-                {meta.label}
-                {pending.studio && ` · ${pending.studio}`}
-                {pending.durationMinutes && ` · ${pending.durationMinutes} min`}
-                {pending.instructor && ` · ${pending.instructor}`}
-                {' · '}{fmtDate(pending.date)}
+                {pending.studio && `${pending.studio} · `}
+                {pending.durationMinutes && `${pending.durationMinutes} min · `}
+                {pending.instructor && `${pending.instructor} · `}
+                {fmtDate(pendingDate)}
               </p>
-              {pending.activityType === 'flexibilidad' && (
-                <p className="text-[11px] text-green-600 mt-1 font-medium">✓ Marcará racha de flexibilidad {whenLabel}</p>
-              )}
-              {pending.activityType === 'fuerza' && isToday && (
-                <p className="text-[11px] text-red-500 mt-1 font-medium">✓ Marcará entreno (fuerza) hoy</p>
-              )}
-              {pending.activityType === 'cardio' && isToday && (
-                <p className="text-[11px] text-orange-500 mt-1 font-medium">✓ Marcará entreno (run) hoy</p>
-              )}
             </div>
           </div>
+
+          {/* Selector de tipo editable */}
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {(Object.keys(TYPE_META) as WorkoutType[]).filter(t => t !== 'descanso').map(t => (
+              <button
+                key={t}
+                onClick={() => setPendingType(t)}
+                className="px-2.5 py-1 rounded-full text-xs font-medium text-white transition-opacity"
+                style={{ backgroundColor: TYPE_META[t].color, opacity: pendingType === t ? 1 : 0.3 }}
+              >
+                {TYPE_META[t].label}
+              </button>
+            ))}
+          </div>
+
+          {/* Fecha editable */}
+          <div className="mb-3">
+            <input
+              type="date"
+              value={pendingDate}
+              max={getTodayStr()}
+              onChange={e => setPendingDate(e.target.value)}
+              className="w-full text-sm bg-secondary rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-primary text-foreground"
+            />
+          </div>
+
+          {pendingType === 'fuerza' && (
+            <p className="text-[11px] text-red-500 mb-2 font-medium">✓ Contará como día de fuerza{isToday ? ' hoy' : ` el ${fmtDate(pendingDate)}`}</p>
+          )}
+          {pendingType === 'flexibilidad' && (
+            <p className="text-[11px] text-green-600 mb-2 font-medium">✓ Marcará racha de flexibilidad {whenLabel}</p>
+          )}
+          {pendingType === 'cardio' && isToday && (
+            <p className="text-[11px] text-orange-500 mb-2 font-medium">✓ Marcará entreno (run) hoy</p>
+          )}
+
           <div className="flex gap-2">
             <button onClick={discardPending} className="flex-1 flex items-center justify-center gap-1 py-2 rounded-xl bg-secondary text-foreground text-sm">
               <X className="w-4 h-4" /> Descartar
             </button>
             <button onClick={confirmPending} className="flex-1 flex items-center justify-center gap-1 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium">
-              <Check className="w-4 h-4" /> Confirmar
+              <Check className="w-4 h-4" /> Guardar
             </button>
           </div>
         </div>
