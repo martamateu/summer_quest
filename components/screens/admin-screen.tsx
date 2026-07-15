@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Mic, MicOff, Send, Trash2, StickyNote, ShoppingCart, Loader2, Check, Plus, Sparkles, ChevronLeft, ChevronRight, ChevronDown, Home, RotateCcw, Pencil, X, Droplets, Brain } from 'lucide-react'
+import { Mic, MicOff, Send, Trash2, StickyNote, ShoppingCart, Loader2, Check, Plus, Sparkles, ChevronLeft, ChevronRight, ChevronDown, Home, RotateCcw, Pencil, X, Droplets, Brain, Target } from 'lucide-react'
 import { resolveHomeTasks, getSuggestedTask, getSuggestedTaskPerArea } from '@/lib/cleaning-templates'
 import type { HomeData, ResolvedTask } from '@/lib/cleaning-templates'
 import { getLocalDateStr as cycleLocalDate, getCurrentPhase, predictNextPeriod, computeAvgCycleLen, getAveragePeriodLength } from '@/lib/cycle'
@@ -9,6 +9,33 @@ import type { CycleData, CyclePeriod } from '@/lib/types'
 import { recordTombstones } from '@/lib/sync-tombstones'
 
 const CYCLE_KEY = 'sq_cycle'
+const GOALS_KEY = 'sq_goals'
+
+type GoalPeriod = 'semana' | 'mes' | 'trimestre' | 'semestre' | 'año'
+
+interface Goal {
+  id: string
+  text: string
+  period: GoalPeriod
+  done: boolean
+  createdAt: string // YYYY-MM-DD
+}
+
+const GOAL_PERIOD_LABELS: Record<GoalPeriod, string> = {
+  semana: 'Esta semana',
+  mes: 'Este mes',
+  trimestre: 'Este trimestre',
+  semestre: 'Este semestre',
+  año: 'Este año',
+}
+
+const GOAL_PERIOD_COLORS: Record<GoalPeriod, string> = {
+  semana: '#6366f1',
+  mes: '#8b5cf6',
+  trimestre: '#ec4899',
+  semestre: '#f97316',
+  año: '#f59e0b',
+}
 
 // Paleta de colores para áreas — se asignan en orden de aparición
 const AREA_PALETTE = [
@@ -181,7 +208,7 @@ function extractFloPeriods(payload: unknown): CyclePeriod[] {
 }
 
 export function AdminScreen() {
-  const [tab, setTab] = useState<'notas' | 'tareas' | 'super' | 'limpieza' | 'periodo'>('notas')
+  const [tab, setTab] = useState<'notas' | 'tareas' | 'super' | 'limpieza' | 'periodo' | 'goals'>('notas')
 
   // Tareas
   const [tasksList, setTasksList] = useState<TaskItem[]>([])
@@ -240,6 +267,15 @@ export function AdminScreen() {
   const [floImportMsg, setFloImportMsg] = useState<string | null>(null)
   const [floImportError, setFloImportError] = useState<string | null>(null)
 
+  // Goals
+  const [goals, setGoals] = useState<Goal[]>([])
+  const [goalPeriodFilter, setGoalPeriodFilter] = useState<GoalPeriod>('semana')
+  const [newGoalText, setNewGoalText] = useState('')
+  const [newGoalPeriod, setNewGoalPeriod] = useState<GoalPeriod>('semana')
+  const [editingGoal, setEditingGoal] = useState<string | null>(null)
+  const [editGoalText, setEditGoalText] = useState('')
+  const [showDoneGoals, setShowDoneGoals] = useState(false)
+
   // Edición de tarea
   const [editingTaskKey, setEditingTaskKey] = useState<string | null>(null)
   const [editLabel, setEditLabel] = useState('')
@@ -254,6 +290,7 @@ export function AdminScreen() {
     setHomeData(readObj<HomeData | null>(HOME_KEY, null))
     setCleaningHistory(readObj<Record<string, string>>(HISTORY_KEY, {}))
     setCycle(readObj<CycleData>(CYCLE_KEY, { periods: [] }))
+    setGoals(readArr<Goal>(GOALS_KEY))
 
     // Refrescar todos los datos cuando llegan cambios de Redis (sync entre dispositivos)
     const onSync = () => {
@@ -264,6 +301,7 @@ export function AdminScreen() {
       setHomeData(readObj<HomeData | null>(HOME_KEY, null))
       setCleaningHistory(readObj<Record<string, string>>(HISTORY_KEY, {}))
       setCycle(readObj<CycleData>(CYCLE_KEY, { periods: [] }))
+      setGoals(readArr<Goal>(GOALS_KEY))
     }
     window.addEventListener('sq-data-changed', onSync)
 
@@ -564,6 +602,35 @@ export function AdminScreen() {
     }
   }
 
+  // ── Goals ──────────────────────────────────────────────────────────────────
+  const saveGoals = (next: Goal[]) => {
+    setGoals(next)
+    persistArr(GOALS_KEY, next)
+  }
+
+  const addGoal = () => {
+    const t = newGoalText.trim()
+    if (!t) return
+    const goal: Goal = { id: uid(), text: t, period: newGoalPeriod, done: false, createdAt: getLocalDateStr() }
+    saveGoals([goal, ...goals])
+    setNewGoalText('')
+  }
+
+  const toggleGoal = (id: string) => {
+    saveGoals(goals.map(g => g.id === id ? { ...g, done: !g.done } : g))
+  }
+
+  const deleteGoal = (id: string) => {
+    recordTombstones(GOALS_KEY, [id])
+    saveGoals(goals.filter(g => g.id !== id))
+  }
+
+  const saveEditGoal = () => {
+    if (!editingGoal) return
+    saveGoals(goals.map(g => g.id === editingGoal ? { ...g, text: editGoalText.trim() || g.text } : g))
+    setEditingGoal(null)
+  }
+
   // ── Limpieza ───────────────────────────────────────────────────────────────
   const saveHome = (home: HomeData) => {
     setHomeData(home)
@@ -804,8 +871,8 @@ export function AdminScreen() {
       </div>
       {status && <p className="text-xs text-muted-foreground mb-3">{status}</p>}
 
-      {/* Sub-tabs */}
-      <div className="grid grid-cols-5 gap-1.5 my-4">
+      {/* Sub-tabs — dos filas de 3 para que no queden aplastados */}
+      <div className="grid grid-cols-3 gap-1.5 my-4">
         <button
           onClick={() => setTab('notas')}
           className={`flex flex-col items-center justify-center gap-1 px-1 py-2 rounded-xl text-[11px] font-medium ${tab === 'notas' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
@@ -819,6 +886,15 @@ export function AdminScreen() {
           <Check className="w-4 h-4" /> Tareas
           {tasksList.filter(t => !t.done).length > 0 && (
             <span className="absolute top-1 right-1 bg-primary text-primary-foreground text-[9px] rounded-full px-1 min-w-3.5 text-center border border-background">{tasksList.filter(t => !t.done).length}</span>
+          )}
+        </button>
+        <button
+          onClick={() => setTab('goals')}
+          className={`relative flex flex-col items-center justify-center gap-1 px-1 py-2 rounded-xl text-[11px] font-medium ${tab === 'goals' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
+        >
+          <Target className="w-4 h-4" /> Goals
+          {goals.filter(g => !g.done).length > 0 && (
+            <span className="absolute top-1 right-1 bg-amber-500 text-white text-[9px] rounded-full px-1 min-w-3.5 text-center border border-background">{goals.filter(g => !g.done).length}</span>
           )}
         </button>
         <button
@@ -1754,6 +1830,161 @@ export function AdminScreen() {
           insightsError={insightsError}
           onFetchInsights={fetchCycleInsights}
         />
+      )}
+
+      {/* Goals */}
+      {tab === 'goals' && (
+        <>
+          {/* Nueva goal */}
+          <div className="bg-card rounded-2xl p-3 mb-3">
+            <p className="text-[10px] text-muted-foreground uppercase mb-2">Nueva goal</p>
+            <div className="flex items-center gap-2 mb-2">
+              <input
+                type="text"
+                value={newGoalText}
+                onChange={e => setNewGoalText(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && addGoal()}
+                placeholder="¿Qué quieres conseguir?"
+                className="flex-1 p-2.5 rounded-xl bg-secondary text-foreground outline-none focus:ring-2 focus:ring-primary text-sm"
+              />
+              <button
+                onClick={addGoal}
+                disabled={!newGoalText.trim()}
+                className="p-2.5 rounded-xl bg-primary text-primary-foreground disabled:opacity-50"
+              >
+                <Plus className="w-5 h-5" />
+              </button>
+            </div>
+            {/* Selector de periodo */}
+            <div className="flex gap-1.5 flex-wrap">
+              {(Object.keys(GOAL_PERIOD_LABELS) as GoalPeriod[]).map(p => (
+                <button
+                  key={p}
+                  onClick={() => setNewGoalPeriod(p)}
+                  className="px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors"
+                  style={newGoalPeriod === p
+                    ? { backgroundColor: GOAL_PERIOD_COLORS[p], color: '#fff' }
+                    : { backgroundColor: 'var(--secondary)', color: 'var(--muted-foreground)' }
+                  }
+                >
+                  {GOAL_PERIOD_LABELS[p]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Filtro por periodo */}
+          <div className="flex gap-1.5 overflow-x-auto pb-1 mb-3">
+            {(Object.keys(GOAL_PERIOD_LABELS) as GoalPeriod[]).map(p => {
+              const count = goals.filter(g => g.period === p && !g.done).length
+              return (
+                <button
+                  key={p}
+                  onClick={() => setGoalPeriodFilter(p)}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-medium whitespace-nowrap transition-colors shrink-0"
+                  style={goalPeriodFilter === p
+                    ? { backgroundColor: GOAL_PERIOD_COLORS[p], color: '#fff' }
+                    : { backgroundColor: 'var(--secondary)', color: 'var(--muted-foreground)' }
+                  }
+                >
+                  {GOAL_PERIOD_LABELS[p]}
+                  {count > 0 && (
+                    <span className="ml-0.5 bg-white/30 text-inherit text-[9px] rounded-full px-1">{count}</span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Lista de goals pendientes */}
+          {(() => {
+            const periodGoals = goals.filter(g => g.period === goalPeriodFilter)
+            const pending = periodGoals.filter(g => !g.done)
+            const done = periodGoals.filter(g => g.done)
+
+            return (
+              <>
+                {pending.length === 0 && done.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-10">
+                    Sin goals para {GOAL_PERIOD_LABELS[goalPeriodFilter].toLowerCase()}. ¡Añade una!
+                  </p>
+                )}
+
+                <div className="space-y-2 mb-3">
+                  {pending.map(goal => (
+                    <div key={goal.id} className="bg-card rounded-xl p-3">
+                      {editingGoal === goal.id ? (
+                        <div className="space-y-2">
+                          <input
+                            autoFocus
+                            value={editGoalText}
+                            onChange={e => setEditGoalText(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Escape') setEditingGoal(null) }}
+                            className="w-full text-sm bg-secondary rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-primary text-foreground"
+                          />
+                          <div className="flex gap-2">
+                            <button onClick={() => setEditingGoal(null)} className="flex-1 py-1.5 rounded-lg bg-secondary text-foreground text-xs">Cancelar</button>
+                            <button onClick={saveEditGoal} className="flex-1 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs">Guardar</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-start gap-3">
+                          <button
+                            onClick={() => toggleGoal(goal.id)}
+                            className="mt-0.5 w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors"
+                            style={{ borderColor: GOAL_PERIOD_COLORS[goal.period] }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-foreground leading-snug">{goal.text}</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">{goal.createdAt.split('-').reverse().join('/')}</p>
+                          </div>
+                          <button onClick={() => { setEditingGoal(goal.id); setEditGoalText(goal.text) }} className="p-1 rounded-full hover:bg-secondary shrink-0">
+                            <Pencil className="w-4 h-4 text-muted-foreground" />
+                          </button>
+                          <button onClick={() => deleteGoal(goal.id)} className="p-1 rounded-full hover:bg-secondary shrink-0">
+                            <Trash2 className="w-4 h-4 text-muted-foreground" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Goals conseguidas */}
+                {done.length > 0 && (
+                  <div>
+                    <button
+                      onClick={() => setShowDoneGoals(v => !v)}
+                      className="w-full flex items-center justify-between px-2 py-1.5 rounded-xl text-muted-foreground hover:bg-secondary mb-1.5"
+                    >
+                      <span className="text-xs font-medium">Conseguidas ({done.length})</span>
+                      <ChevronDown className={`w-4 h-4 transition-transform ${showDoneGoals ? 'rotate-180' : ''}`} />
+                    </button>
+                    {showDoneGoals && (
+                      <div className="space-y-1.5">
+                        {done.map(goal => (
+                          <div key={goal.id} className="flex items-center gap-3 bg-card rounded-xl p-3 opacity-60">
+                            <button
+                              onClick={() => toggleGoal(goal.id)}
+                              className="w-6 h-6 rounded-full flex items-center justify-center shrink-0"
+                              style={{ backgroundColor: GOAL_PERIOD_COLORS[goal.period] }}
+                            >
+                              <Check className="w-3.5 h-3.5 text-white" />
+                            </button>
+                            <p className="flex-1 text-sm line-through text-muted-foreground">{goal.text}</p>
+                            <button onClick={() => deleteGoal(goal.id)} className="p-1 rounded-full hover:bg-secondary shrink-0">
+                              <Trash2 className="w-4 h-4 text-muted-foreground" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )
+          })()}
+        </>
       )}
     </div>
   )

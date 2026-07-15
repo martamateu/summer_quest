@@ -243,7 +243,7 @@ export default function Page() {
   }
 
   // ── Cloud backup: sync localStorage ↔ Redis ──
-  const SYNC_KEYS = ['sq_habits', 'sq_today', 'sq_history', 'sq_expenses', 'sq_finance_started_at', 'sq_gym_logs', 'sq_gym_seeded', 'sq_steps_history', 'sq_food_log', 'sq_favorite_recipes', 'sq_notes', 'sq_super_list', 'sq_home', 'sq_cleaning_history', 'sq_cycle', 'sq_run_logs', 'sq_today_goals', 'sq_flex_log', 'sq_finance_log', 'sq_workout_logs', 'sq_tasks_list', 'sq_task_tags', 'sq_focus_log', 'sq_focus_subject_log', 'sq_tombstones', 'sq_last_modified']
+  const SYNC_KEYS = ['sq_habits', 'sq_today', 'sq_history', 'sq_expenses', 'sq_finance_started_at', 'sq_gym_logs', 'sq_gym_seeded', 'sq_steps_history', 'sq_food_log', 'sq_favorite_recipes', 'sq_notes', 'sq_super_list', 'sq_home', 'sq_cleaning_history', 'sq_cycle', 'sq_run_logs', 'sq_today_goals', 'sq_flex_log', 'sq_finance_log', 'sq_workout_logs', 'sq_tasks_list', 'sq_task_tags', 'sq_focus_log', 'sq_focus_subject_log', 'sq_tombstones', 'sq_last_modified', 'sq_goals']
 
   // Debounced upload: cancel previous pending upload so only the latest data is sent
   const uploadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -313,7 +313,7 @@ export default function Page() {
       }
 
       const ID_ARRAY_KEYS = new Set([
-        'sq_notes', 'sq_super_list', 'sq_tasks_list',
+        'sq_notes', 'sq_super_list', 'sq_tasks_list', 'sq_goals',
         'sq_workout_logs', 'sq_run_logs', 'sq_gym_logs', 'sq_expenses', 'sq_favorite_recipes',
       ])
       const STR_ARRAY_KEYS = new Set(['sq_flex_log', 'sq_finance_log'])

@@ -13,7 +13,7 @@ const getUserRedisKey = (email: string) => `app:data:${email.toLowerCase()}`
 // Claves cuyo valor es un array de objetos con `id`: se fusionan por id (unión)
 // para que añadir una nota/tarea/compra en un dispositivo no borre las de otro.
 const ID_ARRAY_KEYS = new Set([
-  'sq_notes', 'sq_super_list', 'sq_tasks_list',
+  'sq_notes', 'sq_super_list', 'sq_tasks_list', 'sq_goals',
   'sq_workout_logs', 'sq_run_logs', 'sq_gym_logs', 'sq_expenses', 'sq_favorite_recipes',
 ])
 // Claves cuyo valor es un array de strings (fechas): se fusionan por unión de valores.
