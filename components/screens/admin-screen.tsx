@@ -53,6 +53,19 @@ interface TaskItem {
   text: string
   done: boolean
   date: string // YYYY-MM-DD
+  tag?: string
+}
+
+const TASK_TAGS = ['CI', 'IMAS', 'PAR', 'psicólogo', 'personal', 'hogar', 'recados']
+
+const TAG_COLORS: Record<string, string> = {
+  CI:         '#6366f1',
+  IMAS:       '#8b5cf6',
+  PAR:        '#06b6d4',
+  psicólogo:  '#ec4899',
+  personal:   '#3b82f6',
+  hogar:      '#22c55e',
+  recados:    '#f59e0b',
 }
 
 // Fecha local YYYY-MM-DD (nunca toISOString: evita el desfase de día por UTC en madrugada)
@@ -171,6 +184,12 @@ export function AdminScreen() {
   const [tasksView, setTasksView] = useState<'dia' | 'semana' | 'mes'>('semana')
   const [tasksOffset, setTasksOffset] = useState(0)
   const [manualTask, setManualTask] = useState('')
+  const [newTaskTag, setNewTaskTag] = useState<string>('')
+  const [editingTask, setEditingTask] = useState<string | null>(null)
+  const [editTaskText, setEditTaskText] = useState('')
+  const [editTaskTag, setEditTaskTag] = useState('')
+  const [showDoneTasks, setShowDoneTasks] = useState(false)
+  const [tasksTagFilter, setTasksTagFilter] = useState<string>('all')
 
   // Notas
   const [notes, setNotes] = useState<Note[]>([])
@@ -253,8 +272,24 @@ export function AdminScreen() {
   const addManualTask = () => {
     const t = manualTask.trim()
     if (!t) return
-    saveTasks([{ id: uid(), text: t, done: false, date: getLocalDateStr() }, ...tasksList])
+    saveTasks([{ id: uid(), text: t, done: false, date: getLocalDateStr(), ...(newTaskTag ? { tag: newTaskTag } : {}) }, ...tasksList])
     setManualTask('')
+  }
+
+  const startEditTask = (item: TaskItem) => {
+    setEditingTask(item.id)
+    setEditTaskText(item.text)
+    setEditTaskTag(item.tag || '')
+  }
+
+  const saveEditTask = () => {
+    if (!editingTask) return
+    saveTasks(tasksList.map(t =>
+      t.id === editingTask
+        ? { ...t, text: editTaskText.trim() || t.text, tag: editTaskTag || undefined }
+        : t
+    ))
+    setEditingTask(null)
   }
 
   // ── Súper ──────────────────────────────────────────────────────────────────
@@ -811,30 +846,51 @@ export function AdminScreen() {
           ? `${range.start.split('-')[2]}/${range.start.split('-')[1]} – ${range.end.split('-')[2]}/${range.end.split('-')[1]}`
           : new Date(now.getFullYear(), now.getMonth() + tasksOffset, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
 
-        const filteredTasks = tasksList.filter(t => t.date >= range.start && t.date <= range.end)
-        const sortedTasks = [...filteredTasks].sort((a, b) => {
-          if (a.done !== b.done) return Number(a.done) - Number(b.done)
-          return b.date.localeCompare(a.date)
-        })
+        const inRange = tasksList.filter(t => t.date >= range.start && t.date <= range.end)
+        const filtered = tasksTagFilter === 'all' ? inRange : inRange.filter(t => t.tag === tasksTagFilter)
+        const pending = [...filtered.filter(t => !t.done)].sort((a, b) => b.date.localeCompare(a.date))
+        const done = [...filtered.filter(t => t.done)].sort((a, b) => b.date.localeCompare(a.date))
 
         return (
           <>
-            <div className="flex items-center gap-2 mb-3">
-              <input
-                type="text"
-                value={manualTask}
-                onChange={e => setManualTask(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && addManualTask()}
-                placeholder="Añadir tarea para hoy…"
-                className="flex-1 p-2.5 rounded-xl bg-secondary text-foreground outline-none focus:ring-2 focus:ring-primary text-sm"
-              />
-              <button onClick={addManualTask} disabled={!manualTask.trim()} className="p-2.5 rounded-xl bg-primary text-primary-foreground disabled:opacity-50">
-                <Plus className="w-5 h-5" />
-              </button>
+            {/* Input nueva tarea */}
+            <div className="mb-3">
+              <div className="flex items-center gap-2 mb-2">
+                <input
+                  type="text"
+                  value={manualTask}
+                  onChange={e => setManualTask(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addManualTask()}
+                  placeholder="Añadir tarea para hoy…"
+                  className="flex-1 p-2.5 rounded-xl bg-secondary text-foreground outline-none focus:ring-2 focus:ring-primary text-sm"
+                />
+                <button onClick={addManualTask} disabled={!manualTask.trim()} className="p-2.5 rounded-xl bg-primary text-primary-foreground disabled:opacity-50">
+                  <Plus className="w-5 h-5" />
+                </button>
+              </div>
+              {/* Tag selector para nueva tarea */}
+              <div className="flex gap-1.5 flex-wrap">
+                <button
+                  onClick={() => setNewTaskTag('')}
+                  className={`px-2.5 py-1 rounded-full text-[11px] font-medium ${!newTaskTag ? 'bg-foreground text-background' : 'bg-secondary text-muted-foreground'}`}
+                >
+                  sin tag
+                </button>
+                {TASK_TAGS.map(tag => (
+                  <button
+                    key={tag}
+                    onClick={() => setNewTaskTag(newTaskTag === tag ? '' : tag)}
+                    className="px-2.5 py-1 rounded-full text-[11px] font-medium text-white transition-opacity"
+                    style={{ backgroundColor: TAG_COLORS[tag] || '#6b7280', opacity: newTaskTag === tag ? 1 : 0.4 }}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* View toggle */}
-            <div className="flex gap-1 bg-secondary rounded-xl p-1 mb-4">
+            <div className="flex gap-1 bg-secondary rounded-xl p-1 mb-3">
               {(['dia', 'semana', 'mes'] as const).map(v => (
                 <button key={v} onClick={() => { setTasksView(v); setTasksOffset(0) }}
                   className={`flex-1 py-2 rounded-lg text-sm font-medium capitalize transition-colors ${tasksView === v ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'}`}>
@@ -844,7 +900,7 @@ export function AdminScreen() {
             </div>
 
             {/* Period navigator */}
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-3">
               <button onClick={() => setTasksOffset(o => o - 1)} className="p-1.5 rounded-full hover:bg-secondary">
                 <ChevronLeft className="w-4 h-4 text-muted-foreground" />
               </button>
@@ -854,28 +910,142 @@ export function AdminScreen() {
               </button>
             </div>
 
-            {filteredTasks.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-10">No hay tareas en este periodo.</p>
+            {/* Filtro por tag */}
+            <div className="flex gap-1.5 overflow-x-auto pb-1 mb-3">
+              <button
+                onClick={() => setTasksTagFilter('all')}
+                className={`px-3 py-1 rounded-full text-[11px] whitespace-nowrap font-medium ${tasksTagFilter === 'all' ? 'bg-foreground text-background' : 'bg-secondary text-muted-foreground'}`}
+              >
+                Todas
+              </button>
+              {TASK_TAGS.map(tag => (
+                <button
+                  key={tag}
+                  onClick={() => setTasksTagFilter(tasksTagFilter === tag ? 'all' : tag)}
+                  className="px-3 py-1 rounded-full text-[11px] whitespace-nowrap font-medium text-white transition-opacity"
+                  style={{ backgroundColor: TAG_COLORS[tag] || '#6b7280', opacity: tasksTagFilter === tag ? 1 : 0.5 }}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+
+            {/* Pendientes */}
+            {pending.length === 0 && done.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-10">No hay tareas en este período.</p>
             ) : (
-              <div className="space-y-1.5">
-                {sortedTasks.map(item => (
-                  <div key={item.id} className="flex items-center gap-3 bg-card rounded-xl p-3">
-                    <button
-                      onClick={() => toggleTask(item.id)}
-                      className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${item.done ? 'bg-primary text-primary-foreground' : 'border-2 border-muted-foreground/40'}`}
-                    >
-                      {item.done && <Check className="w-3.5 h-3.5" />}
-                    </button>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm ${item.done ? 'line-through text-muted-foreground' : 'text-foreground'}`}>{item.text}</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">{item.date.split('-').reverse().join('/')}</p>
+              <>
+                {pending.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-4">¡Todo hecho! 🎉</p>
+                )}
+                <div className="space-y-1.5 mb-3">
+                  {pending.map(item => (
+                    <div key={item.id} className="bg-card rounded-xl p-3">
+                      {editingTask === item.id ? (
+                        <div className="space-y-2">
+                          <input
+                            autoFocus
+                            value={editTaskText}
+                            onChange={e => setEditTaskText(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') saveEditTask(); if (e.key === 'Escape') setEditingTask(null) }}
+                            className="w-full text-sm bg-secondary rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-primary text-foreground"
+                          />
+                          <div className="flex gap-1.5 flex-wrap">
+                            <button
+                              onClick={() => setEditTaskTag('')}
+                              className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium ${!editTaskTag ? 'bg-foreground text-background' : 'bg-secondary text-muted-foreground'}`}
+                            >
+                              sin tag
+                            </button>
+                            {TASK_TAGS.map(tag => (
+                              <button
+                                key={tag}
+                                onClick={() => setEditTaskTag(editTaskTag === tag ? '' : tag)}
+                                className="px-2.5 py-0.5 rounded-full text-[11px] font-medium text-white"
+                                style={{ backgroundColor: TAG_COLORS[tag] || '#6b7280', opacity: editTaskTag === tag ? 1 : 0.4 }}
+                              >
+                                {tag}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={() => setEditingTask(null)} className="flex-1 py-1.5 rounded-lg bg-secondary text-foreground text-xs">Cancelar</button>
+                            <button onClick={saveEditTask} className="flex-1 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs">Guardar</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => toggleTask(item.id)}
+                            className="w-6 h-6 rounded-full border-2 border-muted-foreground/40 flex items-center justify-center shrink-0"
+                          />
+                          <div className="flex-1 min-w-0" onClick={() => startEditTask(item)}>
+                            <p className="text-sm text-foreground">{item.text}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <p className="text-[10px] text-muted-foreground">{item.date.split('-').reverse().join('/')}</p>
+                              {item.tag && (
+                                <span
+                                  className="px-1.5 py-0 rounded-full text-[10px] font-medium text-white"
+                                  style={{ backgroundColor: TAG_COLORS[item.tag] || '#6b7280' }}
+                                >
+                                  {item.tag}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <button onClick={() => deleteTaskItem(item.id)} className="p-1 rounded-full hover:bg-secondary shrink-0">
+                            <Trash2 className="w-4 h-4 text-muted-foreground" />
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    <button onClick={() => deleteTaskItem(item.id)} className="p-1 rounded-full hover:bg-secondary shrink-0">
-                      <Trash2 className="w-4 h-4 text-muted-foreground" />
+                  ))}
+                </div>
+
+                {/* Hechas — colapsables */}
+                {done.length > 0 && (
+                  <div>
+                    <button
+                      onClick={() => setShowDoneTasks(v => !v)}
+                      className="w-full flex items-center justify-between px-2 py-1.5 rounded-xl text-muted-foreground hover:bg-secondary mb-1.5"
+                    >
+                      <span className="text-xs font-medium">Hechas ({done.length})</span>
+                      <ChevronDown className={`w-4 h-4 transition-transform ${showDoneTasks ? 'rotate-180' : ''}`} />
                     </button>
+                    {showDoneTasks && (
+                      <div className="space-y-1.5">
+                        {done.map(item => (
+                          <div key={item.id} className="flex items-center gap-3 bg-card rounded-xl p-3 opacity-60">
+                            <button
+                              onClick={() => toggleTask(item.id)}
+                              className="w-6 h-6 rounded-full bg-primary flex items-center justify-center shrink-0"
+                            >
+                              <Check className="w-3.5 h-3.5 text-primary-foreground" />
+                            </button>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm line-through text-muted-foreground">{item.text}</p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <p className="text-[10px] text-muted-foreground">{item.date.split('-').reverse().join('/')}</p>
+                                {item.tag && (
+                                  <span
+                                    className="px-1.5 py-0 rounded-full text-[10px] font-medium text-white"
+                                    style={{ backgroundColor: TAG_COLORS[item.tag] || '#6b7280' }}
+                                  >
+                                    {item.tag}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <button onClick={() => deleteTaskItem(item.id)} className="p-1 rounded-full hover:bg-secondary shrink-0">
+                              <Trash2 className="w-4 h-4 text-muted-foreground" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             )}
           </>
         )
