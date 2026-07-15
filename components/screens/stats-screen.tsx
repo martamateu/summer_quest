@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { Footprints, PersonStanding, Wallet, Dumbbell, GraduationCap, ChevronLeft, ChevronRight, Smartphone, Timer, Brain, ListChecks } from 'lucide-react'
+import { Footprints, PersonStanding, Wallet, Dumbbell, GraduationCap, ChevronLeft, ChevronRight, Smartphone, Timer, Brain, ListChecks, Flame, Beef, Wheat, Droplets } from 'lucide-react'
 import type { DailyMetrics } from '@/lib/types'
 import { FOCUS_GOAL_MIN } from '@/components/screens/focus-screen'
 
@@ -121,8 +121,22 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
   const [focusLog, setFocusLog] = useState<Record<string, number>>({})
   const [tasksList, setTasksList] = useState<{ id: string; done: boolean; date: string; tag?: string }[]>([])
   const [taskTags, setTaskTags] = useState<string[]>([])
+  const [foodLog, setFoodLog] = useState<Record<string, { dayType: 'entreno' | 'descanso'; meals: Record<string, boolean>; customMeals?: Record<string, string> }>>({})
 
-  useEffect(() => {
+  // Food plan macro constants (mirrors food-screen.tsx)
+  const FOOD_MEALS = [
+    { id: 'desayuno',      entreno: { kcal: 420, protein: 30, carbs: 55, fat: 12 }, descanso: { kcal: 350, protein: 28, carbs: 50, fat: 3 } },
+    { id: 'media_manana',  entreno: { kcal: 200, protein: 2,  carbs: 50, fat: 0.5 }, descanso: { kcal: 180, protein: 4,  carbs: 22, fat: 10 } },
+    { id: 'comida',        entreno: { kcal: 450, protein: 30, carbs: 60, fat: 8 },  descanso: { kcal: 420, protein: 25, carbs: 55, fat: 12 } },
+    { id: 'merienda',      entreno: { kcal: 230, protein: 6,  carbs: 48, fat: 2 },  descanso: { kcal: 230, protein: 6,  carbs: 48, fat: 2 } },
+    { id: 'cena',          entreno: { kcal: 430, protein: 22, carbs: 55, fat: 12 }, descanso: { kcal: 440, protein: 32, carbs: 24, fat: 13 } },
+  ] as const
+  const FOOD_TARGETS = {
+    entreno:  { kcal: 1766, protein: 90,  carbs: 268, fat: 37 },
+    descanso: { kcal: 1659, protein: 95,  carbs: 199, fat: 50 },
+  }
+
+  const loadAll = () => {
     setStepsHistory(readObj('sq_steps_history', {}))
     setFlexLog(readArr<string>('sq_flex_log'))
     setFinanceLog(readArr<string>('sq_finance_log'))
@@ -133,24 +147,18 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
     setFocusLog(readObj('sq_focus_log', {}))
     setTasksList(readArr('sq_tasks_list'))
     setTaskTags(readArr<string>('sq_task_tags'))
+    setFoodLog(readObj('sq_food_log', {}))
+  }
+
+  useEffect(() => {
+    loadAll()
     // Build master log from sq_today_goals history — only today available
     const todayGoals = readObj<{ date: string; master?: { done: boolean } }>('sq_today_goals', { date: '' })
     if (todayGoals.date && todayGoals.master?.done) {
       setMasterLog([todayGoals.date])
     }
 
-    const handler = () => {
-      setStepsHistory(readObj('sq_steps_history', {}))
-      setFlexLog(readArr<string>('sq_flex_log'))
-      setFinanceLog(readArr<string>('sq_finance_log'))
-      setWorkoutLogs(readArr<{ date: string; activityType: string }>('sq_workout_logs'))
-      setGymLogs(readArr<{ date: string }>('sq_gym_logs'))
-      setRunLogs(readArr<{ date: string; distanceMeters?: number }>('sq_run_logs'))
-      setCleaningHistory(readObj('sq_cleaning_history', {}))
-      setFocusLog(readObj('sq_focus_log', {}))
-      setTasksList(readArr('sq_tasks_list'))
-      setTaskTags(readArr<string>('sq_task_tags'))
-    }
+    const handler = () => loadAll()
     window.addEventListener('sq-data-changed', handler)
     return () => window.removeEventListener('sq-data-changed', handler)
   }, [])
@@ -512,6 +520,125 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
           )}
         </div>
       ))}
+
+      {/* ── Macros / Nutrición ─────────────────────────────────────────────── */}
+      {(() => {
+        // Calcular macros por día en el rango
+        const macroRows = dates.map(date => {
+          const log = foodLog[date]
+          if (!log) return { date, kcal: 0, protein: 0, carbs: 0, fat: 0, mealsEaten: 0, dayType: 'entreno' as const, hasData: false }
+          const dt = log.dayType ?? 'entreno'
+          let kcal = 0, protein = 0, carbs = 0, fat = 0, mealsEaten = 0
+          for (const meal of FOOD_MEALS) {
+            if (log.meals[meal.id]) {
+              kcal += meal[dt].kcal
+              protein += meal[dt].protein
+              carbs += meal[dt].carbs
+              fat += meal[dt].fat
+              mealsEaten++
+            }
+          }
+          return { date, kcal, protein, carbs, fat, mealsEaten, dayType: dt, hasData: mealsEaten > 0 }
+        })
+
+        const daysWithData = macroRows.filter(r => r.hasData)
+        if (daysWithData.length === 0) return null
+
+        const avgKcal = Math.round(daysWithData.reduce((s, r) => s + r.kcal, 0) / daysWithData.length)
+        const avgProtein = Math.round(daysWithData.reduce((s, r) => s + r.protein, 0) / daysWithData.length)
+        const avgCarbs = Math.round(daysWithData.reduce((s, r) => s + r.carbs, 0) / daysWithData.length)
+        const avgFat = Math.round(daysWithData.reduce((s, r) => s + r.fat, 0) / daysWithData.length)
+
+        // Días donde se comieron todas las comidas (5/5)
+        const completeDays = macroRows.filter(r => r.mealsEaten === 5).length
+
+        const maxKcal = Math.max(...macroRows.map(r => r.kcal), 1)
+
+        const macroItems = [
+          { label: 'Kcal', avg: avgKcal, color: '#f97316', icon: <Flame className="w-3 h-3" /> },
+          { label: 'Prot', avg: `${avgProtein}g`, color: '#ef4444', icon: <Beef className="w-3 h-3" /> },
+          { label: 'Carbos', avg: `${avgCarbs}g`, color: '#f59e0b', icon: <Wheat className="w-3 h-3" /> },
+          { label: 'Grasa', avg: `${avgFat}g`, color: '#3b82f6', icon: <Droplets className="w-3 h-3" /> },
+        ]
+
+        return (
+          <div className="bg-card rounded-2xl p-4 mb-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Flame className="w-4 h-4 text-orange-500" />
+              <p className="text-sm font-semibold text-foreground">Nutrición</p>
+              <span className="ml-auto text-xs text-muted-foreground">{completeDays}/{dates.length} días completos</span>
+            </div>
+
+            {/* Medias del periodo */}
+            <div className="grid grid-cols-4 gap-2 mb-3">
+              {macroItems.map(m => (
+                <div key={m.label} className="bg-secondary rounded-xl p-2 text-center">
+                  <div className="flex justify-center mb-0.5" style={{ color: m.color }}>{m.icon}</div>
+                  <p className="text-xs font-bold text-foreground">{m.avg}</p>
+                  <p className="text-[9px] text-muted-foreground">{m.label}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Gráfico de barras de kcal por día */}
+            {view !== 'dia' && (
+              <div className="flex items-end gap-1" style={{ height: 64 }}>
+                {macroRows.map((r, i) => {
+                  const barH = r.kcal > 0 ? Math.max(Math.round((r.kcal / maxKcal) * 56), 4) : 2
+                  // Color según si alcanzó el objetivo del día
+                  const target = FOOD_TARGETS[r.dayType]
+                  const reached = r.kcal >= target.kcal * 0.9
+                  return (
+                    <div key={i} className="flex-1 flex flex-col items-center justify-end gap-0.5" style={{ height: 64 }}>
+                      <div className="w-full rounded-t transition-all"
+                        style={{ height: barH, backgroundColor: r.hasData ? (reached ? '#f97316' : '#f9731660') : '#f9731615' }} />
+                      {view === 'semana' && (
+                        <span className="text-[8px] text-muted-foreground leading-none">
+                          {fmtDateLabel(r.date).split(' ')[0]}
+                        </span>
+                      )}
+                      {view === 'mes' && Number(r.date.split('-')[2]) % 5 === 1 && (
+                        <span className="text-[8px] text-muted-foreground leading-none">
+                          {Number(r.date.split('-')[2])}
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Vista día: detalle */}
+            {view === 'dia' && (() => {
+              const r = macroRows[0]
+              if (!r.hasData) return <p className="text-sm text-muted-foreground text-center py-3">Sin registro nutricional este día</p>
+              const target = FOOD_TARGETS[r.dayType]
+              return (
+                <div className="space-y-2">
+                  {[
+                    { label: 'Kcal', val: r.kcal, max: target.kcal, color: '#f97316', unit: '' },
+                    { label: 'Proteína', val: r.protein, max: target.protein, color: '#ef4444', unit: 'g' },
+                    { label: 'Carbos', val: r.carbs, max: target.carbs, color: '#f59e0b', unit: 'g' },
+                    { label: 'Grasa', val: r.fat, max: target.fat, color: '#3b82f6', unit: 'g' },
+                  ].map(macro => (
+                    <div key={macro.label}>
+                      <div className="flex justify-between text-xs mb-0.5">
+                        <span className="text-muted-foreground">{macro.label}</span>
+                        <span className="font-medium text-foreground">{macro.val}{macro.unit} / {macro.max}{macro.unit}</span>
+                      </div>
+                      <div className="h-2 bg-secondary rounded-full overflow-hidden">
+                        <div className="h-full rounded-full transition-all"
+                          style={{ width: `${Math.min(100, (macro.val / macro.max) * 100)}%`, backgroundColor: macro.color }} />
+                      </div>
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-muted-foreground text-right">{r.mealsEaten}/5 comidas · día de {r.dayType}</p>
+                </div>
+              )
+            })()}
+          </div>
+        )
+      })()}
 
       {/* ── Tareas completadas ──────────────────────────────────────────────── */}
       {(() => {
