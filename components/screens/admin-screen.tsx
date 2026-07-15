@@ -194,6 +194,7 @@ export function AdminScreen() {
   const [newTaskRecurrence, setNewTaskRecurrence] = useState<'' | 'semanal' | 'quincenal'>('')
   const [editingTask, setEditingTask] = useState<string | null>(null)
   const [editTaskText, setEditTaskText] = useState('')
+  const [editTaskDate, setEditTaskDate] = useState('')
   const [editTaskTag, setEditTaskTag] = useState('')
   const [editTaskRecurrence, setEditTaskRecurrence] = useState<'' | 'semanal' | 'quincenal'>('')
   const [showDoneTasks, setShowDoneTasks] = useState(false)
@@ -335,6 +336,7 @@ export function AdminScreen() {
   const startEditTask = (item: TaskItem) => {
     setEditingTask(item.id)
     setEditTaskText(item.text)
+    setEditTaskDate(item.date)
     setEditTaskTag(item.tag || '')
     setEditTaskRecurrence(item.recurrence || '')
   }
@@ -343,7 +345,11 @@ export function AdminScreen() {
     if (!editingTask) return
     saveTasks(tasksList.map(t =>
       t.id === editingTask
-        ? { ...t, text: editTaskText.trim() || t.text, tag: editTaskTag || undefined, recurrence: editTaskRecurrence || undefined }
+        ? { ...t,
+            text: editTaskText.trim() || t.text,
+            date: editTaskDate || t.date,
+            tag: editTaskTag || undefined,
+            recurrence: editTaskRecurrence || undefined }
         : t
     ))
     setEditingTask(null)
@@ -1097,7 +1103,14 @@ export function AdminScreen() {
                             autoFocus
                             value={editTaskText}
                             onChange={e => setEditTaskText(e.target.value)}
-                            onKeyDown={e => { if (e.key === 'Enter') saveEditTask(); if (e.key === 'Escape') setEditingTask(null) }}
+                            onKeyDown={e => { if (e.key === 'Escape') setEditingTask(null) }}
+                            placeholder="Texto de la tarea"
+                            className="w-full text-sm bg-secondary rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-primary text-foreground"
+                          />
+                          <input
+                            type="date"
+                            value={editTaskDate}
+                            onChange={e => setEditTaskDate(e.target.value)}
                             className="w-full text-sm bg-secondary rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-primary text-foreground"
                           />
                           {taskTags.length > 0 && (
@@ -1135,7 +1148,7 @@ export function AdminScreen() {
                             onClick={() => toggleTask(item.id)}
                             className="w-6 h-6 rounded-full border-2 border-muted-foreground/40 flex items-center justify-center shrink-0"
                           />
-                          <div className="flex-1 min-w-0" onClick={() => startEditTask(item)}>
+                          <div className="flex-1 min-w-0">
                             <p className="text-sm text-foreground">{item.text}</p>
                             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                               <p className="text-[10px] text-muted-foreground">{item.date.split('-').reverse().join('/')}</p>
@@ -1150,6 +1163,9 @@ export function AdminScreen() {
                               )}
                             </div>
                           </div>
+                          <button onClick={() => startEditTask(item)} className="p-1 rounded-full hover:bg-secondary shrink-0" aria-label="Editar">
+                            <Pencil className="w-4 h-4 text-muted-foreground" />
+                          </button>
                           <button onClick={() => deleteTaskItem(item.id)} className="p-1 rounded-full hover:bg-secondary shrink-0">
                             <Trash2 className="w-4 h-4 text-muted-foreground" />
                           </button>
