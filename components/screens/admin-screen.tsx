@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Mic, MicOff, Send, Trash2, StickyNote, ShoppingCart, Loader2, Check, Plus, Sparkles, ChevronLeft, ChevronRight, Home, RotateCcw, Pencil, X, Droplets, Brain } from 'lucide-react'
+import { Mic, MicOff, Send, Trash2, StickyNote, ShoppingCart, Loader2, Check, Plus, Sparkles, ChevronLeft, ChevronRight, ChevronDown, Home, RotateCcw, Pencil, X, Droplets, Brain } from 'lucide-react'
 import { resolveHomeTasks, getSuggestedTask, getSuggestedTaskPerArea } from '@/lib/cleaning-templates'
 import type { HomeData, ResolvedTask } from '@/lib/cleaning-templates'
 import { getLocalDateStr as cycleLocalDate, getCurrentPhase, predictNextPeriod, computeAvgCycleLen, getAveragePeriodLength } from '@/lib/cycle'
@@ -1458,6 +1458,20 @@ function PeriodoView({
   const last = sorted[sorted.length - 1]
   const inProgress = last && !last.end
 
+  // Historial agrupado por año (descendente), con acordeón por cada año.
+  const periodsByYear = [...sorted].reverse().reduce<Record<string, CyclePeriod[]>>((acc, p) => {
+    const year = p.start.slice(0, 4)
+    if (!acc[year]) acc[year] = []
+    acc[year].push(p)
+    return acc
+  }, {})
+  const years = Object.keys(periodsByYear).sort((a, b) => Number(b) - Number(a))
+  const [openYears, setOpenYears] = useState<string[]>(years.length > 0 ? [years[0]] : [])
+
+  const toggleYear = (year: string) => {
+    setOpenYears(prev => prev.includes(year) ? prev.filter(y => y !== year) : [...prev, year])
+  }
+
   // Calendario
   const ref = new Date()
   const base = new Date(ref.getFullYear(), ref.getMonth() + monthOffset, 1)
@@ -1702,23 +1716,45 @@ function PeriodoView({
         <div className="bg-card rounded-2xl p-4">
           <p className="text-xs font-medium text-foreground mb-3">Historial</p>
           <div className="space-y-2">
-            {[...sorted].reverse().map(p => {
-              const days = p.end ? (() => {
-                const [sy, sm, sd] = p.start.split('-').map(Number)
-                const [ey, em, ed] = p.end.split('-').map(Number)
-                return Math.round((new Date(ey, em - 1, ed).getTime() - new Date(sy, sm - 1, sd).getTime()) / 86400000) + 1
-              })() : null
+            {years.map(year => {
+              const isOpen = openYears.includes(year)
               return (
-                <div key={p.start} className="flex items-center justify-between gap-2">
-                  <div>
-                    <p className="text-sm text-foreground">
-                      {fmtDate(p.start)} {p.end ? `– ${fmtDate(p.end)}` : '– en curso'}
-                    </p>
-                    {days && <p className="text-[10px] text-muted-foreground">{days} día{days === 1 ? '' : 's'}</p>}
-                  </div>
-                  <button onClick={() => onDelete(p.start)} className="p-1.5 rounded-full hover:bg-secondary shrink-0">
-                    <Trash2 className="w-4 h-4 text-muted-foreground" />
+                <div key={year} className="rounded-xl border border-border/60">
+                  <button
+                    onClick={() => toggleYear(year)}
+                    className="w-full px-3 py-2 flex items-center justify-between text-left"
+                  >
+                    <span className="text-sm font-medium text-foreground">{year}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-muted-foreground">{periodsByYear[year].length}</span>
+                      <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                    </div>
                   </button>
+
+                  {isOpen && (
+                    <div className="px-3 pb-2 space-y-2">
+                      {periodsByYear[year].map(p => {
+                        const days = p.end ? (() => {
+                          const [sy, sm, sd] = p.start.split('-').map(Number)
+                          const [ey, em, ed] = p.end.split('-').map(Number)
+                          return Math.round((new Date(ey, em - 1, ed).getTime() - new Date(sy, sm - 1, sd).getTime()) / 86400000) + 1
+                        })() : null
+                        return (
+                          <div key={p.start} className="flex items-center justify-between gap-2">
+                            <div>
+                              <p className="text-sm text-foreground">
+                                {fmtDate(p.start)} {p.end ? `– ${fmtDate(p.end)}` : '– en curso'}
+                              </p>
+                              {days && <p className="text-[10px] text-muted-foreground">{days} día{days === 1 ? '' : 's'}</p>}
+                            </div>
+                            <button onClick={() => onDelete(p.start)} className="p-1.5 rounded-full hover:bg-secondary shrink-0">
+                              <Trash2 className="w-4 h-4 text-muted-foreground" />
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
               )
             })}

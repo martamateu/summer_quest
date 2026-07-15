@@ -14,8 +14,20 @@ export const FOCUS_BLOCK_MIN = 25
 export const FOCUS_GOAL_BLOCKS = 4
 export const FOCUS_GOAL_MIN = FOCUS_BLOCK_MIN * FOCUS_GOAL_BLOCKS // 100
 
-// ── Focus log persistence (sq_focus_log: { "YYYY-MM-DD": minutes }) ─────────────
+// ── Asignaturas ───────────────────────────────────────────────────────────────
+export type FocusSubject = 'CI' | 'IMAS' | 'PAR'
+export const SUBJECTS: { id: FocusSubject; short: string; label: string }[] = [
+  { id: 'CI',   short: 'CI',   label: 'Computational Intelligence' },
+  { id: 'IMAS', short: 'IMAS', label: 'Intro to Multiagent Systems' },
+  { id: 'PAR',  short: 'PAR',  label: 'Planning & Approx. Reasoning' },
+]
+
+// ── Focus log persistence ──────────────────────────────────────────────────────
+// sq_focus_log:         { "YYYY-MM-DD": totalMinutes }
+// sq_focus_subject_log: { "YYYY-MM-DD": { CI: n, IMAS: n, PAR: n } }
 const FOCUS_KEY = 'sq_focus_log'
+const FOCUS_SUBJECT_KEY = 'sq_focus_subject_log'
+const FOCUS_SUBJECT_SELECTED_KEY = 'sq_focus_subject_selected'
 
 function readFocusLog(): Record<string, number> {
   if (typeof window === 'undefined') return {}
@@ -33,6 +45,24 @@ function addFocusMinutes(minutes: number) {
   } catch {}
 }
 
+function readFocusSubjectLog(): Record<string, Record<FocusSubject, number>> {
+  if (typeof window === 'undefined') return {}
+  try { return JSON.parse(localStorage.getItem(FOCUS_SUBJECT_KEY) || '{}') } catch { return {} }
+}
+
+function addFocusSubjectMinutes(subject: FocusSubject, minutes: number) {
+  if (typeof window === 'undefined' || minutes <= 0) return
+  try {
+    const log = readFocusSubjectLog()
+    const today = getTodayStr()
+    const entry = log[today] || { CI: 0, IMAS: 0, PAR: 0 }
+    entry[subject] = (entry[subject] || 0) + minutes
+    log[today] = entry
+    localStorage.setItem(FOCUS_SUBJECT_KEY, JSON.stringify(log))
+    // sq-data-changed already dispatched by addFocusMinutes; no double-fire needed
+  } catch {}
+}
+
 // ── Focus screen ────────────────────────────────────────────────────────────────
 export function FocusScreen() {
   const [workMinutes, setWorkMinutes] = useState(25)
@@ -44,18 +74,32 @@ export function FocusScreen() {
   const [showSettings, setShowSettings] = useState(false)
   const [todayFocus, setTodayFocus] = useState(0)
   const [log, setLog] = useState<Record<string, number>>({})
+  const [selectedSubject, setSelectedSubject] = useState<FocusSubject>('CI')
+  const [subjectLog, setSubjectLog] = useState<Record<string, Record<FocusSubject, number>>>({})
 
   // Load today's focus + history on mount, and refresh on external changes (cloud sync)
   useEffect(() => {
     const refresh = () => {
       const l = readFocusLog()
+      const sl = readFocusSubjectLog()
       setLog(l)
+      setSubjectLog(sl)
       setTodayFocus(l[getTodayStr()] || 0)
     }
+    // Restore last selected subject
+    try {
+      const saved = localStorage.getItem(FOCUS_SUBJECT_SELECTED_KEY) as FocusSubject | null
+      if (saved && SUBJECTS.some(s => s.id === saved)) setSelectedSubject(saved)
+    } catch {}
     refresh()
     window.addEventListener('sq-data-changed', refresh)
     return () => window.removeEventListener('sq-data-changed', refresh)
   }, [])
+
+  const chooseSubject = (s: FocusSubject) => {
+    setSelectedSubject(s)
+    try { localStorage.setItem(FOCUS_SUBJECT_SELECTED_KEY, s) } catch {}
+  }
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
@@ -67,14 +111,16 @@ export function FocusScreen() {
     if (isWorkPhase) {
       setSessionsCompleted((prev) => prev + 1)
       addFocusMinutes(workMinutes)
+      addFocusSubjectMinutes(selectedSubject, workMinutes)
       setTodayFocus((prev) => prev + workMinutes)
+      setSubjectLog(readFocusSubjectLog())
       setTimeLeft(breakMinutes * 60)
     } else {
       setTimeLeft(workMinutes * 60)
     }
     setIsWorkPhase(!isWorkPhase)
     setIsRunning(false)
-  }, [isWorkPhase, workMinutes, breakMinutes])
+  }, [isWorkPhase, workMinutes, breakMinutes, selectedSubject])
 
   const completeRef = useRef(handleComplete)
   completeRef.current = handleComplete
@@ -138,6 +184,7 @@ export function FocusScreen() {
   }
 
   const todayBlocks = Math.floor(todayFocus / FOCUS_BLOCK_MIN)
+  const todaySub = subjectLog[getTodayStr()] || { CI: 0, IMAS: 0, PAR: 0 }
 
   return (
     <div className="px-4 pt-6 pb-24">
@@ -181,6 +228,35 @@ export function FocusScreen() {
             ? '¡Meta de foco completada! 🎯'
             : `${FOCUS_GOAL_BLOCKS} bloques de ${FOCUS_BLOCK_MIN} min`}
         </p>
+      </div>
+
+      {/* Subject selector */}
+      <div className="bg-card rounded-2xl p-4 mb-4">
+        <p className="text-xs text-muted-foreground mb-2">Asignatura</p>
+        <div className="grid grid-cols-3 gap-2 mb-3">
+          {SUBJECTS.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => chooseSubject(s.id)}
+              title={s.label}
+              className={`py-2 rounded-xl text-xs font-semibold transition-colors ${
+                selectedSubject === s.id
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-secondary text-foreground'
+              }`}
+            >
+              {s.short}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-3">
+          {SUBJECTS.map(s => (
+            <div key={s.id} className="flex-1 text-center">
+              <p className="text-[10px] text-muted-foreground">{s.short}</p>
+              <p className="text-sm font-bold text-foreground">{todaySub[s.id] || 0}m</p>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Settings */}
