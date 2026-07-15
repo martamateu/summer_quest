@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { Footprints, PersonStanding, Wallet, Dumbbell, GraduationCap, ChevronLeft, ChevronRight, Smartphone, Timer, Brain } from 'lucide-react'
+import { Footprints, PersonStanding, Wallet, Dumbbell, GraduationCap, ChevronLeft, ChevronRight, Smartphone, Timer, Brain, ListChecks } from 'lucide-react'
 import type { DailyMetrics } from '@/lib/types'
 import { FOCUS_GOAL_MIN } from '@/components/screens/focus-screen'
 
@@ -119,6 +119,8 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
   const [cleaningHistory, setCleaningHistory] = useState<Record<string, string>>({})
   const [masterLog, setMasterLog] = useState<string[]>([])
   const [focusLog, setFocusLog] = useState<Record<string, number>>({})
+  const [tasksList, setTasksList] = useState<{ id: string; done: boolean; date: string; tag?: string }[]>([])
+  const [taskTags, setTaskTags] = useState<string[]>([])
 
   useEffect(() => {
     setStepsHistory(readObj('sq_steps_history', {}))
@@ -129,6 +131,8 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
     setRunLogs(readArr<{ date: string; distanceMeters?: number }>('sq_run_logs'))
     setCleaningHistory(readObj('sq_cleaning_history', {}))
     setFocusLog(readObj('sq_focus_log', {}))
+    setTasksList(readArr('sq_tasks_list'))
+    setTaskTags(readArr<string>('sq_task_tags'))
     // Build master log from sq_today_goals history — only today available
     const todayGoals = readObj<{ date: string; master?: { done: boolean } }>('sq_today_goals', { date: '' })
     if (todayGoals.date && todayGoals.master?.done) {
@@ -144,6 +148,8 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
       setRunLogs(readArr<{ date: string; distanceMeters?: number }>('sq_run_logs'))
       setCleaningHistory(readObj('sq_cleaning_history', {}))
       setFocusLog(readObj('sq_focus_log', {}))
+      setTasksList(readArr('sq_tasks_list'))
+      setTaskTags(readArr<string>('sq_task_tags'))
     }
     window.addEventListener('sq-data-changed', handler)
     return () => window.removeEventListener('sq-data-changed', handler)
@@ -506,6 +512,94 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
           )}
         </div>
       ))}
+
+      {/* ── Tareas completadas ──────────────────────────────────────────────── */}
+      {(() => {
+        // Tareas completadas cuya fecha cae dentro del rango
+        const doneInRange = tasksList.filter(t => t.done && t.date >= range.start && t.date <= range.end)
+        const totalInRange = tasksList.filter(t => t.date >= range.start && t.date <= range.end)
+        if (totalInRange.length === 0 && doneInRange.length === 0) return null
+
+        // Por día
+        const byDay: Record<string, { done: number; total: number }> = {}
+        for (const date of dates) byDay[date] = { done: 0, total: 0 }
+        for (const t of totalInRange) {
+          if (!byDay[t.date]) byDay[t.date] = { done: 0, total: 0 }
+          byDay[t.date].total++
+          if (t.done) byDay[t.date].done++
+        }
+
+        // Por tag
+        const tagPalette = ['#6366f1','#8b5cf6','#06b6d4','#ec4899','#3b82f6','#22c55e','#f59e0b','#f97316','#ef4444']
+        const getTagCol = (tag: string) => {
+          const idx = taskTags.indexOf(tag)
+          return tagPalette[idx >= 0 ? idx % tagPalette.length : 0]
+        }
+        const tagCounts: Record<string, number> = {}
+        for (const t of doneInRange) {
+          const key = t.tag || 'sin tag'
+          tagCounts[key] = (tagCounts[key] || 0) + 1
+        }
+
+        const maxDay = Math.max(...dates.map(d => byDay[d]?.total || 0), 1)
+
+        return (
+          <div className="bg-card rounded-2xl p-4 mb-4">
+            <div className="flex items-center gap-2 mb-3">
+              <ListChecks className="w-4 h-4 text-emerald-500" />
+              <p className="text-sm font-semibold text-foreground">Tareas</p>
+              <span className="ml-auto text-xs text-muted-foreground">
+                {doneInRange.length}/{totalInRange.length} completadas
+              </span>
+            </div>
+
+            {/* Barra por día */}
+            {view !== 'dia' && (
+              <div className="flex items-end gap-1 mb-3" style={{ height: 64 }}>
+                {dates.map((date, i) => {
+                  const { done, total } = byDay[date] || { done: 0, total: 0 }
+                  const barH = total > 0 ? Math.max(Math.round((total / maxDay) * 56), 4) : 2
+                  const doneH = total > 0 ? Math.round((done / total) * barH) : 0
+                  return (
+                    <div key={i} className="flex-1 flex flex-col items-center justify-end gap-0.5" style={{ height: 64 }}>
+                      <div className="w-full flex flex-col justify-end rounded-t overflow-hidden" style={{ height: barH }}>
+                        <div style={{ height: doneH, backgroundColor: '#10b981' }} />
+                        <div style={{ height: barH - doneH, backgroundColor: '#10b98120' }} />
+                      </div>
+                      {view === 'semana' && (
+                        <span className="text-[8px] text-muted-foreground">{fmtDateLabel(date).split(' ')[0]}</span>
+                      )}
+                      {view === 'mes' && Number(date.split('-')[2]) % 5 === 1 && (
+                        <span className="text-[8px] text-muted-foreground">{Number(date.split('-')[2])}</span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Vista día: detalle */}
+            {view === 'dia' && (
+              <div className="text-center py-2">
+                <p className="text-3xl font-bold text-foreground">{doneInRange.length}</p>
+                <p className="text-xs text-muted-foreground">de {totalInRange.length} tareas completadas</p>
+              </div>
+            )}
+
+            {/* Por tag */}
+            {Object.keys(tagCounts).length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).map(([tag, count]) => (
+                  <span key={tag} className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium text-white"
+                    style={{ backgroundColor: tag === 'sin tag' ? '#6b7280' : getTagCol(tag) }}>
+                    {tag} · {count}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })()}
     </div>
   )
 }
