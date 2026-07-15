@@ -52,20 +52,24 @@ interface TaskItem {
   id: string
   text: string
   done: boolean
-  date: string // YYYY-MM-DD
+  date: string        // YYYY-MM-DD — día para el que está programada
   tag?: string
+  recurrence?: 'semanal' | 'quincenal'
 }
 
-const TASK_TAGS = ['CI', 'IMAS', 'PAR', 'psicólogo', 'personal', 'hogar', 'recados']
+// Clave donde se guardan los tags del usuario (sincronizada con Redis vía SYNC_KEYS)
+const TASK_TAGS_KEY = 'sq_task_tags'
 
-const TAG_COLORS: Record<string, string> = {
-  CI:         '#6366f1',
-  IMAS:       '#8b5cf6',
-  PAR:        '#06b6d4',
-  psicólogo:  '#ec4899',
-  personal:   '#3b82f6',
-  hogar:      '#22c55e',
-  recados:    '#f59e0b',
+// Paleta para asignar color automático por posición del tag
+const TAG_PALETTE = [
+  '#6366f1', '#8b5cf6', '#06b6d4', '#ec4899',
+  '#3b82f6', '#22c55e', '#f59e0b', '#f97316',
+  '#ef4444', '#84cc16', '#14b8a6', '#a855f7',
+]
+
+function getTagColor(tags: string[], tag: string): string {
+  const idx = tags.indexOf(tag)
+  return TAG_PALETTE[idx >= 0 ? idx % TAG_PALETTE.length : 0]
 }
 
 // Fecha local YYYY-MM-DD (nunca toISOString: evita el desfase de día por UTC en madrugada)
@@ -181,15 +185,20 @@ export function AdminScreen() {
 
   // Tareas
   const [tasksList, setTasksList] = useState<TaskItem[]>([])
+  const [taskTags, setTaskTags] = useState<string[]>([])
   const [tasksView, setTasksView] = useState<'dia' | 'semana' | 'mes'>('semana')
   const [tasksOffset, setTasksOffset] = useState(0)
   const [manualTask, setManualTask] = useState('')
   const [newTaskTag, setNewTaskTag] = useState<string>('')
+  const [newTaskDate, setNewTaskDate] = useState<string>('')       // '' = hoy
+  const [newTaskRecurrence, setNewTaskRecurrence] = useState<'' | 'semanal' | 'quincenal'>('')
   const [editingTask, setEditingTask] = useState<string | null>(null)
   const [editTaskText, setEditTaskText] = useState('')
   const [editTaskTag, setEditTaskTag] = useState('')
+  const [editTaskRecurrence, setEditTaskRecurrence] = useState<'' | 'semanal' | 'quincenal'>('')
   const [showDoneTasks, setShowDoneTasks] = useState(false)
   const [tasksTagFilter, setTasksTagFilter] = useState<string>('all')
+  const [newTagInput, setNewTagInput] = useState('')
 
   // Notas
   const [notes, setNotes] = useState<Note[]>([])
@@ -238,14 +247,20 @@ export function AdminScreen() {
   useEffect(() => {
     setNotes(readArr<Note>(NOTES_KEY))
     setTasksList(readArr<TaskItem>(TASKS_KEY))
+    setTaskTags(readArr<string>(TASK_TAGS_KEY))
     setSuperList(readArr<ListItem>(SUPER_KEY))
     setHomeData(readObj<HomeData | null>(HOME_KEY, null))
     setCleaningHistory(readObj<Record<string, string>>(HISTORY_KEY, {}))
     setCycle(readObj<CycleData>(CYCLE_KEY, { periods: [] }))
 
+    // Refrescar tags si llegan de Redis
+    const onSync = () => setTaskTags(readArr<string>(TASK_TAGS_KEY))
+    window.addEventListener('sq-data-changed', onSync)
+
     const SR = (typeof window !== 'undefined' &&
       ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)) || null
     speechSupported.current = !!SR
+    return () => window.removeEventListener('sq-data-changed', onSync)
   }, [])
 
   // ── Notas ──────────────────────────────────────────────────────────────────
@@ -258,13 +273,47 @@ export function AdminScreen() {
     saveNotes(notes.filter(n => n.id !== id))
   }
 
+  // ── Tags dinámicos ─────────────────────────────────────────────────────────
+  const saveTagsList = (next: string[]) => {
+    setTaskTags(next)
+    persistArr(TASK_TAGS_KEY, next)
+  }
+  const addTag = () => {
+    const t = newTagInput.trim()
+    if (!t || taskTags.includes(t)) return
+    saveTagsList([...taskTags, t])
+    setNewTagInput('')
+  }
+  const deleteTag = (tag: string) => {
+    saveTagsList(taskTags.filter(t => t !== tag))
+    // Limpiar el tag de tareas que lo usaban
+    saveTasks(tasksList.map(t => t.tag === tag ? { ...t, tag: undefined } : t))
+    if (newTaskTag === tag) setNewTaskTag('')
+    if (tasksTagFilter === tag) setTasksTagFilter('all')
+  }
+
   // ── Tareas ─────────────────────────────────────────────────────────────────
   const saveTasks = (next: TaskItem[]) => {
     setTasksList(next)
     persistArr(TASKS_KEY, next)
   }
-  const toggleTask = (id: string) =>
-    saveTasks(tasksList.map(t => (t.id === id ? { ...t, done: !t.done } : t)))
+  const toggleTask = (id: string) => {
+    const task = tasksList.find(t => t.id === id)
+    if (!task) return
+    const updated = { ...task, done: !task.done }
+    let next = tasksList.map(t => t.id === id ? updated : t)
+    // Si se marca como hecha y es recurrente → crear la siguiente
+    if (updated.done && updated.recurrence) {
+      const days = updated.recurrence === 'semanal' ? 7 : 14
+      const [y, m, d] = updated.date.split('-').map(Number)
+      const nextDate = new Date(y, m - 1, d)
+      nextDate.setDate(nextDate.getDate() + days)
+      const nextDateStr = getLocalDateStr(nextDate)
+      const nextTask: TaskItem = { id: uid(), text: updated.text, done: false, date: nextDateStr, tag: updated.tag, recurrence: updated.recurrence }
+      next = [nextTask, ...next]
+    }
+    saveTasks(next)
+  }
   const deleteTaskItem = (id: string) => {
     recordTombstones(TASKS_KEY, [id])
     saveTasks(tasksList.filter(t => t.id !== id))
@@ -272,21 +321,29 @@ export function AdminScreen() {
   const addManualTask = () => {
     const t = manualTask.trim()
     if (!t) return
-    saveTasks([{ id: uid(), text: t, done: false, date: getLocalDateStr(), ...(newTaskTag ? { tag: newTaskTag } : {}) }, ...tasksList])
+    const date = newTaskDate || getLocalDateStr()
+    const task: TaskItem = {
+      id: uid(), text: t, done: false, date,
+      ...(newTaskTag ? { tag: newTaskTag } : {}),
+      ...(newTaskRecurrence ? { recurrence: newTaskRecurrence } : {}),
+    }
+    saveTasks([task, ...tasksList])
     setManualTask('')
+    setNewTaskDate('')
   }
 
   const startEditTask = (item: TaskItem) => {
     setEditingTask(item.id)
     setEditTaskText(item.text)
     setEditTaskTag(item.tag || '')
+    setEditTaskRecurrence(item.recurrence || '')
   }
 
   const saveEditTask = () => {
     if (!editingTask) return
     saveTasks(tasksList.map(t =>
       t.id === editingTask
-        ? { ...t, text: editTaskText.trim() || t.text, tag: editTaskTag || undefined }
+        ? { ...t, text: editTaskText.trim() || t.text, tag: editTaskTag || undefined, recurrence: editTaskRecurrence || undefined }
         : t
     ))
     setEditingTask(null)
@@ -820,7 +877,330 @@ export function AdminScreen() {
       {/* Tareas */}
       {tab === 'tareas' && (() => {
         const now = new Date()
+        const todayStr = getLocalDateStr()
+
+        // Fechas rápidas para programar
+        const quickDates = [
+          { label: 'Hoy',    value: todayStr },
+          { label: '+1 sem', value: getLocalDateStr(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7)) },
+          { label: '+2 sem', value: getLocalDateStr(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 14)) },
+        ]
+
         const range = tasksView === 'dia'
+          ? (() => { const d = new Date(now); d.setDate(d.getDate() + tasksOffset); const s = getLocalDateStr(d); return { start: s, end: s } })()
+          : tasksView === 'semana'
+          ? (() => {
+              const d = new Date(now)
+              const dayOfWeek = d.getDay()
+              const monday = new Date(d)
+              monday.setDate(d.getDate() - ((dayOfWeek + 6) % 7) + tasksOffset * 7)
+              const sunday = new Date(monday)
+              sunday.setDate(monday.getDate() + 6)
+              return { start: getLocalDateStr(monday), end: getLocalDateStr(sunday) }
+            })()
+          : (() => {
+              const year = now.getFullYear()
+              const month = now.getMonth() + tasksOffset
+              const start = new Date(year, month, 1)
+              const end = new Date(year, month + 1, 0)
+              return { start: getLocalDateStr(start), end: getLocalDateStr(end) }
+            })()
+
+        const rangeLabel = tasksView === 'dia'
+          ? (() => { const d = new Date(now); d.setDate(d.getDate() + tasksOffset); return d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }) })()
+          : tasksView === 'semana'
+          ? `${range.start.split('-')[2]}/${range.start.split('-')[1]} – ${range.end.split('-')[2]}/${range.end.split('-')[1]}`
+          : new Date(now.getFullYear(), now.getMonth() + tasksOffset, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
+
+        const inRange = tasksList.filter(t => t.date >= range.start && t.date <= range.end)
+        const filtered = tasksTagFilter === 'all' ? inRange : inRange.filter(t => t.tag === tasksTagFilter)
+        const pending = [...filtered.filter(t => !t.done)].sort((a, b) => a.date.localeCompare(b.date))
+        const done = [...filtered.filter(t => t.done)].sort((a, b) => b.date.localeCompare(a.date))
+
+        return (
+          <>
+            {/* ── Gestión de tags ──────────────────────────────────── */}
+            <div className="bg-card rounded-2xl p-3 mb-3">
+              <p className="text-[10px] text-muted-foreground uppercase mb-2">Mis etiquetas</p>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {taskTags.map(tag => (
+                  <span
+                    key={tag}
+                    className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium text-white"
+                    style={{ backgroundColor: getTagColor(taskTags, tag) }}
+                  >
+                    {tag}
+                    <button
+                      onClick={() => deleteTag(tag)}
+                      className="ml-0.5 opacity-70 hover:opacity-100 leading-none"
+                      aria-label={`Borrar tag ${tag}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+                {taskTags.length === 0 && (
+                  <span className="text-[11px] text-muted-foreground">Sin etiquetas aún</span>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newTagInput}
+                  onChange={e => setNewTagInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addTag()}
+                  placeholder="Nueva etiqueta…"
+                  className="flex-1 px-3 py-1.5 rounded-xl bg-secondary text-foreground outline-none focus:ring-2 focus:ring-primary text-xs"
+                />
+                <button
+                  onClick={addTag}
+                  disabled={!newTagInput.trim() || taskTags.includes(newTagInput.trim())}
+                  className="px-3 py-1.5 rounded-xl bg-primary text-primary-foreground text-xs disabled:opacity-40"
+                >
+                  Añadir
+                </button>
+              </div>
+            </div>
+
+            {/* ── Nueva tarea ──────────────────────────────────────── */}
+            <div className="bg-card rounded-2xl p-3 mb-3">
+              <div className="flex items-center gap-2 mb-2">
+                <input
+                  type="text"
+                  value={manualTask}
+                  onChange={e => setManualTask(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addManualTask()}
+                  placeholder="Nueva tarea…"
+                  className="flex-1 p-2.5 rounded-xl bg-secondary text-foreground outline-none focus:ring-2 focus:ring-primary text-sm"
+                />
+                <button onClick={addManualTask} disabled={!manualTask.trim()} className="p-2.5 rounded-xl bg-primary text-primary-foreground disabled:opacity-50">
+                  <Plus className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Fecha rápida */}
+              <div className="flex gap-1.5 mb-2">
+                {quickDates.map(q => (
+                  <button
+                    key={q.label}
+                    onClick={() => setNewTaskDate(newTaskDate === q.value ? '' : q.value)}
+                    className={`flex-1 py-1.5 rounded-xl text-[11px] font-medium transition-colors ${
+                      (newTaskDate === q.value || (!newTaskDate && q.value === todayStr))
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-secondary text-muted-foreground'
+                    }`}
+                  >
+                    {q.label}
+                  </button>
+                ))}
+                <input
+                  type="date"
+                  value={newTaskDate}
+                  onChange={e => setNewTaskDate(e.target.value)}
+                  className="flex-1 py-1 px-1.5 rounded-xl bg-secondary text-foreground text-[11px] outline-none"
+                />
+              </div>
+
+              {/* Tag selector dinámico */}
+              {taskTags.length > 0 && (
+                <div className="flex gap-1.5 flex-wrap mb-2">
+                  <button
+                    onClick={() => setNewTaskTag('')}
+                    className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium ${!newTaskTag ? 'bg-foreground text-background' : 'bg-secondary text-muted-foreground'}`}
+                  >
+                    sin tag
+                  </button>
+                  {taskTags.map(tag => (
+                    <button
+                      key={tag}
+                      onClick={() => setNewTaskTag(newTaskTag === tag ? '' : tag)}
+                      className="px-2.5 py-0.5 rounded-full text-[11px] font-medium text-white transition-opacity"
+                      style={{ backgroundColor: getTagColor(taskTags, tag), opacity: newTaskTag === tag ? 1 : 0.4 }}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Recurrencia */}
+              <div className="flex gap-1.5">
+                {(['', 'semanal', 'quincenal'] as const).map(r => (
+                  <button
+                    key={r}
+                    onClick={() => setNewTaskRecurrence(r)}
+                    className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium transition-colors ${
+                      newTaskRecurrence === r ? 'bg-indigo-600 text-white' : 'bg-secondary text-muted-foreground'
+                    }`}
+                  >
+                    {r === '' ? 'una vez' : r === 'semanal' ? '🔁 semanal' : '🔁 quincenal'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* ── Filtros de vista ─────────────────────────────────── */}
+            <div className="flex gap-1 bg-secondary rounded-xl p-1 mb-2">
+              {(['dia', 'semana', 'mes'] as const).map(v => (
+                <button key={v} onClick={() => { setTasksView(v); setTasksOffset(0) }}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium capitalize transition-colors ${tasksView === v ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'}`}>
+                  {v === 'dia' ? 'Día' : v === 'semana' ? 'Semana' : 'Mes'}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center justify-between mb-2">
+              <button onClick={() => setTasksOffset(o => o - 1)} className="p-1.5 rounded-full hover:bg-secondary">
+                <ChevronLeft className="w-4 h-4 text-muted-foreground" />
+              </button>
+              <p className="text-sm font-medium text-foreground capitalize">{rangeLabel}</p>
+              <button onClick={() => setTasksOffset(o => o + 1)} className="p-1.5 rounded-full hover:bg-secondary">
+                <ChevronRight className="w-4 h-4 text-muted-foreground" />
+              </button>
+            </div>
+
+            {/* Filtro por tag */}
+            {taskTags.length > 0 && (
+              <div className="flex gap-1.5 overflow-x-auto pb-1 mb-3">
+                <button
+                  onClick={() => setTasksTagFilter('all')}
+                  className={`px-3 py-1 rounded-full text-[11px] whitespace-nowrap font-medium ${tasksTagFilter === 'all' ? 'bg-foreground text-background' : 'bg-secondary text-muted-foreground'}`}
+                >
+                  Todas
+                </button>
+                {taskTags.map(tag => (
+                  <button
+                    key={tag}
+                    onClick={() => setTasksTagFilter(tasksTagFilter === tag ? 'all' : tag)}
+                    className="px-3 py-1 rounded-full text-[11px] whitespace-nowrap font-medium text-white"
+                    style={{ backgroundColor: getTagColor(taskTags, tag), opacity: tasksTagFilter === tag ? 1 : 0.5 }}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* ── Lista ─────────────────────────────────────────────── */}
+            {pending.length === 0 && done.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-10">No hay tareas en este período.</p>
+            ) : (
+              <>
+                {pending.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-4">¡Todo hecho! 🎉</p>
+                )}
+                <div className="space-y-1.5 mb-3">
+                  {pending.map(item => (
+                    <div key={item.id} className="bg-card rounded-xl p-3">
+                      {editingTask === item.id ? (
+                        <div className="space-y-2">
+                          <input
+                            autoFocus
+                            value={editTaskText}
+                            onChange={e => setEditTaskText(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') saveEditTask(); if (e.key === 'Escape') setEditingTask(null) }}
+                            className="w-full text-sm bg-secondary rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-primary text-foreground"
+                          />
+                          {taskTags.length > 0 && (
+                            <div className="flex gap-1.5 flex-wrap">
+                              <button
+                                onClick={() => setEditTaskTag('')}
+                                className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium ${!editTaskTag ? 'bg-foreground text-background' : 'bg-secondary text-muted-foreground'}`}
+                              >sin tag</button>
+                              {taskTags.map(tag => (
+                                <button
+                                  key={tag}
+                                  onClick={() => setEditTaskTag(editTaskTag === tag ? '' : tag)}
+                                  className="px-2.5 py-0.5 rounded-full text-[11px] font-medium text-white"
+                                  style={{ backgroundColor: getTagColor(taskTags, tag), opacity: editTaskTag === tag ? 1 : 0.4 }}
+                                >{tag}</button>
+                              ))}
+                            </div>
+                          )}
+                          <div className="flex gap-1.5">
+                            {(['', 'semanal', 'quincenal'] as const).map(r => (
+                              <button key={r} onClick={() => setEditTaskRecurrence(r)}
+                                className={`px-2 py-0.5 rounded-full text-[11px] ${editTaskRecurrence === r ? 'bg-indigo-600 text-white' : 'bg-secondary text-muted-foreground'}`}>
+                                {r === '' ? 'una vez' : r === 'semanal' ? '🔁 semanal' : '🔁 quincenal'}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={() => setEditingTask(null)} className="flex-1 py-1.5 rounded-lg bg-secondary text-foreground text-xs">Cancelar</button>
+                            <button onClick={saveEditTask} className="flex-1 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs">Guardar</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => toggleTask(item.id)}
+                            className="w-6 h-6 rounded-full border-2 border-muted-foreground/40 flex items-center justify-center shrink-0"
+                          />
+                          <div className="flex-1 min-w-0" onClick={() => startEditTask(item)}>
+                            <p className="text-sm text-foreground">{item.text}</p>
+                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                              <p className="text-[10px] text-muted-foreground">{item.date.split('-').reverse().join('/')}</p>
+                              {item.recurrence && (
+                                <span className="text-[10px] text-indigo-500">🔁 {item.recurrence}</span>
+                              )}
+                              {item.tag && (
+                                <span className="px-1.5 rounded-full text-[10px] font-medium text-white"
+                                  style={{ backgroundColor: getTagColor(taskTags, item.tag) }}>
+                                  {item.tag}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <button onClick={() => deleteTaskItem(item.id)} className="p-1 rounded-full hover:bg-secondary shrink-0">
+                            <Trash2 className="w-4 h-4 text-muted-foreground" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {done.length > 0 && (
+                  <div>
+                    <button
+                      onClick={() => setShowDoneTasks(v => !v)}
+                      className="w-full flex items-center justify-between px-2 py-1.5 rounded-xl text-muted-foreground hover:bg-secondary mb-1.5"
+                    >
+                      <span className="text-xs font-medium">Hechas ({done.length})</span>
+                      <ChevronDown className={`w-4 h-4 transition-transform ${showDoneTasks ? 'rotate-180' : ''}`} />
+                    </button>
+                    {showDoneTasks && (
+                      <div className="space-y-1.5">
+                        {done.map(item => (
+                          <div key={item.id} className="flex items-center gap-3 bg-card rounded-xl p-3 opacity-60">
+                            <button onClick={() => toggleTask(item.id)} className="w-6 h-6 rounded-full bg-primary flex items-center justify-center shrink-0">
+                              <Check className="w-3.5 h-3.5 text-primary-foreground" />
+                            </button>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm line-through text-muted-foreground">{item.text}</p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <p className="text-[10px] text-muted-foreground">{item.date.split('-').reverse().join('/')}</p>
+                                {item.tag && (
+                                  <span className="px-1.5 rounded-full text-[10px] font-medium text-white"
+                                    style={{ backgroundColor: getTagColor(taskTags, item.tag) }}>
+                                    {item.tag}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <button onClick={() => deleteTaskItem(item.id)} className="p-1 rounded-full hover:bg-secondary shrink-0">
+                              <Trash2 className="w-4 h-4 text-muted-foreground" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        )
+      })()}
           ? (() => { const d = new Date(now); d.setDate(d.getDate() + tasksOffset); const s = getLocalDateStr(d); return { start: s, end: s } })()
           : tasksView === 'semana'
           ? (() => {
