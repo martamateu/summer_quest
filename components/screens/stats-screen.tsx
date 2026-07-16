@@ -148,16 +148,17 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
     setTasksList(readArr('sq_tasks_list'))
     setTaskTags(readArr<string>('sq_task_tags'))
     setFoodLog(readObj('sq_food_log', {}))
+    // Máster: leer sq_today_goals cada vez para que se actualice cuando focus completa 25 min
+    const todayGoals = readObj<{ date: string; master?: { done: boolean } }>('sq_today_goals', { date: '' })
+    if (todayGoals.date && todayGoals.master?.done) {
+      setMasterLog([todayGoals.date])
+    } else {
+      setMasterLog([])
+    }
   }
 
   useEffect(() => {
     loadAll()
-    // Build master log from sq_today_goals history — only today available
-    const todayGoals = readObj<{ date: string; master?: { done: boolean } }>('sq_today_goals', { date: '' })
-    if (todayGoals.date && todayGoals.master?.done) {
-      setMasterLog([todayGoals.date])
-    }
-
     const handler = () => loadAll()
     window.addEventListener('sq-data-changed', handler)
     return () => window.removeEventListener('sq-data-changed', handler)
