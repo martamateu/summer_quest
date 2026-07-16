@@ -2,8 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { Dumbbell, Plus, Check, X, TrendingUp, ChevronDown, ChevronUp, Info, Trash2, PersonStanding, RefreshCw, Loader2 } from 'lucide-react'
-import type { GymSessionLog, GymExerciseLog, GymSet, GymWorkout, GymExercise } from '@/lib/types'
-import { WORKOUTS, SEED_GYM_LOGS } from '@/lib/gym-data'
+import type { GymSessionLog, GymExerciseLog, GymSet, GymWorkout } from '@/lib/types'
 import { WorkoutScreen } from '@/components/screens/workout-screen'
 import { recordTombstones } from '@/lib/sync-tombstones'
 
@@ -11,6 +10,10 @@ import { recordTombstones } from '@/lib/sync-tombstones'
 interface EntrenoCWeek { week: number; column: string; date?: string; value: string }
 interface EntrenoCExercise { id: string; name: string; weeks: EntrenoCWeek[] }
 interface EntrenoCData { updatedAt: string; exercises: EntrenoCExercise[] }
+
+// Entreno A y B leídos del Google Sheet del entrenador
+interface SheetExercise { id: string; name: string; setsReps: string; weeks: { week: number; column: string; value: string }[] }
+interface GymABData { updatedAt: string; workouts: { A: { exercises: SheetExercise[] }; B: { exercises: SheetExercise[] } } }
 
 // Marca como día de fuerza (en sq_workout_logs) cada semana con datos del Entreno C.
 // Reconcilia: quita las entradas de C obsoletas (fechas viejas) y añade las actuales.
@@ -62,12 +65,6 @@ function loadLogs(): GymSessionLog[] {
   try {
     const raw = localStorage.getItem(GYM_LOGS_KEY)
     if (raw) return JSON.parse(raw)
-    // First time: seed with data from Patrick's Excel
-    if (!localStorage.getItem(GYM_SEEDED_KEY)) {
-      localStorage.setItem(GYM_LOGS_KEY, JSON.stringify(SEED_GYM_LOGS))
-      localStorage.setItem(GYM_SEEDED_KEY, '1')
-      return [...SEED_GYM_LOGS]
-    }
     return []
   } catch { return [] }
 }
@@ -137,15 +134,24 @@ export function GymScreen() {
   const [sessionStart, setSessionStart] = useState<number | null>(null)
   const [syncStatus, setSyncStatus] = useState<string | null>(null)
 
-  // Entreno C (lo apunta el entrenador en el Sheet; se lee cada jueves por la noche)
+  // Entreno C (lo apunta el entrenador en el Sheet; se lee cada noche por cron)
   const [entrenoC, setEntrenoC] = useState<EntrenoCData | null>(null)
   const [loadingC, setLoadingC] = useState(false)
   const [cMsg, setCMsg] = useState<string | null>(null)
+
+  // Entreno A y B (leídos del Sheet del entrenador)
+  const [gymABData, setGymABData] = useState<GymABData | null>(null)
+  const [loadingAB, setLoadingAB] = useState(false)
+  const [abMsg, setAbMsg] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/gym-c')
       .then(r => r.json())
       .then(d => { if (d?.data) { setEntrenoC(d.data); markEntrenoCAsFuerza(d.data) } })
+      .catch(() => {})
+    fetch('/api/gym-ab')
+      .then(r => r.json())
+      .then(d => { if (d?.data) setGymABData(d.data) })
       .catch(() => {})
   }, [])
 
@@ -166,9 +172,47 @@ export function GymScreen() {
     }
   }
 
+  const refreshEntrenoAB = async () => {
+    setLoadingAB(true)
+    setAbMsg(null)
+    try {
+      const res = await fetch('/api/gym-ab/sync')
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Error')
+      if (data.data) setGymABData(data.data)
+      setAbMsg('✓ A y B actualizados desde el Sheet')
+    } catch (e: any) {
+      setAbMsg(`✗ ${e?.message || 'Error al leer el Sheet'}`)
+    } finally {
+      setLoadingAB(false)
+      setTimeout(() => setAbMsg(null), 5000)
+    }
+  }
+
   useEffect(() => { setLogs(loadLogs()) }, [])
 
-  const workout = WORKOUTS.find(w => w.id === selectedWorkout)!
+  // Construir workout activo: del Sheet si disponible, vacío si no
+  const getWorkoutFromSheet = (id: string): GymWorkout => {
+    if (gymABData && (id === 'A' || id === 'B')) {
+      const sheetExercises = gymABData.workouts[id].exercises
+      return {
+        id,
+        name: `Entrenamiento ${id}`,
+        exercises: sheetExercises.map(ex => ({ id: ex.id, name: ex.name, setsReps: ex.setsReps })),
+      }
+    }
+    // Entreno C: ejercicios del Sheet de C
+    if (id === 'C' && entrenoC) {
+      return {
+        id: 'C',
+        name: 'Entrenamiento C (entrenador)',
+        exercises: entrenoC.exercises.map(ex => ({ id: ex.id, name: ex.name, setsReps: ex.weeks[ex.weeks.length - 1]?.value || '—' })),
+      }
+    }
+    return { id, name: `Entrenamiento ${id}`, exercises: [] }
+  }
+
+  const workout = getWorkoutFromSheet(selectedWorkout)
 
   // Get previous log for an exercise to show comparison
   const getPreviousLog = (exerciseId: string): GymSet[] | null => {
@@ -335,10 +379,10 @@ export function GymScreen() {
     const inRange = logs.filter(l => l.date >= startStr)
     const totalMin = inRange.reduce((s, l) => s + sessionMinutes(l), 0)
 
-    const byType = WORKOUTS.map(w => ({
-      id: w.id,
-      name: w.name,
-      count: inRange.filter(l => l.workoutId === w.id).length,
+    const byType = (['A', 'B', 'C'] as const).map(id => ({
+      id,
+      name: `Entrenamiento ${id}`,
+      count: inRange.filter(l => l.workoutId === id).length,
     })).filter(t => t.count > 0)
 
     return {
@@ -510,17 +554,17 @@ export function GymScreen() {
 
       {/* Workout Selector */}
       <div className="flex gap-2 mb-4">
-        {WORKOUTS.map(w => (
+        {(['A', 'B', 'C'] as const).map(id => (
           <button
-            key={w.id}
-            onClick={() => setSelectedWorkout(w.id)}
+            key={id}
+            onClick={() => setSelectedWorkout(id)}
             className={`flex-1 py-3 rounded-2xl text-sm font-medium transition-all ${
-              selectedWorkout === w.id
+              selectedWorkout === id
                 ? 'bg-primary text-primary-foreground'
                 : 'bg-card text-muted-foreground'
             }`}
           >
-            {w.id}
+            {id}
           </button>
         ))}
       </div>
@@ -537,24 +581,39 @@ export function GymScreen() {
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-secondary text-foreground text-sm font-medium disabled:opacity-60"
               >
                 {loadingC ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                Actualizar
+                Sync
+              </button>
+            )}
+            {(selectedWorkout === 'A' || selectedWorkout === 'B') && (
+              <button
+                onClick={refreshEntrenoAB}
+                disabled={loadingAB}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-secondary text-foreground text-sm font-medium disabled:opacity-60"
+              >
+                {loadingAB ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                Sync
               </button>
             )}
             <button
               onClick={startSession}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium"
+              disabled={workout.exercises.length === 0}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
             >
               <Dumbbell className="w-4 h-4" />
               Empezar
             </button>
           </div>
         </div>
-        {selectedWorkout === 'C' && (
-          <p className="text-[11px] text-muted-foreground mb-2">
-            Lo apunta el entrenador. Se actualiza solo los jueves por la noche.
-          </p>
-        )}
+        <p className="text-[11px] text-muted-foreground mb-2">
+          {selectedWorkout === 'C'
+            ? 'Lo apunta el entrenador. Se sincroniza automáticamente cada noche.'
+            : gymABData
+            ? `Última sync: ${new Date(gymABData.updatedAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`
+            : 'Pulsa Sync para cargar los ejercicios del Sheet del entrenador.'
+          }
+        </p>
         {selectedWorkout === 'C' && cMsg && <p className="text-[11px] text-muted-foreground mb-2">{cMsg}</p>}
+        {(selectedWorkout === 'A' || selectedWorkout === 'B') && abMsg && <p className="text-[11px] text-muted-foreground mb-2">{abMsg}</p>}
         <div className="space-y-3">
           {workout.exercises.map(ex => {
             const prev = getPreviousLog(ex.id)
