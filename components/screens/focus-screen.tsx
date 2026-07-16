@@ -16,11 +16,70 @@ export const FOCUS_GOAL_MIN = FOCUS_BLOCK_MIN * FOCUS_GOAL_BLOCKS // 100
 
 // ── Asignaturas ───────────────────────────────────────────────────────────────
 export type FocusSubject = 'CI' | 'IMAS' | 'PAR'
-export const SUBJECTS: { id: FocusSubject; short: string; label: string }[] = [
-  { id: 'CI',   short: 'CI',   label: 'Computational Intelligence' },
-  { id: 'IMAS', short: 'IMAS', label: 'Intro to Multiagent Systems' },
-  { id: 'PAR',  short: 'PAR',  label: 'Planning & Approx. Reasoning' },
+export const SUBJECTS: { id: FocusSubject; short: string; label: string; color: string }[] = [
+  { id: 'CI',   short: 'CI',   label: 'Computational Intelligence',   color: '#6366f1' },
+  { id: 'IMAS', short: 'IMAS', label: 'Intro to Multiagent Systems',  color: '#ec4899' },
+  { id: 'PAR',  short: 'PAR',  label: 'Planning & Approx. Reasoning', color: '#f97316' },
 ]
+
+// ── Settings persistence ───────────────────────────────────────────────────────
+const FOCUS_SETTINGS_KEY = 'sq_focus_settings'
+function readSettings(): { work: number; break: number } {
+  try {
+    const raw = localStorage.getItem(FOCUS_SETTINGS_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch {}
+  return { work: 25, break: 5 }
+}
+function saveSettings(work: number, brk: number) {
+  try { localStorage.setItem(FOCUS_SETTINGS_KEY, JSON.stringify({ work, break: brk })) } catch {}
+}
+
+// ── Sound: Web Audio API beep (no deps) ───────────────────────────────────────
+function playDoneSound(isWork: boolean) {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+    const playBeep = (freq: number, start: number, duration: number) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.frequency.value = freq
+      osc.type = 'sine'
+      gain.gain.setValueAtTime(0.3, ctx.currentTime + start)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + duration)
+      osc.start(ctx.currentTime + start)
+      osc.stop(ctx.currentTime + start + duration)
+    }
+    if (isWork) {
+      // Trabajo acabado: 3 beeps ascendentes
+      playBeep(440, 0,    0.15)
+      playBeep(550, 0.2,  0.15)
+      playBeep(660, 0.4,  0.3)
+    } else {
+      // Descanso acabado: 2 beeps suaves
+      playBeep(550, 0,   0.2)
+      playBeep(440, 0.3, 0.2)
+    }
+  } catch {}
+}
+
+// ── Marcar Máster como hecha ──────────────────────────────────────────────────
+function markMasterDone() {
+  try {
+    const today = getTodayStr()
+    const raw = localStorage.getItem('sq_today_goals')
+    let data: any = raw ? JSON.parse(raw) : null
+    if (!data || data.date !== today) {
+      data = { date: today, fuerza: { done: false }, master: { done: false }, flexibilidad: { done: false }, finanzas: false }
+    }
+    if (!data.master?.done) {
+      data.master = { ...(data.master || {}), done: true }
+      localStorage.setItem('sq_today_goals', JSON.stringify(data))
+      window.dispatchEvent(new Event('sq-data-changed'))
+    }
+  } catch {}
+}
 
 // ── Focus log persistence ──────────────────────────────────────────────────────
 // sq_focus_log:         { "YYYY-MM-DD": totalMinutes }
@@ -39,6 +98,7 @@ function addFocusMinutes(minutes: number) {
   try {
     const log = readFocusLog()
     const today = getTodayStr()
+    // Siempre suma — nunca sobreescribe, así web + móvil se acumulan correctamente
     log[today] = (log[today] || 0) + minutes
     localStorage.setItem(FOCUS_KEY, JSON.stringify(log))
     window.dispatchEvent(new Event('sq-data-changed'))
@@ -65,9 +125,10 @@ function addFocusSubjectMinutes(subject: FocusSubject, minutes: number) {
 
 // ── Focus screen ────────────────────────────────────────────────────────────────
 export function FocusScreen() {
-  const [workMinutes, setWorkMinutes] = useState(25)
-  const [breakMinutes, setBreakMinutes] = useState(5)
-  const [timeLeft, setTimeLeft] = useState(25 * 60)
+  const initialSettings = typeof window !== 'undefined' ? readSettings() : { work: 25, break: 5 }
+  const [workMinutes, setWorkMinutes] = useState(initialSettings.work)
+  const [breakMinutes, setBreakMinutes] = useState(initialSettings.break)
+  const [timeLeft, setTimeLeft] = useState(initialSettings.work * 60)
   const [isRunning, setIsRunning] = useState(false)
   const [isWorkPhase, setIsWorkPhase] = useState(true)
   const [sessionsCompleted, setSessionsCompleted] = useState(0)
@@ -108,11 +169,19 @@ export function FocusScreen() {
   }
 
   const handleComplete = useCallback(() => {
+    playDoneSound(isWorkPhase)
     if (isWorkPhase) {
       setSessionsCompleted((prev) => prev + 1)
       addFocusMinutes(workMinutes)
       addFocusSubjectMinutes(selectedSubject, workMinutes)
-      setTodayFocus((prev) => prev + workMinutes)
+      setTodayFocus((prev) => {
+        const newTotal = prev + workMinutes
+        // Marcar Máster como hecha al completar el primer bloque de 25 min
+        if (prev < FOCUS_BLOCK_MIN && newTotal >= FOCUS_BLOCK_MIN) {
+          markMasterDone()
+        }
+        return newTotal
+      })
       setSubjectLog(readFocusSubjectLog())
       setTimeLeft(breakMinutes * 60)
     } else {
@@ -151,12 +220,14 @@ export function FocusScreen() {
     const newValue = Math.max(1, Math.min(60, workMinutes + delta))
     setWorkMinutes(newValue)
     if (isWorkPhase && !isRunning) setTimeLeft(newValue * 60)
+    saveSettings(newValue, breakMinutes)
   }
 
   const updateBreakMinutes = (delta: number) => {
     const newValue = Math.max(1, Math.min(30, breakMinutes + delta))
     setBreakMinutes(newValue)
     if (!isWorkPhase && !isRunning) setTimeLeft(newValue * 60)
+    saveSettings(workMinutes, newValue)
   }
 
   const totalMinutes = isWorkPhase ? workMinutes : breakMinutes
@@ -239,11 +310,11 @@ export function FocusScreen() {
               key={s.id}
               onClick={() => chooseSubject(s.id)}
               title={s.label}
-              className={`py-2 rounded-xl text-xs font-semibold transition-colors ${
-                selectedSubject === s.id
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-secondary text-foreground'
-              }`}
+              className="py-2 rounded-xl text-xs font-semibold transition-all"
+              style={selectedSubject === s.id
+                ? { backgroundColor: s.color, color: '#fff' }
+                : { backgroundColor: s.color + '20', color: s.color }
+              }
             >
               {s.short}
             </button>
@@ -252,6 +323,7 @@ export function FocusScreen() {
         <div className="flex gap-3">
           {SUBJECTS.map(s => (
             <div key={s.id} className="flex-1 text-center">
+              <div className="w-2 h-2 rounded-full mx-auto mb-0.5" style={{ backgroundColor: s.color }} />
               <p className="text-[10px] text-muted-foreground">{s.short}</p>
               <p className="text-sm font-bold text-foreground">{todaySub[s.id] || 0}m</p>
             </div>

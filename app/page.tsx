@@ -317,6 +317,8 @@ export default function Page() {
         'sq_workout_logs', 'sq_run_logs', 'sq_gym_logs', 'sq_expenses', 'sq_favorite_recipes',
       ])
       const STR_ARRAY_KEYS = new Set(['sq_flex_log', 'sq_finance_log'])
+      const NUM_RECORD_KEYS = new Set(['sq_focus_log'])
+      const NESTED_NUM_RECORD_KEYS = new Set(['sq_focus_subject_log'])
 
       // Fusionar tombstones (borrados) locales + nube, y persistir el resultado combinado.
       let cloudTombs: Record<string, Record<string, number>> = {}
@@ -372,6 +374,44 @@ export default function Page() {
           }
           localStorage.setItem(key, cloudVal)
           filledMissingKeys = true
+          continue
+        }
+
+        // Fusión numérica para focus_log (toma máximo por fecha, nunca sobreescribe con menos)
+        if (NUM_RECORD_KEYS.has(key)) {
+          try {
+            const local: Record<string, number> = JSON.parse(localVal)
+            const cloud: Record<string, number> = JSON.parse(cloudVal)
+            const merged: Record<string, number> = { ...local }
+            for (const [date, val] of Object.entries(cloud)) {
+              merged[date] = Math.max(merged[date] || 0, val)
+            }
+            if (JSON.stringify(merged) !== JSON.stringify(local)) {
+              localStorage.setItem(key, JSON.stringify(merged))
+              filledMissingKeys = true
+            }
+          } catch {}
+          continue
+        }
+
+        // Fusión numérica anidada para focus_subject_log
+        if (NESTED_NUM_RECORD_KEYS.has(key)) {
+          try {
+            const local: Record<string, Record<string, number>> = JSON.parse(localVal)
+            const cloud: Record<string, Record<string, number>> = JSON.parse(cloudVal)
+            const merged: Record<string, Record<string, number>> = { ...local }
+            for (const [date, subjects] of Object.entries(cloud)) {
+              const prev = merged[date] || {}
+              merged[date] = { ...prev }
+              for (const [subj, val] of Object.entries(subjects)) {
+                merged[date][subj] = Math.max(merged[date][subj] || 0, val)
+              }
+            }
+            if (JSON.stringify(merged) !== JSON.stringify(local)) {
+              localStorage.setItem(key, JSON.stringify(merged))
+              filledMissingKeys = true
+            }
+          } catch {}
           continue
         }
 

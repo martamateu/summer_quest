@@ -19,6 +19,40 @@ const ID_ARRAY_KEYS = new Set([
 // Claves cuyo valor es un array de strings (fechas): se fusionan por unión de valores.
 const STR_ARRAY_KEYS = new Set(['sq_flex_log', 'sq_finance_log'])
 
+// Claves cuyo valor es Record<date, number>: se fusionan tomando el máximo por fecha.
+const NUM_RECORD_KEYS = new Set(['sq_focus_log'])
+
+// Claves cuyo valor es Record<date, Record<subject, number>>: max por fecha+sujeto.
+const NESTED_NUM_RECORD_KEYS = new Set(['sq_focus_subject_log'])
+
+function mergeNumRecord(existing: string | undefined, incoming: string): string {
+  try {
+    const a: Record<string, number> = existing ? JSON.parse(existing) : {}
+    const b: Record<string, number> = JSON.parse(incoming)
+    const out: Record<string, number> = { ...a }
+    for (const [date, val] of Object.entries(b)) {
+      out[date] = Math.max(out[date] || 0, val)
+    }
+    return JSON.stringify(out)
+  } catch { return incoming }
+}
+
+function mergeNestedNumRecord(existing: string | undefined, incoming: string): string {
+  try {
+    const a: Record<string, Record<string, number>> = existing ? JSON.parse(existing) : {}
+    const b: Record<string, Record<string, number>> = JSON.parse(incoming)
+    const out: Record<string, Record<string, number>> = { ...a }
+    for (const [date, subjects] of Object.entries(b)) {
+      const prev = out[date] || {}
+      out[date] = { ...prev }
+      for (const [subj, val] of Object.entries(subjects)) {
+        out[date][subj] = Math.max(out[date][subj] || 0, val)
+      }
+    }
+    return JSON.stringify(out)
+  } catch { return incoming }
+}
+
 const TOMBSTONE_KEY = 'sq_tombstones'
 type TombstoneMap = Record<string, Record<string, number>>
 
@@ -133,6 +167,10 @@ export async function POST(request: Request) {
   for (const key of Object.keys(data)) {
     if (ID_ARRAY_KEYS.has(key) || STR_ARRAY_KEYS.has(key)) {
       merged[key] = mergeArrayValue(key, existing[key], data[key], tombs)
+    } else if (NUM_RECORD_KEYS.has(key)) {
+      merged[key] = mergeNumRecord(existing[key], data[key])
+    } else if (NESTED_NUM_RECORD_KEYS.has(key)) {
+      merged[key] = mergeNestedNumRecord(existing[key], data[key])
     }
   }
 
