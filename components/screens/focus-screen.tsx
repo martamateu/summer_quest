@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Play, Pause, RotateCcw, SkipForward, Minus, Plus, Brain, BookOpen, Code2, AlertTriangle, ChevronDown, ChevronUp, Check } from 'lucide-react'
-import { IMAS_PLAN, getCurrentImasWeek, getImasWeekDateRange, type StudyTask } from '@/lib/study-plan'
+import { IMAS_PLAN, getCurrentImasWeek, getImasWeekDateRange, getCarryoverTasks, getCarryoverId, type StudyTask } from '@/lib/study-plan'
 
 // ── Date helpers ───────────────────────────────────────────────────────────────
 const fmtLocal = (d: Date) =>
@@ -170,7 +170,8 @@ export function FocusScreen() {
   const [studyHours, setStudyHours] = useState<Record<string, number>>({})
   const [showFullPlan, setShowFullPlan] = useState(false)
   const currentWeekNum = getCurrentImasWeek()
-  const currentWeek = IMAS_PLAN[currentWeekNum - 1]
+  const [viewWeek, setViewWeek] = useState(currentWeekNum)
+  const currentWeek = IMAS_PLAN[viewWeek - 1]
 
   // Load today's focus + history on mount, and refresh on external changes (cloud sync)
   useEffect(() => {
@@ -457,15 +458,16 @@ export function FocusScreen() {
 
       {/* ── IMAS Study Plan ─────────────────────────────────────────────── */}
       {currentWeek && (() => {
-        const weekKey = `IMAS-w${currentWeekNum}`
+        const weekKey = `IMAS-w${viewWeek}`
         const imasMinutesThisWeek = studyHours[weekKey] || 0
         const imasHoursThisWeek = imasMinutesThisWeek / 60
         const targetHours = currentWeek.totalHours
         const pct = Math.min(100, Math.round((imasHoursThisWeek / targetHours) * 100))
-        const dateRange = getImasWeekDateRange(currentWeekNum)
+        const dateRange = getImasWeekDateRange(viewWeek)
+        const isCurrentWeek = viewWeek === currentWeekNum
         const fmtDate = (s: string) => {
           const [, m, d] = s.split('-').map(Number)
-          return `${d} ${['', 'ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'][m]}`
+          return `${d} ${['','ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][m]}`
         }
 
         const tasksByType = {
@@ -473,12 +475,17 @@ export function FocusScreen() {
           practice:    currentWeek.tasks.filter(t => t.type === 'practice'),
           deliverable: currentWeek.tasks.filter(t => t.type === 'deliverable'),
         }
-        const totalTasks = currentWeek.tasks.length
-        const doneTasks = currentWeek.tasks.filter(t => studyChecks[t.id]).length
 
+        // Carryovers: tareas sin hacer de semanas anteriores que aparecen en esta semana
+        const carryovers = getCarryoverTasks(viewWeek, studyChecks)
+
+        const totalTasks = currentWeek.tasks.length + carryovers.length
+        const doneTasks = currentWeek.tasks.filter(t => studyChecks[t.id]).length
+          + carryovers.filter(t => studyChecks[t.carryId]).length
+
+        // TaskRow para tareas propias de la semana
         const TaskRow = ({ task }: { task: StudyTask }) => (
           <button
-            key={task.id}
             onClick={() => toggleCheck(task.id)}
             className="w-full flex items-start gap-2.5 py-1.5 text-left group"
           >
@@ -495,57 +502,100 @@ export function FocusScreen() {
           </button>
         )
 
+        // TaskRow para carryovers (check con su carryId)
+        const CarryRow = ({ task }: { task: typeof carryovers[0] }) => (
+          <button
+            onClick={() => toggleCheck(task.carryId)}
+            className="w-full flex items-start gap-2.5 py-1.5 text-left group"
+          >
+            <span className={`mt-0.5 w-4 h-4 rounded flex items-center justify-center shrink-0 border transition-all ${
+              studyChecks[task.carryId]
+                ? 'bg-amber-500 border-amber-500'
+                : 'border-amber-400/50 group-hover:border-amber-400'
+            }`}>
+              {studyChecks[task.carryId] && <Check className="w-2.5 h-2.5 text-white" />}
+            </span>
+            <span className={`text-xs leading-relaxed ${studyChecks[task.carryId] ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+              <span className="text-[9px] text-amber-500 font-medium mr-1">↩ S{task.fromWeek}</span>
+              {task.text}
+            </span>
+          </button>
+        )
+
         return (
           <div className="bg-card rounded-2xl p-4 mb-4">
-            {/* Header */}
-            <div className="flex items-start justify-between gap-2 mb-3">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-0.5">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-pink-500">IMAS · Semana {currentWeekNum}/9</span>
+            {/* Navegación de semana */}
+            <div className="flex items-center justify-between mb-3">
+              <button
+                onClick={() => { setViewWeek(w => Math.max(1, w - 1)); setShowFullPlan(false) }}
+                disabled={viewWeek <= 1}
+                className="p-1.5 rounded-full hover:bg-secondary disabled:opacity-30"
+              >
+                <ChevronDown className="w-4 h-4 rotate-90 text-muted-foreground" />
+              </button>
+
+              <div className="flex-1 text-center">
+                <div className="flex items-center justify-center gap-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-pink-500">
+                    IMAS · Semana {viewWeek}/9
+                  </span>
+                  {isCurrentWeek && (
+                    <span className="text-[9px] bg-pink-500 text-white px-1.5 py-0.5 rounded-full font-medium">Esta semana</span>
+                  )}
                   {currentWeek.mandatory && (
                     <span className="flex items-center gap-0.5 text-[9px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full font-medium">
                       <AlertTriangle className="w-2.5 h-2.5" /> OBLIGATORIO
                     </span>
                   )}
                 </div>
-                <p className="text-sm font-bold text-foreground">{currentWeek.title}</p>
-                <p className="text-[10px] text-muted-foreground">{currentWeek.phase}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">
-                  {currentWeek.chapters} · pp {currentWeek.pages} · {fmtDate(dateRange.start)}–{fmtDate(dateRange.end)}
-                </p>
+                <p className="text-sm font-bold text-foreground mt-0.5">{currentWeek.title}</p>
+                <p className="text-[10px] text-muted-foreground">{currentWeek.chapters} · pp {currentWeek.pages} · {fmtDate(dateRange.start)}–{fmtDate(dateRange.end)}</p>
               </div>
-              <div className="text-right shrink-0">
-                <p className="text-xs font-bold text-foreground">{doneTasks}/{totalTasks}</p>
-                <p className="text-[9px] text-muted-foreground">tareas</p>
-              </div>
+
+              <button
+                onClick={() => { setViewWeek(w => Math.min(9, w + 1)); setShowFullPlan(false) }}
+                disabled={viewWeek >= 9}
+                className="p-1.5 rounded-full hover:bg-secondary disabled:opacity-30"
+              >
+                <ChevronDown className="w-4 h-4 -rotate-90 text-muted-foreground" />
+              </button>
             </div>
 
-            {/* Progress bar — horas IMAS esta semana */}
-            <div className="mb-3">
-              <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
-                <span>Tiempo IMAS esta semana</span>
-                <span className="font-medium" style={{ color: pct >= 100 ? '#ec4899' : undefined }}>
-                  {imasHoursThisWeek.toFixed(1)}h / {targetHours}h ({pct}%)
-                </span>
+            {/* Progreso: tareas + horas */}
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <div className="bg-secondary rounded-xl px-3 py-2">
+                <p className="text-[10px] text-muted-foreground mb-1">Tareas</p>
+                <p className="text-base font-bold text-foreground">{doneTasks}<span className="text-xs text-muted-foreground font-normal">/{totalTasks}</span></p>
+                <div className="h-1 bg-background rounded-full overflow-hidden mt-1">
+                  <div className="h-full rounded-full bg-pink-500" style={{ width: `${totalTasks > 0 ? (doneTasks/totalTasks)*100 : 0}%` }} />
+                </div>
               </div>
-              <div className="h-2 bg-secondary rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all"
-                  style={{ width: `${pct}%`, backgroundColor: '#ec4899' }}
-                />
-              </div>
-              <div className="flex justify-between text-[9px] text-muted-foreground mt-0.5">
-                <span>Teoría: {currentWeek.theoryHours}h · Práctica: {currentWeek.practiceHours}h</span>
-                {pct >= 100 && <span className="text-pink-500 font-medium">¡Semana completada!</span>}
+              <div className="bg-secondary rounded-xl px-3 py-2">
+                <p className="text-[10px] text-muted-foreground mb-1">Horas IMAS</p>
+                <p className="text-base font-bold text-foreground">{imasHoursThisWeek.toFixed(1)}<span className="text-xs text-muted-foreground font-normal">/{targetHours}h</span></p>
+                <div className="h-1 bg-background rounded-full overflow-hidden mt-1">
+                  <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: '#ec4899' }} />
+                </div>
               </div>
             </div>
+            {pct >= 100 && <p className="text-[10px] text-pink-500 font-medium text-center mb-2">¡Horas de la semana completadas! 🎉</p>}
 
-            {/* Tasks — siempre visible: deliverable. Resto colapsable */}
-            <div className="space-y-0.5 mb-2">
-              {/* Deliverable siempre visible */}
+            {/* Carryovers — siempre visibles si los hay */}
+            {carryovers.length > 0 && (
+              <div className="mb-2 p-2.5 bg-amber-50 rounded-xl border border-amber-200">
+                <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-wide mb-1.5">↩ Pendientes de semanas anteriores</p>
+                <div className="space-y-0.5">
+                  {carryovers.map(t => <CarryRow key={t.carryId} task={t} />)}
+                </div>
+              </div>
+            )}
+
+            {/* Deliverable siempre visible */}
+            <div className="space-y-0.5 mb-1">
               {tasksByType.deliverable.map(t => <TaskRow key={t.id} task={t} />)}
             </div>
 
+            {/* Teoría + Práctica colapsables */}
             {showFullPlan && (
               <div className="space-y-3 mt-2 pt-2 border-t border-border/50">
                 {tasksByType.theory.length > 0 && (
@@ -577,7 +627,10 @@ export function FocusScreen() {
               onClick={() => setShowFullPlan(v => !v)}
               className="w-full flex items-center justify-center gap-1 mt-2 py-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
             >
-              {showFullPlan ? <><ChevronUp className="w-3 h-3" /> Ver menos</> : <><ChevronDown className="w-3 h-3" /> Ver todas las tareas</>}
+              {showFullPlan
+                ? <><ChevronUp className="w-3 h-3" /> Ver menos</>
+                : <><ChevronDown className="w-3 h-3" /> Ver todas las tareas ({tasksByType.theory.length + tasksByType.practice.length})</>
+              }
             </button>
           </div>
         )

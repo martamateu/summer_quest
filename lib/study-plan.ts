@@ -230,3 +230,40 @@ export function getImasWeekDateRange(week: number): { start: string; end: string
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   return { start: fmt(start), end: fmt(end) }
 }
+
+// ── Carryover logic ────────────────────────────────────────────────────────────
+// Un carryover task tiene id: "carry-w{targetWeek}-{originalTaskId}"
+// Esto permite que la semana N muestre tareas sin hacer de semanas anteriores.
+
+export function getCarryoverId(targetWeek: number, originalTaskId: string): string {
+  return `carry-w${targetWeek}-${originalTaskId}`
+}
+
+export function parseCarryoverId(id: string): { targetWeek: number; originalTaskId: string } | null {
+  const m = id.match(/^carry-w(\d+)-(.+)$/)
+  if (!m) return null
+  return { targetWeek: Number(m[1]), originalTaskId: m[2] }
+}
+
+// Devuelve las tareas sin hacer de semanas anteriores que deben mostrarse en targetWeek
+export function getCarryoverTasks(
+  targetWeek: number,
+  checks: Record<string, boolean>
+): (StudyTask & { fromWeek: number; carryId: string })[] {
+  const result: (StudyTask & { fromWeek: number; carryId: string })[] = []
+  // Revisar todas las semanas anteriores
+  for (let w = 1; w < targetWeek; w++) {
+    const week = IMAS_PLAN[w - 1]
+    if (!week) continue
+    for (const task of week.tasks) {
+      const originalDone = checks[task.id]
+      const carryId = getCarryoverId(targetWeek, task.id)
+      const carryDone = checks[carryId]
+      // Si no está hecha en la semana original NI en el carryover de esta semana
+      if (!originalDone && !carryDone) {
+        result.push({ ...task, fromWeek: w, carryId })
+      }
+    }
+  }
+  return result
+}
