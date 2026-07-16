@@ -786,48 +786,95 @@ export function GymScreen() {
       {/* Recent Sessions */}
       <div className="bg-card rounded-2xl p-4 mb-4">
         <h2 className="text-base font-semibold text-foreground mb-3">Últimas sesiones</h2>
-        {logs.filter(l => l.workoutId === selectedWorkout).length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-4">Sin sesiones registradas</p>
-        ) : (
-          <div className="space-y-3">
-            {logs
-              .map((l, i) => ({ ...l, originalIndex: i }))
-              .filter(l => l.workoutId === selectedWorkout)
-              .slice(-5)
-              .reverse()
-              .map((session) => (
-                <div key={session.originalIndex} className="py-2 border-b border-border/50 last:border-0">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(session.date).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })}
-                    </p>
-                    <button
-                      onClick={() => deleteSession(session.originalIndex)}
-                      className="p-1 rounded-full hover:bg-secondary transition-colors"
-                    >
-                      <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
-                    </button>
-                  </div>
+
+        {/* Entreno C: mostrar semanas del Sheet del entrenador */}
+        {selectedWorkout === 'C' && entrenoC ? (() => {
+          // Construir sesiones por semana: cada semana con algún dato es una sesión
+          const weekMap = new Map<number, { date: string; entries: { name: string; value: string }[] }>()
+          for (const ex of entrenoC.exercises) {
+            for (const w of ex.weeks) {
+              if (!w.value) continue
+              if (!weekMap.has(w.week)) weekMap.set(w.week, { date: w.date || '', entries: [] })
+              weekMap.get(w.week)!.entries.push({ name: ex.name, value: w.value })
+            }
+          }
+          const sessions = Array.from(weekMap.entries())
+            .sort((a, b) => b[0] - a[0]) // más reciente primero
+            .slice(0, 5)
+
+          if (sessions.length === 0) {
+            return <p className="text-sm text-muted-foreground text-center py-4">Sin sesiones del entrenador todavía. Pulsa Sync.</p>
+          }
+
+          return (
+            <div className="space-y-3">
+              {sessions.map(([week, { date, entries }]) => (
+                <div key={week} className="py-2 border-b border-border/50 last:border-0">
+                  <p className="text-xs text-muted-foreground mb-1.5">
+                    {date
+                      ? new Date(date + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })
+                      : `Semana ${week}`
+                    }
+                  </p>
                   <div className="space-y-1">
-                    {session.exercises.map(ex => {
-                      const exerciseDef = workout.exercises.find(e => e.id === ex.exerciseId)
-                      return (
-                        <div key={ex.exerciseId} className="flex items-center justify-between">
-                          <span className="text-xs text-foreground">{exerciseDef?.name || ex.exerciseId}</span>
-                          <div className="flex gap-1">
-                            {ex.sets.map((s, i) => (
-                              <span key={i} className="text-[10px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">
-                                {s.weight}×{s.reps}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )
-                    })}
+                    {entries.map(e => (
+                      <div key={e.name} className="flex items-center justify-between gap-2">
+                        <span className="text-xs text-foreground truncate">{e.name}</span>
+                        <span className="text-[10px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded shrink-0">{e.value}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}
-          </div>
+            </div>
+          )
+        })() : selectedWorkout === 'C' ? (
+          <p className="text-sm text-muted-foreground text-center py-4">Sin datos del entrenador. Pulsa Sync.</p>
+        ) : (
+          /* Entreno A y B: sesiones guardadas manualmente */
+          logs.filter(l => l.workoutId === selectedWorkout).length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">Sin sesiones registradas</p>
+          ) : (
+            <div className="space-y-3">
+              {logs
+                .map((l, i) => ({ ...l, originalIndex: i }))
+                .filter(l => l.workoutId === selectedWorkout)
+                .slice(-5)
+                .reverse()
+                .map((session) => (
+                  <div key={session.originalIndex} className="py-2 border-b border-border/50 last:border-0">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(session.date + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })}
+                      </p>
+                      <button
+                        onClick={() => deleteSession(session.originalIndex)}
+                        className="p-1 rounded-full hover:bg-secondary transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
+                      </button>
+                    </div>
+                    <div className="space-y-1">
+                      {session.exercises.map(ex => {
+                        const exerciseDef = workout.exercises.find(e => e.id === ex.exerciseId)
+                        return (
+                          <div key={ex.exerciseId} className="flex items-center justify-between">
+                            <span className="text-xs text-foreground">{exerciseDef?.name || ex.exerciseId}</span>
+                            <div className="flex gap-1">
+                              {ex.sets.map((s, i) => (
+                                <span key={i} className="text-[10px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">
+                                  {s.weight}×{s.reps}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )
         )}
       </div>
       </>)}
