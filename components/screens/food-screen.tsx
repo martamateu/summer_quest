@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo, useRef } from 'react'
-import { Dumbbell, Moon, Check, ChevronLeft, ChevronRight, Sparkles, Loader2, Flame, Beef, Wheat, Droplets, Heart, Camera, X, Bot } from 'lucide-react'
+import { Dumbbell, Moon, Check, ChevronLeft, ChevronRight, Sparkles, Loader2, Flame, Beef, Wheat, Droplets, Heart, Camera, X, Bot, Trash2, ImagePlus } from 'lucide-react'
 import { recordTombstones } from '@/lib/sync-tombstones'
 
 const FOOD_STORAGE_KEY = 'sq_food_log'
@@ -68,10 +68,22 @@ interface FavoriteRecipe {
   fat: string
 }
 
+interface PhotoEntry {
+  id: string
+  mealSlot: MealId
+  name: string
+  kcal: number
+  protein: number
+  carbs: number
+  fat: number
+  portionNotes: string
+}
+
 interface DayLog {
   dayType: DayType
   meals: Record<MealId, boolean>
-  customMeals?: Record<MealId, string> // custom recipe descriptions
+  customMeals?: Record<MealId, string>
+  photoEntries?: PhotoEntry[]
 }
 
 type FoodLog = Record<string, DayLog> // keyed by date string
@@ -124,7 +136,10 @@ export function FoodScreen() {
   const [photoResult, setPhotoResult] = useState<FoodPhotoResult | null>(null)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [photoError, setPhotoError] = useState<string | null>(null)
+  const [photoSlot, setPhotoSlot] = useState<MealId>('comida')
+  const [photoAdded, setPhotoAdded] = useState(false)
   const photoInputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     setFoodLog(readFoodLog())
@@ -189,19 +204,17 @@ export function FoodScreen() {
   }
 
   // Food photo analysis
-  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (photoInputRef.current) photoInputRef.current.value = ''
-
+  const analyzePhoto = async (file: File) => {
     setPhotoError(null)
     setPhotoResult(null)
+    setPhotoAdded(false)
     setPhotoPreview(URL.createObjectURL(file))
     setPhotoLoading(true)
 
     try {
       const log = getDayLog(todayStr)
       const currentTarget = TARGETS[log.dayType]
+      // Suma plan base + entradas ya guardadas
       const currentEaten = (() => {
         const r = { kcal: 0, protein: 0, carbs: 0, fat: 0 }
         for (const meal of MEALS) {
@@ -209,6 +222,9 @@ export function FoodScreen() {
             const d = meal[log.dayType]
             r.kcal += d.kcal; r.protein += d.protein; r.carbs += d.carbs; r.fat += d.fat
           }
+        }
+        for (const entry of log.photoEntries ?? []) {
+          r.kcal += entry.kcal; r.protein += entry.protein; r.carbs += entry.carbs; r.fat += entry.fat
         }
         return r
       })()
@@ -234,13 +250,49 @@ export function FoodScreen() {
     }
   }
 
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    await analyzePhoto(file)
+  }
+
   const clearPhotoResult = () => {
     setPhotoResult(null)
     setPhotoPreview(null)
     setPhotoError(null)
+    setPhotoAdded(false)
   }
 
-  // Calculate eaten macros
+  const addPhotoEntryToLog = (slot: MealId) => {
+    if (!photoResult) return
+    const current = getDayLog(todayStr)
+    const entry: PhotoEntry = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+      mealSlot: slot,
+      name: photoResult.foodName,
+      kcal: photoResult.estimatedKcal,
+      protein: photoResult.estimatedProtein,
+      carbs: photoResult.estimatedCarbs,
+      fat: photoResult.estimatedFat,
+      portionNotes: photoResult.portionNotes,
+    }
+    saveDayLog(todayStr, {
+      ...current,
+      photoEntries: [...(current.photoEntries ?? []), entry],
+    })
+    setPhotoAdded(true)
+  }
+
+  const removePhotoEntry = (entryId: string) => {
+    const current = getDayLog(todayStr)
+    saveDayLog(todayStr, {
+      ...current,
+      photoEntries: (current.photoEntries ?? []).filter(e => e.id !== entryId),
+    })
+  }
+
+  // Calculate eaten macros — plan base + photo entries
   const eatenMacros = useMemo(() => {
     const result = { kcal: 0, protein: 0, carbs: 0, fat: 0 }
     for (const meal of MEALS) {
@@ -251,6 +303,12 @@ export function FoodScreen() {
         result.carbs += data.carbs
         result.fat += data.fat
       }
+    }
+    for (const entry of todayLog.photoEntries ?? []) {
+      result.kcal += entry.kcal
+      result.protein += entry.protein
+      result.carbs += entry.carbs
+      result.fat += entry.fat
     }
     return result
   }, [todayLog])
@@ -287,6 +345,13 @@ export function FoodScreen() {
           carbs += data.carbs
           fat += data.fat
         }
+      }
+      // Sumar photo entries del día
+      for (const entry of log.photoEntries ?? []) {
+        kcal += entry.kcal
+        protein += entry.protein
+        carbs += entry.carbs
+        fat += entry.fat
       }
       return { date, eatenCount, total: 5, kcal, protein, carbs, fat, target: dayTarget, dayType: log.dayType }
     })
@@ -350,16 +415,9 @@ export function FoodScreen() {
 
   return (
     <div className="px-4 pt-6 pb-24">
-      {/* Hidden photo input */}
-      <input
-        ref={photoInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={handlePhotoChange}
-        aria-label="Subir foto de comida"
-      />
+      {/* Hidden inputs: galería y cámara */}
+      <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} aria-label="Seleccionar foto de galería" />
+      <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoChange} aria-label="Hacer foto con cámara" />
 
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
@@ -369,10 +427,19 @@ export function FoodScreen() {
             onClick={() => photoInputRef.current?.click()}
             disabled={photoLoading}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-secondary text-muted-foreground hover:bg-secondary/80 disabled:opacity-50 transition-colors"
-            aria-label="Analizar foto de comida"
+            aria-label="Seleccionar foto de galería"
           >
-            {photoLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
-            Analizar
+            {photoLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImagePlus className="w-3.5 h-3.5" />}
+            Galería
+          </button>
+          <button
+            onClick={() => cameraInputRef.current?.click()}
+            disabled={photoLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-secondary text-muted-foreground hover:bg-secondary/80 disabled:opacity-50 transition-colors"
+            aria-label="Hacer foto con cámara"
+          >
+            <Camera className="w-3.5 h-3.5" />
+            Foto
           </button>
           <button
             onClick={() => setShowFavorites(!showFavorites)}
@@ -462,6 +529,7 @@ export function FoodScreen() {
 
           {photoResult && (
             <div className="space-y-3">
+              {/* Resultado del análisis */}
               <div className="flex items-start gap-3">
                 {photoPreview && (
                   <img src={photoPreview} alt={photoResult.foodName} className="w-16 h-16 rounded-xl object-cover shrink-0" />
@@ -477,10 +545,41 @@ export function FoodScreen() {
                   </div>
                 </div>
               </div>
+
+              {/* Feedback IA */}
               <div className="flex items-start gap-2 bg-primary/5 rounded-xl p-3">
                 <Bot className="w-4 h-4 text-primary mt-0.5 shrink-0" />
                 <p className="text-xs text-foreground leading-relaxed">{photoResult.aiCoachFeedback}</p>
               </div>
+
+              {/* Selector de slot + botón añadir */}
+              {photoAdded ? (
+                <div className="flex items-center gap-2 bg-green-50 rounded-xl px-3 py-2">
+                  <Check className="w-4 h-4 text-green-600 shrink-0" />
+                  <p className="text-xs text-green-700 font-medium">Añadido a {MEALS.find(m => m.id === photoSlot)?.label} · los macros ya están sumados</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-[11px] text-muted-foreground font-medium uppercase">Añadir a:</p>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {MEALS.map(m => (
+                      <button
+                        key={m.id}
+                        onClick={() => setPhotoSlot(m.id)}
+                        className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${photoSlot === m.id ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => addPhotoEntryToLog(photoSlot)}
+                    className="w-full py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium"
+                  >
+                    Añadir a {MEALS.find(m => m.id === photoSlot)?.label}
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -560,6 +659,25 @@ export function FoodScreen() {
                       </div>
                     </div>
                   </div>
+                  {/* Photo entries for this meal slot */}
+                  {(todayLog.photoEntries ?? []).filter(e => e.mealSlot === meal.id).map(entry => (
+                    <div key={entry.id} className="mt-2 ml-9 flex items-start gap-2 bg-orange-50 rounded-lg p-2">
+                      <Camera className="w-3 h-3 text-orange-400 mt-0.5 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[11px] font-medium text-foreground leading-tight">{entry.name}</p>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          <span className="text-[10px] text-orange-500 font-medium">+{entry.kcal} kcal</span>
+                          <span className="text-[10px] text-red-400">P:{entry.protein}g</span>
+                          <span className="text-[10px] text-amber-400">C:{entry.carbs}g</span>
+                          <span className="text-[10px] text-blue-400">G:{entry.fat}g</span>
+                        </div>
+                      </div>
+                      <button onClick={() => removePhotoEntry(entry.id)} className="p-0.5 rounded hover:bg-orange-100 shrink-0">
+                        <Trash2 className="w-3 h-3 text-muted-foreground" />
+                      </button>
+                    </div>
+                  ))}
+
                   {/* Recipe suggestions */}
                   {recipeSuggestions?.mealId === meal.id && (
                     <div className="mt-2 ml-9 space-y-2">
