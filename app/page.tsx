@@ -348,6 +348,8 @@ export default function Page() {
           }
           localStorage.setItem(key, data[key])
         }
+        // Notificar a componentes montados sin disparar upload de vuelta
+        window.dispatchEvent(new CustomEvent('sq-data-changed', { detail: { source: 'sync-restore' } }))
         return true
       }
 
@@ -410,6 +412,8 @@ export default function Page() {
 
       if (filledMissingKeys) {
         console.log('[sync] merged/filled keys from cloud')
+        // Notificar a componentes montados sin disparar upload de vuelta
+        window.dispatchEvent(new CustomEvent('sq-data-changed', { detail: { source: 'sync-restore' } }))
         return true
       }
       
@@ -459,7 +463,9 @@ export default function Page() {
       }
     }
     const handlePageHide = () => flushToCloud()
-    const handleDataChanged = () => {
+    const handleDataChanged = (e: Event) => {
+      // sq-sync-restored se usa internamente para notificar sin subir de vuelta
+      if ((e as CustomEvent).detail?.source === 'sync-restore') return
       localStorage.setItem('sq_last_modified', Date.now().toString())
       uploadToCloud()
     }
