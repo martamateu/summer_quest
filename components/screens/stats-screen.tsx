@@ -434,14 +434,19 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
               </div>
               {/* Gráfico de barras */}
               {summary.totalSteps > 0 ? (
-                <div className="flex items-end gap-1" style={{ height: 80 }}>
+                <div className="flex items-end gap-1" style={{ height: view === 'semana' ? 100 : 80 }}>
                   {(() => {
                     const maxSteps = Math.max(...rows.map(r => r.steps), 1)
                     return rows.map((r, i) => {
                       const barH = r.steps > 0 ? Math.max(Math.round((r.steps / maxSteps) * 72), 4) : 2
                       const isGoal = r.steps >= 15000
                       return (
-                        <div key={i} className="flex-1 flex flex-col items-center justify-end gap-0.5" style={{ height: 80 }}>
+                        <div key={i} className="flex-1 flex flex-col items-center justify-end gap-0.5" style={{ height: view === 'semana' ? 100 : 80 }}>
+                          {view === 'semana' && r.steps > 0 && (
+                            <span className="text-[8px] font-medium leading-none mb-0.5" style={{ color: isGoal ? '#3b82f6' : '#9ca3af' }}>
+                              {r.steps >= 1000 ? `${(r.steps / 1000).toFixed(1)}k` : r.steps}
+                            </span>
+                          )}
                           <div
                             className="w-full rounded-t transition-all"
                             style={{ height: barH, backgroundColor: isGoal ? '#3b82f6' : '#3b82f620' }}
