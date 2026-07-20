@@ -91,7 +91,7 @@ export async function GET(request: Request) {
     // Ordenar por fecha asc
     runs.sort((a, b) => (a.startTime || a.date).localeCompare(b.startTime || b.date))
 
-    // 2. Leer el Sheet actual para hacer upsert (no duplicar)
+    // 2. Conectar al Sheet y leer estado actual
     const sheetsAuth = getSheetsAuth()
     const sheets = google.sheets({ version: 'v4', auth: sheetsAuth })
 
@@ -99,43 +99,74 @@ export async function GET(request: Request) {
       spreadsheetId: SPREADSHEET_ID,
       range: `${SHEET_NAME}!A:G`,
     })
-    const existingDates = new Set<string>(
-      (existing.data.values || []).slice(1).map((r: string[]) => r[0]?.trim()).filter(Boolean)
-    )
+    const existingRows = existing.data.values || []
+    const hasHeader = existingRows.length > 0
 
-    // 3. Construir las filas a escribir (solo las que no existen ya)
+    // Mapa fecha → { rowIndex (1-based en Sheet), row actual }
+    const dateToRow = new Map<string, { rowIndex: number; row: string[] }>()
+    for (let i = 1; i < existingRows.length; i++) {
+      const date = existingRows[i]?.[0]?.trim()
+      if (date) dateToRow.set(date, { rowIndex: i + 1, row: existingRows[i] })
+    }
+
+    // 3. Calcular calorías (estimación si Redis tiene 0)
+    const calcCalories = (run: RunSession): string =>
+      run.calories && run.calories > 0
+        ? String(run.calories)
+        : String(Math.round(9 * 60 * (run.durationSecs / 3600)))
+
+    const buildRow = (run: RunSession): string[] => [
+      run.date,
+      fmtKm(run.distanceMeters),
+      fmtDuration(run.durationSecs),
+      fmtPace(run.avgPaceSecPerKm),
+      run.elevationGain != null ? String(run.elevationGain) : '—',
+      calcCalories(run),
+      run.type || 'RUNNING',
+    ]
+
+    // 4. Upsert: actualizar filas cambiadas, añadir filas nuevas
+    const updates: { range: string; values: string[][] }[] = []
     const newRows: string[][] = []
+
     for (const run of runs) {
-      if (existingDates.has(run.date)) continue // ya está, skip
-      newRows.push([
-        run.date,
-        fmtKm(run.distanceMeters),
-        fmtDuration(run.durationSecs),
-        fmtPace(run.avgPaceSecPerKm),
-        run.elevationGain != null ? String(run.elevationGain) : '—',
-        String(run.calories || 0),
-        run.type || 'RUNNING',
-      ])
+      const newRow = buildRow(run)
+      const existing2 = dateToRow.get(run.date)
+      if (existing2) {
+        // Comparar fila actual con la nueva — solo actualizar si algo cambió
+        const changed = newRow.some((cell, i) => cell !== (existing2.row[i] ?? ''))
+        if (changed) {
+          updates.push({ range: `${SHEET_NAME}!A${existing2.rowIndex}`, values: [newRow] })
+        }
+      } else {
+        newRows.push(newRow)
+      }
     }
 
-    // 4. Si no hay cabecera, añadirla primero
-    const hasHeader = (existing.data.values || []).length > 0
-    const rowsToWrite: string[][] = hasHeader ? newRows : [HEADERS, ...newRows]
-
-    if (rowsToWrite.length === 0) {
-      return Response.json({ ok: true, synced: 0, message: 'Todas las carreras ya estaban en el Sheet' })
+    // 5. Aplicar actualizaciones de filas existentes
+    if (updates.length > 0) {
+      await sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId: SPREADSHEET_ID,
+        requestBody: {
+          valueInputOption: 'RAW',
+          data: updates.map(u => ({ range: u.range, values: u.values })),
+        },
+      })
     }
 
-    // 5. Append al final de la tab RUN
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_NAME}!A:G`,
-      valueInputOption: 'RAW',
-      insertDataOption: 'INSERT_ROWS',
-      requestBody: { values: rowsToWrite },
-    })
+    // 6. Añadir filas nuevas (append) + cabecera si no existe
+    const rowsToAppend = hasHeader ? newRows : [HEADERS, ...newRows]
+    if (rowsToAppend.length > 0) {
+      await sheets.spreadsheets.values.append({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `${SHEET_NAME}!A:G`,
+        valueInputOption: 'RAW',
+        insertDataOption: 'INSERT_ROWS',
+        requestBody: { values: rowsToAppend },
+      })
+    }
 
-    // 6. Formatear cabecera en negrita si es la primera vez
+    // 7. Cabecera en negrita (solo si es la primera vez)
     if (!hasHeader) {
       const sheetMeta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID })
       const runSheet = sheetMeta.data.sheets?.find(s => s.properties?.title === SHEET_NAME)
@@ -158,9 +189,10 @@ export async function GET(request: Request) {
 
     return Response.json({
       ok: true,
-      synced: newRows.length,
+      updated: updates.length,
+      added: newRows.length,
       total: runs.length,
-      message: `${newRows.length} carreras nuevas escritas en el Sheet (${runs.length} total en Redis)`,
+      message: `${updates.length} actualizadas, ${newRows.length} nuevas de ${runs.length} total`,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
