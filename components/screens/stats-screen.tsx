@@ -305,19 +305,59 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
         </div>
       </div>
 
-      {/* Streaks row */}
-      <div className="grid grid-cols-3 gap-2 mb-4">
-        {(['pasos', 'flexibilidad', 'gastos', 'fuerza', 'run', 'focus'] as MetricId[]).map(id => {
-          const meta = METRICS.find(m => m.id === id)!
-          return (
-            <div key={id} className="bg-card rounded-2xl p-3 text-center">
-              <div className="flex justify-center mb-1" style={{ color: meta.color }}>{meta.icon}</div>
-              <p className="text-xl font-bold text-foreground">{streaks[id as keyof typeof streaks]}</p>
-              <p className="text-[10px] text-muted-foreground">{meta.label}</p>
+      {/* Monthly counters — días conseguidos este mes */}
+      {(() => {
+        const now2 = new Date()
+        const y2 = now2.getFullYear()
+        const m2 = now2.getMonth()
+        const daysInMonth2 = new Date(y2, m2 + 1, 0).getDate()
+        const todayDay = now2.getDate()
+        // Generar todas las fechas del mes hasta hoy
+        const monthDates2: string[] = []
+        for (let d = 1; d <= todayDay; d++) {
+          monthDates2.push(fmtLocal(new Date(y2, m2, d)))
+        }
+
+        const fuerzaDays = monthDates2.filter(d => forceDates.has(d)).length
+        const runDays    = monthDates2.filter(d => runDates.has(d)).length
+        const flexDays   = monthDates2.filter(d => flexLog.includes(d)).length
+        const focusDays  = monthDates2.filter(d => (focusLog[d] ?? 0) >= FOCUS_GOAL_MIN).length
+        const pasosDays  = monthDates2.filter(d => (stepsHistory[d]?.steps ?? 0) >= 15000).length
+        const dietaDays  = monthDates2.filter(d => {
+          const log = foodLog[d]
+          if (!log) return false
+          return Object.values(log.meals).filter(Boolean).length === 5
+        }).length
+
+        const items = [
+          { label: 'Pasos 15k', days: pasosDays, color: '#3b82f6', icon: <Footprints className="w-4 h-4" /> },
+          { label: 'Flex',      days: flexDays,   color: '#22c55e', icon: <PersonStanding className="w-4 h-4" /> },
+          { label: 'Fuerza',    days: fuerzaDays, color: '#ef4444', icon: <Dumbbell className="w-4 h-4" /> },
+          { label: 'Run',       days: runDays,    color: '#f97316', icon: <Timer className="w-4 h-4" /> },
+          { label: 'Focus',     days: focusDays,  color: '#6366f1', icon: <Brain className="w-4 h-4" /> },
+          { label: 'Dieta',     days: dietaDays,  color: '#ec4899', icon: <Flame className="w-4 h-4" /> },
+        ]
+
+        return (
+          <div className="mb-4">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-2">
+              Este mes · {todayDay} días transcurridos
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              {items.map(item => (
+                <div key={item.label} className="bg-card rounded-2xl p-3 text-center">
+                  <div className="flex justify-center mb-1" style={{ color: item.color }}>{item.icon}</div>
+                  <p className="text-xl font-bold text-foreground">{item.days}</p>
+                  <p className="text-[9px] text-muted-foreground">{item.label}</p>
+                  <div className="h-1 bg-secondary rounded-full overflow-hidden mt-1.5">
+                    <div className="h-full rounded-full" style={{ width: `${Math.round((item.days / todayDay) * 100)}%`, backgroundColor: item.color }} />
+                  </div>
+                </div>
+              ))}
             </div>
-          )
-        })}
-      </div>
+          </div>
+        )
+      })()}
 
       {/* View toggle */}
       <div className="flex gap-1 bg-secondary rounded-xl p-1 mb-4">
