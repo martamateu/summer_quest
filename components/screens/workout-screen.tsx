@@ -235,6 +235,8 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
   const [stravaConfigured, setStravaConfigured] = useState(true)
   const [syncingStrava, setSyncingStrava] = useState(false)
   const [stravaMsg, setStravaMsg] = useState<string | null>(null)
+  const [syncingSheet, setSyncingSheet] = useState(false)
+  const [sheetMsg, setSheetMsg] = useState<string | null>(null)
 
   useEffect(() => {
     setWorkouts(readWorkouts())
@@ -277,6 +279,22 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
         setSyncingStrava(false)
         setTimeout(() => setStravaMsg(null), 5000)
       }
+    }
+  }
+
+  const syncRunSheet = async () => {
+    setSyncingSheet(true)
+    setSheetMsg(null)
+    try {
+      const res = await fetch('/api/run-sheet/sync')
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Error')
+      setSheetMsg(`✓ ${data.synced} carreras volcadas al Sheet`)
+    } catch (e: any) {
+      setSheetMsg(`✗ ${e?.message || 'Error al sincronizar con el Sheet'}`)
+    } finally {
+      setSyncingSheet(false)
+      setTimeout(() => setSheetMsg(null), 6000)
     }
   }
 
@@ -589,7 +607,21 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
         {!stravaConfigured && (
           <p className="text-[11px] text-muted-foreground">Strava aún no está configurado en el servidor.</p>
         )}
-        {stravaMsg && <p className="text-[11px] text-muted-foreground mb-2">{stravaMsg}</p>}
+        {stravaMsg && <p className="text-[11px] text-muted-foreground mb-1">{stravaMsg}</p>}
+
+        {/* Sync al Google Sheet */}
+        <div className="flex items-center justify-between mt-2">
+          <span className="text-[11px] text-muted-foreground">Google Sheet · tab RUN</span>
+          <button
+            onClick={syncRunSheet}
+            disabled={syncingSheet}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-secondary text-foreground text-xs font-medium disabled:opacity-60"
+          >
+            {syncingSheet ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            Volcar al Sheet
+          </button>
+        </div>
+        {sheetMsg && <p className="text-[11px] text-muted-foreground mt-1">{sheetMsg}</p>}
 
         {/* Resumen del periodo */}
         {runTotals.count > 0 ? (
