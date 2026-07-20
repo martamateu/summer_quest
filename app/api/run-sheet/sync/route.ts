@@ -7,8 +7,10 @@ import { auth } from '@/auth'
 // Columnas: Fecha | Distancia (km) | Tiempo | Ritmo (min/km) | Calorías | Fuente
 
 const SPREADSHEET_ID = '1JbxSNW5xmxQKljWyxzCJZdFiH07J7L4LrWeQqrDyWOs'
+const WEIGHT_SPREADSHEET_ID = '19QclhbNauAaJ6HyzpH71k-9p_epPpVdYwQKjWIbMa9Q'
 const SHEET_NAME = 'RUN'
 const RUNS_KEY = 'runs:history'
+const DEFAULT_WEIGHT_KG = 45.9 // fallback si no se puede leer el Sheet
 
 const HEADERS = ['Fecha', 'Distancia (km)', 'Tiempo', 'Ritmo (min/km)', 'Elevación (m)', 'Calorías', 'Fuente']
 
@@ -27,6 +29,32 @@ interface RunSession {
   avgPaceSecPerKm: number
   elevationGain?: number
   type: string
+}
+
+// Lee el último peso registrado del Sheet de peso (columna B, busca el último valor numérico)
+async function readLatestWeight(sheetsAuth: ReturnType<typeof getSheetsAuth>): Promise<number> {
+  try {
+    const sheets = google.sheets({ version: 'v4', auth: sheetsAuth })
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: WEIGHT_SPREADSHEET_ID,
+      range: 'A:C', // Dia | Peso | Media semanal
+    })
+    const rows = res.data.values || []
+    let lastWeight = DEFAULT_WEIGHT_KG
+    // Recorrer todas las filas buscando el último valor numérico en columna B (peso diario)
+    // o columna C (media semanal) — priorizamos peso diario
+    for (const row of rows) {
+      const daily = row[1]?.toString().replace(',', '.')
+      const weekly = row[2]?.toString().replace(',', '.')
+      const dailyNum = daily ? parseFloat(daily) : NaN
+      const weeklyNum = weekly ? parseFloat(weekly) : NaN
+      if (!isNaN(dailyNum) && dailyNum > 30 && dailyNum < 200) lastWeight = dailyNum
+      else if (!isNaN(weeklyNum) && weeklyNum > 30 && weeklyNum < 200) lastWeight = weeklyNum
+    }
+    return lastWeight
+  } catch {
+    return DEFAULT_WEIGHT_KG
+  }
 }
 
 function getSheetsAuth() {
@@ -91,8 +119,9 @@ export async function GET(request: Request) {
     // Ordenar por fecha asc
     runs.sort((a, b) => (a.startTime || a.date).localeCompare(b.startTime || b.date))
 
-    // 2. Conectar al Sheet y leer estado actual
+    // 2. Conectar al Sheet, leer peso actual y estado de la tab RUN
     const sheetsAuth = getSheetsAuth()
+    const weightKg = await readLatestWeight(sheetsAuth)
     const sheets = google.sheets({ version: 'v4', auth: sheetsAuth })
 
     const existing = await sheets.spreadsheets.values.get({
@@ -110,12 +139,11 @@ export async function GET(request: Request) {
     }
 
     // 3. Calcular calorías — fórmula estándar running: km × kg × 1.036
-    // Peso real leído del Sheet de peso: 45.9 kg (última media registrada)
-    const WEIGHT_KG = 45.9
+    // Peso leído en tiempo real del Sheet de peso
     const calcCalories = (run: RunSession): string =>
       run.calories && run.calories > 0
         ? String(run.calories)
-        : String(Math.round((run.distanceMeters / 1000) * WEIGHT_KG * 1.036))
+        : String(Math.round((run.distanceMeters / 1000) * weightKg * 1.036))
 
     const buildRow = (run: RunSession): string[] => [
       run.date,
@@ -194,7 +222,8 @@ export async function GET(request: Request) {
       updated: updates.length,
       added: newRows.length,
       total: runs.length,
-      message: `${updates.length} actualizadas, ${newRows.length} nuevas de ${runs.length} total`,
+      weightUsed: weightKg,
+      message: `${updates.length} actualizadas, ${newRows.length} nuevas de ${runs.length} total (peso: ${weightKg}kg)`,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
