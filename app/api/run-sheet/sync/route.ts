@@ -110,11 +110,12 @@ export async function GET(request: Request) {
     }
 
     // 3. Calcular calorías — fórmula estándar running: km × kg × 1.036
-    // Más precisa que MET por tiempo. Peso estimado 60kg si no hay dato real.
+    // Peso real leído del Sheet de peso: 45.9 kg (última media registrada)
+    const WEIGHT_KG = 45.9
     const calcCalories = (run: RunSession): string =>
       run.calories && run.calories > 0
         ? String(run.calories)
-        : String(Math.round((run.distanceMeters / 1000) * 60 * 1.036))
+        : String(Math.round((run.distanceMeters / 1000) * WEIGHT_KG * 1.036))
 
     const buildRow = (run: RunSession): string[] => [
       run.date,

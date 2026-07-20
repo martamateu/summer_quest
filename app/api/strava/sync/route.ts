@@ -63,12 +63,12 @@ export async function GET() {
       durationSecs,
       distanceMeters,
       // Strava no devuelve calories en el listado — estimamos con la fórmula
-      // estándar de running: km × peso(kg) × 1.036. Usamos el dato real si existe.
+      // estándar de running: km × peso(kg) × 1.036. Peso real: 45.9 kg
       calories: act.calories
         ? Math.round(act.calories)
         : act.kilojoules
           ? Math.round(act.kilojoules * 0.239)
-          : Math.round((distanceMeters / 1000) * 60 * 1.036),
+          : Math.round((distanceMeters / 1000) * 45.9 * 1.036),
       avgPaceSecPerKm: Math.round(durationSecs / (distanceMeters / 1000)),
       elevationGain: act.total_elevation_gain != null ? Math.round(act.total_elevation_gain) : undefined,
       type: 'RUNNING',
