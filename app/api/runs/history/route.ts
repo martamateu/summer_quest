@@ -16,6 +16,7 @@ interface RunSession {
   distanceMeters: number
   calories: number
   avgPaceSecPerKm: number  // seconds per km
+  elevationGain?: number   // metros de desnivel positivo
   type: string        // e.g. "RUNNING"
 }
 
@@ -62,6 +63,7 @@ export async function POST(request: Request) {
       distanceMeters: Math.round(r.distanceMeters),
       calories: Math.round(r.calories ?? 0),
       avgPaceSecPerKm: Math.round(r.avgPaceSecPerKm ?? 0),
+      elevationGain: r.elevationGain != null ? Math.round(r.elevationGain) : undefined,
       type: r.type ?? 'RUNNING',
     }
     map[session.id] = JSON.stringify(session)

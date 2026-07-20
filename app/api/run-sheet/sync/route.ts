@@ -10,7 +10,7 @@ const SPREADSHEET_ID = '1JbxSNW5xmxQKljWyxzCJZdFiH07J7L4LrWeQqrDyWOs'
 const SHEET_NAME = 'RUN'
 const RUNS_KEY = 'runs:history'
 
-const HEADERS = ['Fecha', 'Distancia (km)', 'Tiempo', 'Ritmo (min/km)', 'Calorías', 'Fuente']
+const HEADERS = ['Fecha', 'Distancia (km)', 'Tiempo', 'Ritmo (min/km)', 'Elevación (m)', 'Calorías', 'Fuente']
 
 const redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL!,
@@ -25,6 +25,7 @@ interface RunSession {
   distanceMeters: number
   calories: number
   avgPaceSecPerKm: number
+  elevationGain?: number
   type: string
 }
 
@@ -96,7 +97,7 @@ export async function GET(request: Request) {
 
     const existing = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_NAME}!A:A`,
+      range: `${SHEET_NAME}!A:G`,
     })
     const existingDates = new Set<string>(
       (existing.data.values || []).slice(1).map((r: string[]) => r[0]?.trim()).filter(Boolean)
@@ -111,6 +112,7 @@ export async function GET(request: Request) {
         fmtKm(run.distanceMeters),
         fmtDuration(run.durationSecs),
         fmtPace(run.avgPaceSecPerKm),
+        run.elevationGain != null ? String(run.elevationGain) : '—',
         String(run.calories || 0),
         run.type || 'RUNNING',
       ])
@@ -127,7 +129,7 @@ export async function GET(request: Request) {
     // 5. Append al final de la tab RUN
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_NAME}!A:F`,
+      range: `${SHEET_NAME}!A:G`,
       valueInputOption: 'RAW',
       insertDataOption: 'INSERT_ROWS',
       requestBody: { values: rowsToWrite },

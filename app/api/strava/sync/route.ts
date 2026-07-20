@@ -18,6 +18,7 @@ interface RunSession {
   distanceMeters: number
   calories: number
   avgPaceSecPerKm: number
+  elevationGain?: number  // metros de desnivel positivo
   type: string
 }
 
@@ -63,6 +64,7 @@ export async function GET() {
       distanceMeters,
       calories: Math.round(act.calories ?? act.kilojoules ?? 0),
       avgPaceSecPerKm: Math.round(durationSecs / (distanceMeters / 1000)),
+      elevationGain: act.total_elevation_gain != null ? Math.round(act.total_elevation_gain) : undefined,
       type: 'RUNNING',
     }
     map[run.id] = JSON.stringify(run)
