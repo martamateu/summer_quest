@@ -62,13 +62,13 @@ export async function GET() {
       startTime: act.start_date || act.start_date_local,
       durationSecs,
       distanceMeters,
-      // Strava no devuelve calories en el listado — estimamos con MET=9 (running),
-      // peso 60kg: kcal = MET × peso(kg) × horas. Usamos el dato real si existe.
+      // Strava no devuelve calories en el listado — estimamos con la fórmula
+      // estándar de running: km × peso(kg) × 1.036. Usamos el dato real si existe.
       calories: act.calories
         ? Math.round(act.calories)
         : act.kilojoules
           ? Math.round(act.kilojoules * 0.239)
-          : Math.round(9 * 60 * (durationSecs / 3600)),
+          : Math.round((distanceMeters / 1000) * 60 * 1.036),
       avgPaceSecPerKm: Math.round(durationSecs / (distanceMeters / 1000)),
       elevationGain: act.total_elevation_gain != null ? Math.round(act.total_elevation_gain) : undefined,
       type: 'RUNNING',

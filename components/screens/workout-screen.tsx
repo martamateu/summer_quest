@@ -289,7 +289,7 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
       const res = await fetch('/api/run-sheet/sync')
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Error')
-      setSheetMsg(`✓ ${data.synced} carreras volcadas al Sheet`)
+      setSheetMsg(`✓ ${data.added} nuevas + ${data.updated} actualizadas (${data.total} total)`)
     } catch (e: any) {
       setSheetMsg(`✗ ${e?.message || 'Error al sincronizar con el Sheet'}`)
     } finally {

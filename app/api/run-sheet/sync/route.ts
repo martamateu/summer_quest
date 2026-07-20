@@ -109,11 +109,12 @@ export async function GET(request: Request) {
       if (date) dateToRow.set(date, { rowIndex: i + 1, row: existingRows[i] })
     }
 
-    // 3. Calcular calorías (estimación si Redis tiene 0)
+    // 3. Calcular calorías — fórmula estándar running: km × kg × 1.036
+    // Más precisa que MET por tiempo. Peso estimado 60kg si no hay dato real.
     const calcCalories = (run: RunSession): string =>
       run.calories && run.calories > 0
         ? String(run.calories)
-        : String(Math.round(9 * 60 * (run.durationSecs / 3600)))
+        : String(Math.round((run.distanceMeters / 1000) * 60 * 1.036))
 
     const buildRow = (run: RunSession): string[] => [
       run.date,
