@@ -282,9 +282,39 @@ export function AdminScreen() {
   const [editFrequency, setEditFrequency] = useState(7)
   const [editCustomFreq, setEditCustomFreq] = useState('')
 
-  // Force sync from cloud
+  // Force sync from cloud / force upload to cloud
   const [syncingFromCloud, setSyncingFromCloud] = useState(false)
+  const [uploadingToCloud, setUploadingToCloud] = useState(false)
   const [syncMsg, setSyncMsg] = useState<string | null>(null)
+
+  const ALL_SYNC_KEYS = ['sq_habits', 'sq_today', 'sq_history', 'sq_expenses', 'sq_finance_started_at', 'sq_gym_logs', 'sq_gym_seeded', 'sq_steps_history', 'sq_food_log', 'sq_favorite_recipes', 'sq_notes', 'sq_super_list', 'sq_home', 'sq_cleaning_history', 'sq_cycle', 'sq_run_logs', 'sq_today_goals', 'sq_flex_log', 'sq_finance_log', 'sq_workout_logs', 'sq_tasks_list', 'sq_task_tags', 'sq_focus_log', 'sq_focus_subject_log', 'sq_tombstones', 'sq_last_modified', 'sq_goals']
+
+  const forceUploadToCloud = async () => {
+    setUploadingToCloud(true)
+    setSyncMsg(null)
+    try {
+      const data: Record<string, string> = {}
+      for (const key of ALL_SYNC_KEYS) {
+        const val = localStorage.getItem(key)
+        if (val) data[key] = val
+      }
+      // Bump sq_last_modified so this device is treated as authoritative on download
+      data['sq_last_modified'] = Date.now().toString()
+      localStorage.setItem('sq_last_modified', data['sq_last_modified'])
+      const res = await fetch('/api/sync-data?force=true', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data }),
+      })
+      if (!res.ok) { setSyncMsg('Error al subir datos'); return }
+      setSyncMsg('Datos subidos a la nube')
+      setTimeout(() => setSyncMsg(null), 3000)
+    } catch {
+      setSyncMsg('Error de red al subir')
+    } finally {
+      setUploadingToCloud(false)
+    }
+  }
 
   const forceDownloadFromCloud = async () => {
     setSyncingFromCloud(true)
@@ -869,14 +899,26 @@ export function AdminScreen() {
     <div className="px-4 pt-6 pb-24">
       <div className="flex items-center justify-between mb-1">
         <h1 className="text-2xl font-bold text-foreground">Admin Life</h1>
-        <button
-          onClick={forceDownloadFromCloud}
-          disabled={syncingFromCloud}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-secondary text-muted-foreground text-xs font-medium hover:bg-accent hover:text-primary transition-colors disabled:opacity-50"
-        >
-          {syncingFromCloud ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CloudDownload className="w-3.5 h-3.5" />}
-          Sync nube
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={forceUploadToCloud}
+            disabled={uploadingToCloud || syncingFromCloud}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-secondary text-muted-foreground text-xs font-medium hover:bg-accent hover:text-primary transition-colors disabled:opacity-50"
+            title="Subir datos de este dispositivo a la nube (sobreescribe)"
+          >
+            {uploadingToCloud ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span className="text-[11px]">↑</span>}
+            Subir
+          </button>
+          <button
+            onClick={forceDownloadFromCloud}
+            disabled={syncingFromCloud || uploadingToCloud}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-secondary text-muted-foreground text-xs font-medium hover:bg-accent hover:text-primary transition-colors disabled:opacity-50"
+            title="Descargar datos de la nube a este dispositivo"
+          >
+            {syncingFromCloud ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CloudDownload className="w-3.5 h-3.5" />}
+            Bajar
+          </button>
+        </div>
       </div>
       {syncMsg && <p className="text-xs text-primary mb-2">{syncMsg}</p>}
       <p className="text-sm text-muted-foreground mb-4">Dicta o escribe: la IA lo ordena en notas o en tu lista del súper.</p>

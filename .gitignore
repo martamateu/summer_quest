@@ -15,3 +15,5 @@ node_modules
 .DS_Store
 Plan Nutricional*
 tsconfig.tsbuildinfo
+.vercel
+.env*

@@ -139,12 +139,16 @@ export async function GET() {
 }
 
 // POST /api/sync-data — upload all user data to Redis
+// ?force=true skips merge and overwrites Redis directly (used by force-upload from a device)
 export async function POST(request: Request) {
   const session = await auth()
   const email = session?.user?.email
   if (!email) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
+
+  const url = new URL(request.url)
+  const force = url.searchParams.get('force') === 'true'
 
   const body = await request.json()
   const { data } = body as { data: Record<string, string> }
@@ -153,7 +157,14 @@ export async function POST(request: Request) {
   }
 
   const userKey = getUserRedisKey(email)
-  // Merge with existing data so partial uploads don't erase other keys
+
+  // Force mode: overwrite Redis entirely with the incoming data (device is authoritative)
+  if (force) {
+    await redis.set(userKey, data)
+    return Response.json({ ok: true, forced: true, keys: Object.keys(data).length })
+  }
+
+  // Normal mode: merge with existing data so partial uploads don't erase other keys
   const existingUser = await redis.get<Record<string, string>>(userKey)
   const legacy = existingUser ? {} : await redis.get<Record<string, string>>(LEGACY_REDIS_KEY)
   const existing = existingUser || legacy || {}
