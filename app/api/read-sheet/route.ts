@@ -21,14 +21,14 @@ export async function GET() {
     const auth = getAuth()
     const sheets = google.sheets({ version: 'v4', auth })
 
-    // Read columns A, B (exercise names) + M, O, Q (July sessions)
+    // Read columns A, B (exercise names) + M onwards
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'A1:Q50',
+      range: 'A1:Z50',
     })
     const rows = res.data.values || []
 
-    // Column indices (0-based): A=0, B=1, M=12, O=14, Q=16
+    // Column indices (0-based): A=0, B=1, M=12, O=14, Q=16, S=18, U=20
     const result = rows.map((row, i) => ({
       row: i + 1,
       name: row[0] || '',
@@ -36,7 +36,9 @@ export async function GET() {
       M: row[12] || '',
       O: row[14] || '',
       Q: row[16] || '',
-    })).filter(r => r.name || r.M || r.O || r.Q)
+      S: row[18] || '',
+      U: row[20] || '',
+    })).filter(r => r.name || r.M || r.O || r.Q || r.S || r.U)
 
     return Response.json({ rows: result })
   } catch (e) {
