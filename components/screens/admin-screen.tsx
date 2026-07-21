@@ -290,8 +290,6 @@ export function AdminScreen() {
     setSyncingFromCloud(true)
     setSyncMsg(null)
     try {
-      // Remove sq_last_modified so the download logic treats cloud as newer
-      localStorage.removeItem('sq_last_modified')
       const res = await fetch('/api/sync-data')
       if (!res.ok) { setSyncMsg('Error al conectar con la nube'); return }
       const { data } = await res.json()
@@ -299,8 +297,10 @@ export function AdminScreen() {
       for (const [key, value] of Object.entries(data)) {
         if (typeof value === 'string') localStorage.setItem(key, value)
       }
-      setSyncMsg('Datos restaurados. Recargando...')
-      setTimeout(() => window.location.reload(), 1000)
+      // Notify all mounted components to re-read localStorage
+      window.dispatchEvent(new CustomEvent('sq-data-changed', { detail: { source: 'force-sync' } }))
+      setSyncMsg('Datos sincronizados')
+      setTimeout(() => setSyncMsg(null), 3000)
     } catch {
       setSyncMsg('Error de red al sincronizar')
     } finally {
