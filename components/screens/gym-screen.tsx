@@ -278,6 +278,7 @@ export function GymScreen() {
       : undefined
 
     const session: GymSessionLog = {
+      id: `gym-${sessionDate}-${selectedWorkout}`,
       date: sessionDate,
       workoutId: selectedWorkout,
       exercises,

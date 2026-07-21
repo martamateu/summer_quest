@@ -336,9 +336,9 @@ export default function Page() {
 
       const cloudMod = parseInt(data['sq_last_modified'] || '0', 10)
       const localMod = parseInt(localStorage.getItem('sq_last_modified') || '0', 10)
+      const cloudIsNewer = cloudMod > localMod || (cloudMod > 0 && localMod === 0)
 
-      // Si la nube tiene datos más recientes (o igual, pero local no tiene fecha), restauramos todo de la nube
-      if (cloudMod > localMod || (cloudMod > 0 && localMod === 0)) {
+      if (cloudIsNewer) {
         console.log('[sync] cloud is newer, restoring ALL keys')
         for (const key of SYNC_KEYS) {
           if (!data[key]) continue
@@ -351,14 +351,12 @@ export default function Page() {
           }
           localStorage.setItem(key, data[key])
         }
-        // Notificar a componentes montados sin disparar upload de vuelta
         window.dispatchEvent(new CustomEvent('sq-data-changed', { detail: { source: 'sync-restore' } }))
         return true
       }
 
-      // Incluso si sq_last_modified no es mayor, fusionamos los arrays (notas, tareas,
-      // súper, entrenos…) por id para no perder items creados en otro dispositivo, y
-      // completamos claves locales totalmente ausentes.
+      // Aunque local sea más reciente, SIEMPRE fusionamos arrays por id para no
+      // perder items creados en otro dispositivo, y rellenamos claves ausentes.
       let filledMissingKeys = false
       for (const key of SYNC_KEYS) {
         const cloudVal = data[key]
@@ -376,6 +374,21 @@ export default function Page() {
           localStorage.setItem(key, cloudVal)
           filledMissingKeys = true
           continue
+        }
+
+        // Si local es un array vacío y cloud tiene datos, cloud gana siempre
+        if (ID_ARRAY_KEYS.has(key) || STR_ARRAY_KEYS.has(key)) {
+          try {
+            const localParsed = JSON.parse(localVal)
+            if (Array.isArray(localParsed) && localParsed.length === 0) {
+              const cloudParsed = JSON.parse(cloudVal)
+              if (Array.isArray(cloudParsed) && cloudParsed.length > 0) {
+                localStorage.setItem(key, JSON.stringify(dropDeleted(key, cloudParsed)))
+                filledMissingKeys = true
+                continue
+              }
+            }
+          } catch { /* fallback to normal merge below */ }
         }
 
         // Fusión numérica para focus_log (toma máximo por fecha, nunca sobreescribe con menos)

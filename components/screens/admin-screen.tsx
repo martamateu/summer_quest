@@ -290,16 +290,27 @@ export function AdminScreen() {
     setSyncingFromCloud(true)
     setSyncMsg(null)
     try {
+      // Download main data from Redis
       const res = await fetch('/api/sync-data')
       if (!res.ok) { setSyncMsg('Error al conectar con la nube'); return }
       const { data } = await res.json()
       if (!data || Object.keys(data).length === 0) { setSyncMsg('La nube está vacía'); return }
-      // Clear local timestamp first so downloadFromCloud treats cloud as authoritative
-      localStorage.removeItem('sq_last_modified')
-      // Write all cloud keys directly to localStorage
+
+      // Write all cloud keys to localStorage
       for (const [key, value] of Object.entries(data)) {
         if (typeof value === 'string') localStorage.setItem(key, value)
       }
+
+      // Also restore steps history (stored in a separate Redis key)
+      const stepsRes = await fetch('/api/steps/history')
+      if (stepsRes.ok) {
+        const { days } = await stepsRes.json()
+        if (days && Object.keys(days).length > 0) {
+          const local = JSON.parse(localStorage.getItem('sq_steps_history') || '{}')
+          localStorage.setItem('sq_steps_history', JSON.stringify({ ...days, ...local }))
+        }
+      }
+
       // Notify all mounted components to re-read localStorage
       window.dispatchEvent(new CustomEvent('sq-data-changed', { detail: { source: 'force-sync' } }))
       setSyncMsg('Datos sincronizados')

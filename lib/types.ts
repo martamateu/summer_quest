@@ -147,6 +147,7 @@ export interface GymExerciseLog {
 }
 
 export interface GymSessionLog {
+  id?: string // unique id for deduplication across devices (date+workoutId)
   date: string // YYYY-MM-DD
   workoutId: string // 'A' | 'B' | 'C'
   exercises: GymExerciseLog[]
