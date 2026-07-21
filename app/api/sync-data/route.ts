@@ -175,6 +175,15 @@ export async function POST(request: Request) {
   // Fusionar por id/valor las claves array para no perder items creados en otro dispositivo.
   for (const key of Object.keys(data)) {
     if (ID_ARRAY_KEYS.has(key) || STR_ARRAY_KEYS.has(key)) {
+      // If incoming array is empty but existing has data, keep existing (never overwrite with empty)
+      try {
+        const incoming = JSON.parse(data[key])
+        const existingArr = existing[key] ? JSON.parse(existing[key]) : []
+        if (Array.isArray(incoming) && incoming.length === 0 && Array.isArray(existingArr) && existingArr.length > 0) {
+          merged[key] = existing[key] // keep existing, ignore empty incoming
+          continue
+        }
+      } catch { /* fallback to normal merge */ }
       merged[key] = mergeArrayValue(key, existing[key], data[key], tombs)
     } else if (NUM_RECORD_KEYS.has(key)) {
       merged[key] = mergeNumRecord(existing[key], data[key])
