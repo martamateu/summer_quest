@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { BottomNav } from '@/components/bottom-nav'
+import { SidebarNav } from '@/components/sidebar-nav'
 import { PomodoroTimer } from '@/components/pomodoro-timer'
 import { HabitEditor } from '@/components/habit-editor'
 import { TodayDashboard } from '@/components/screens/today-dashboard'
@@ -555,54 +556,52 @@ export default function Page() {
     uploadToCloud()
   }
 
-  const renderScreen = () => {
-    switch (activeTab) {
-      case 'stats':
-        return <StatsScreen metrics={metrics} />
-      default:
-        return null
-    }
-  }
-
   return (
-    <main className="min-h-screen bg-background max-w-md mx-auto">
-      {showHabitEditor ? (
-        <HabitEditor
-          habits={habits}
-          onClose={() => setShowHabitEditor(false)}
-          onSave={handleSaveHabits}
-        />
-      ) : showPomodoro ? (
-        <PomodoroTimer
-          onClose={() => setShowPomodoro(false)}
-          currentDeepWork={metrics.deepWork}
-          onDeepWorkUpdate={handleDeepWorkUpdate}
-        />
-      ) : (
-        <>
-          {renderScreen()}
-          {/* Keep these screens always mounted to preserve state */}
-          <div style={{ display: activeTab === 'hoy' ? 'block' : 'none' }}>
-            <TodayDashboard />
-          </div>
-          <div style={{ display: activeTab === 'food' ? 'block' : 'none' }}>
-            <FoodScreen />
-          </div>
-          <div style={{ display: activeTab === 'finanzas' ? 'block' : 'none' }}>
-            <FinanzasScreen />
-          </div>
-          <div style={{ display: activeTab === 'gym' ? 'block' : 'none' }}>
-            <GymScreen />
-          </div>
-          <div style={{ display: activeTab === 'focus' ? 'block' : 'none' }}>
-            <FocusScreen />
-          </div>
-          <div style={{ display: activeTab === 'admin' ? 'block' : 'none' }}>
-            <AdminScreen />
-          </div>
-          <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
-        </>
-      )}
-    </main>
+    <div className="min-h-screen bg-background flex">
+      <SidebarNav activeTab={activeTab} onTabChange={setActiveTab} />
+      <main className="flex-1 lg:ml-56 w-full min-w-0">
+        {showHabitEditor ? (
+          <HabitEditor
+            habits={habits}
+            onClose={() => setShowHabitEditor(false)}
+            onSave={handleSaveHabits}
+          />
+        ) : showPomodoro ? (
+          <PomodoroTimer
+            onClose={() => setShowPomodoro(false)}
+            currentDeepWork={metrics.deepWork}
+            onDeepWorkUpdate={handleDeepWorkUpdate}
+          />
+        ) : (
+          <>
+            {/* All screens in the same wrapper for consistent layout */}
+            <div className="max-w-md mx-auto lg:max-w-none lg:mx-0">
+              <div style={{ display: activeTab === 'hoy' ? 'block' : 'none' }}>
+                <TodayDashboard />
+              </div>
+              <div style={{ display: activeTab === 'food' ? 'block' : 'none' }}>
+                <FoodScreen />
+              </div>
+              <div style={{ display: activeTab === 'finanzas' ? 'block' : 'none' }}>
+                <FinanzasScreen />
+              </div>
+              <div style={{ display: activeTab === 'gym' ? 'block' : 'none' }}>
+                <GymScreen />
+              </div>
+              <div style={{ display: activeTab === 'focus' ? 'block' : 'none' }}>
+                <FocusScreen />
+              </div>
+              <div style={{ display: activeTab === 'stats' ? 'block' : 'none' }}>
+                <StatsScreen metrics={metrics} />
+              </div>
+              <div style={{ display: activeTab === 'admin' ? 'block' : 'none' }}>
+                <AdminScreen />
+              </div>
+            </div>
+            <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
+          </>
+        )}
+      </main>
+    </div>
   )
 }

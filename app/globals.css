@@ -104,3 +104,12 @@
     @apply font-sans;
   }
 }
+
+@layer utilities {
+  /* On desktop (lg+) reduce the bottom padding added for the mobile nav */
+  @media (min-width: 1024px) {
+    .pb-24 {
+      padding-bottom: 2rem;
+    }
+  }
+}
