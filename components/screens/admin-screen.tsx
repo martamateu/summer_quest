@@ -294,6 +294,9 @@ export function AdminScreen() {
       if (!res.ok) { setSyncMsg('Error al conectar con la nube'); return }
       const { data } = await res.json()
       if (!data || Object.keys(data).length === 0) { setSyncMsg('La nube está vacía'); return }
+      // Clear local timestamp first so downloadFromCloud treats cloud as authoritative
+      localStorage.removeItem('sq_last_modified')
+      // Write all cloud keys directly to localStorage
       for (const [key, value] of Object.entries(data)) {
         if (typeof value === 'string') localStorage.setItem(key, value)
       }

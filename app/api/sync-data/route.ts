@@ -159,6 +159,14 @@ export async function POST(request: Request) {
   const existing = existingUser || legacy || {}
   const merged = { ...existing, ...data }
 
+  // sq_last_modified: always keep the highest timestamp so the most recent
+  // device wins when any client downloads and compares timestamps.
+  const existingMod = parseInt(existing['sq_last_modified'] || '0', 10)
+  const incomingMod = parseInt(data['sq_last_modified'] || '0', 10)
+  if (existingMod > incomingMod) {
+    merged['sq_last_modified'] = existing['sq_last_modified']
+  }
+
   // Fusionar tombstones (borrados) de ambos lados para descartar items borrados en cualquier dispositivo.
   const tombs = mergeTombstones(parseTombstones(existing[TOMBSTONE_KEY]), parseTombstones(data[TOMBSTONE_KEY]))
   if (Object.keys(tombs).length > 0) merged[TOMBSTONE_KEY] = JSON.stringify(tombs)
