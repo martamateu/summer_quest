@@ -130,10 +130,10 @@ export async function GET(request: Request) {
     const sheetsAuth = getSheetsAuth()
     const sheets = google.sheets({ version: 'v4', auth: sheetsAuth })
 
-    // Leer el bloque completo de A y B (filas 1-30)
+    // Leer el bloque completo de A y B (filas 1-35, b6 está en fila 32)
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'A1:AZ30',
+      range: 'A1:AZ35',
     })
     const rows = (res.data.values || []) as string[][]
 
