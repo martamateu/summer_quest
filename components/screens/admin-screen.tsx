@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Mic, MicOff, Send, Trash2, StickyNote, ShoppingCart, Loader2, Check, Plus, Sparkles, ChevronLeft, ChevronRight, ChevronDown, Home, RotateCcw, Pencil, X, Droplets, Brain, Target } from 'lucide-react'
+import { Mic, MicOff, Send, Trash2, StickyNote, ShoppingCart, Loader2, Check, Plus, Sparkles, ChevronLeft, ChevronRight, ChevronDown, Home, RotateCcw, Pencil, X, Droplets, Brain, Target, CloudDownload } from 'lucide-react'
 import { resolveHomeTasks, getSuggestedTask, getSuggestedTaskPerArea } from '@/lib/cleaning-templates'
 import type { HomeData, ResolvedTask } from '@/lib/cleaning-templates'
 import { getLocalDateStr as cycleLocalDate, getCurrentPhase, predictNextPeriod, computeAvgCycleLen, getAveragePeriodLength } from '@/lib/cycle'
@@ -281,6 +281,32 @@ export function AdminScreen() {
   const [editLabel, setEditLabel] = useState('')
   const [editFrequency, setEditFrequency] = useState(7)
   const [editCustomFreq, setEditCustomFreq] = useState('')
+
+  // Force sync from cloud
+  const [syncingFromCloud, setSyncingFromCloud] = useState(false)
+  const [syncMsg, setSyncMsg] = useState<string | null>(null)
+
+  const forceDownloadFromCloud = async () => {
+    setSyncingFromCloud(true)
+    setSyncMsg(null)
+    try {
+      // Remove sq_last_modified so the download logic treats cloud as newer
+      localStorage.removeItem('sq_last_modified')
+      const res = await fetch('/api/sync-data')
+      if (!res.ok) { setSyncMsg('Error al conectar con la nube'); return }
+      const { data } = await res.json()
+      if (!data || Object.keys(data).length === 0) { setSyncMsg('La nube está vacía'); return }
+      for (const [key, value] of Object.entries(data)) {
+        if (typeof value === 'string') localStorage.setItem(key, value)
+      }
+      setSyncMsg('Datos restaurados. Recargando...')
+      setTimeout(() => window.location.reload(), 1000)
+    } catch {
+      setSyncMsg('Error de red al sincronizar')
+    } finally {
+      setSyncingFromCloud(false)
+    }
+  }
 
   useEffect(() => {
     setNotes(readArr<Note>(NOTES_KEY))
@@ -838,7 +864,18 @@ export function AdminScreen() {
 
   return (
     <div className="px-4 pt-6 pb-24">
-      <h1 className="text-2xl font-bold text-foreground mb-1">Admin Life</h1>
+      <div className="flex items-center justify-between mb-1">
+        <h1 className="text-2xl font-bold text-foreground">Admin Life</h1>
+        <button
+          onClick={forceDownloadFromCloud}
+          disabled={syncingFromCloud}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-secondary text-muted-foreground text-xs font-medium hover:bg-accent hover:text-primary transition-colors disabled:opacity-50"
+        >
+          {syncingFromCloud ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CloudDownload className="w-3.5 h-3.5" />}
+          Sync nube
+        </button>
+      </div>
+      {syncMsg && <p className="text-xs text-primary mb-2">{syncMsg}</p>}
       <p className="text-sm text-muted-foreground mb-4">Dicta o escribe: la IA lo ordena en notas o en tu lista del súper.</p>
 
       {/* Capture bar */}
