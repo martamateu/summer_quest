@@ -95,8 +95,8 @@ async function readWorkout(
     }
 
     const row = rows[rowIdx]
-    // El nombre real del ejercicio: primera celda no vacía de las primeras 6 columnas
-    const name = (row.slice(0, 6).find(c => c?.trim()) || ex.id).trim()
+    // El nombre real del ejercicio: columna A si tiene texto, si no columna B, si no el id
+    const name = (row[0]?.trim() || row[1]?.trim() || ex.id).trim()
 
     const weeks: ExerciseWeek[] = []
     for (let w = 1; w <= MAX_WEEKS; w++) {
