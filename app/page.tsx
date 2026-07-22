@@ -625,7 +625,7 @@ export default function Page() {
         ) : (
           <>
             {/* All screens in the same wrapper for consistent layout */}
-            <div className="max-w-md mx-auto lg:max-w-2xl lg:mx-0 lg:px-6">
+            <div className="max-w-md mx-auto lg:max-w-none lg:mx-0">
               <div style={{ display: activeTab === 'hoy' ? 'block' : 'none' }}>
                 <TodayDashboard />
               </div>
