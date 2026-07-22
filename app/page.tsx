@@ -357,7 +357,44 @@ export default function Page() {
 
       // Aunque local sea más reciente, SIEMPRE fusionamos arrays por id para no
       // perder items creados en otro dispositivo, y rellenamos claves ausentes.
+      // También restauramos claves escalares si la nube las tiene y local no.
       let filledMissingKeys = false
+
+      // Para arrays con id: siempre fusionar desde la nube, independientemente
+      // del timestamp. Así los gastos/tareas/entrenos añadidos en otro dispositivo
+      // llegan aunque este dispositivo sea "más reciente".
+      for (const key of [...ID_ARRAY_KEYS, ...STR_ARRAY_KEYS]) {
+        const cloudVal = data[key]
+        if (!cloudVal) continue
+        const localVal = localStorage.getItem(key)
+        if (!localVal) continue
+        try {
+          const local = JSON.parse(localVal)
+          const cloud = JSON.parse(cloudVal)
+          if (!Array.isArray(local) || !Array.isArray(cloud)) continue
+          // Check if cloud has any ids not in local
+          const localIds = new Set(local.map((i: any) => i?.id).filter(Boolean))
+          const hasNew = cloud.some((i: any) => i?.id && !localIds.has(i.id))
+          if (!hasNew) continue
+          // Merge: local first, cloud adds new items
+          const keyOf = (item: any): string | null => {
+            if (item == null) return null
+            if (typeof item === 'object') {
+              if ('id' in item && item.id != null && item.id !== '') return `id:${item.id}`
+              return `c:${JSON.stringify(item)}`
+            }
+            return `v:${JSON.stringify(item)}`
+          }
+          const byKey = new Map<string, any>()
+          for (const item of local) { const k = keyOf(item); if (k) byKey.set(k, item) }
+          for (const item of cloud) { const k = keyOf(item); if (k) byKey.set(k, item) }
+          const merged = dropDeleted(key, Array.from(byKey.values()))
+          localStorage.setItem(key, JSON.stringify(merged))
+          filledMissingKeys = true
+          console.log(`[sync] merged new items from cloud for ${key}: +${merged.length - local.length}`)
+        } catch { /* ignore */ }
+      }
+
       for (const key of SYNC_KEYS) {
         const cloudVal = data[key]
         if (!cloudVal) continue
