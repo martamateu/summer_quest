@@ -249,12 +249,16 @@ export default function Page() {
   // Debounced upload: cancel previous pending upload so only the latest data is sent
   const uploadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Keys too large to send via sendBeacon (steps history, home config)
+  const LARGE_KEYS = new Set(['sq_steps_history', 'sq_home', 'sq_cleaning_history'])
+
   // Immediate upload (no debounce) — used when page is closing/hiding
   const flushToCloud = () => {
     if (uploadTimerRef.current) clearTimeout(uploadTimerRef.current)
     if (!syncReadyRef.current) return
     const data: Record<string, string> = {}
     for (const key of SYNC_KEYS) {
+      if (LARGE_KEYS.has(key)) continue // skip large keys to stay under 64KB beacon limit
       const val = localStorage.getItem(key)
       if (val) data[key] = val
     }
@@ -269,7 +273,6 @@ export default function Page() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: payload,
-        keepalive: true,
       }).catch(() => {})
     }
   }
@@ -290,7 +293,6 @@ export default function Page() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ data }),
-        keepalive: true,
       })
         .then(r => {
           if (!r.ok) console.error('[sync] upload failed:', r.status)
