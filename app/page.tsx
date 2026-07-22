@@ -371,12 +371,8 @@ export default function Page() {
         try {
           const local = JSON.parse(localVal)
           const cloud = JSON.parse(cloudVal)
-          if (!Array.isArray(local) || !Array.isArray(cloud)) continue
-          // Check if cloud has any ids not in local
-          const localIds = new Set(local.map((i: any) => i?.id).filter(Boolean))
-          const hasNew = cloud.some((i: any) => i?.id && !localIds.has(i.id))
-          if (!hasNew) continue
-          // Merge: local first, cloud adds new items
+          if (!Array.isArray(local) || !Array.isArray(cloud) || cloud.length === 0) continue
+          // Always merge: local first, cloud adds/updates items
           const keyOf = (item: any): string | null => {
             if (item == null) return null
             if (typeof item === 'object') {
@@ -389,9 +385,11 @@ export default function Page() {
           for (const item of local) { const k = keyOf(item); if (k) byKey.set(k, item) }
           for (const item of cloud) { const k = keyOf(item); if (k) byKey.set(k, item) }
           const merged = dropDeleted(key, Array.from(byKey.values()))
-          localStorage.setItem(key, JSON.stringify(merged))
-          filledMissingKeys = true
-          console.log(`[sync] merged new items from cloud for ${key}: +${merged.length - local.length}`)
+          if (merged.length !== local.length || JSON.stringify(merged) !== JSON.stringify(local)) {
+            localStorage.setItem(key, JSON.stringify(merged))
+            filledMissingKeys = true
+            console.log(`[sync] merged cloud items for ${key}: local=${local.length} cloud=${cloud.length} merged=${merged.length}`)
+          }
         } catch { /* ignore */ }
       }
 
