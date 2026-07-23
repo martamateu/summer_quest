@@ -80,16 +80,6 @@ function loadFlexLogs(): FlexSessionLog[] {
   try { return JSON.parse(localStorage.getItem(FLEX_LOGS_KEY) || '[]') } catch { return [] }
 }
 
-// "rotación externa" has both arms simultaneously, not per side
-function isSimultaneous(reps: string): boolean {
-  const t = reps.toLowerCase()
-  // "por brazo" means alternating → each arm separately → ×2
-  // "rotación externa" specifically says "por brazo" but both arms move at same time per set
-  // Based on exercise description: Band External Rotation = per arm alternating
-  // User says it's both arms at once → treat as NOT per-side multiplier
-  return t.includes('rotación externa') || t.includes('rotacion externa')
-}
-
 function timePerSerie(ex: FlexExercise): number {
   const text = ex.reps.toLowerCase()
   if (text.includes('segundo')) {
@@ -98,9 +88,9 @@ function timePerSerie(ex: FlexExercise): number {
   }
   const nums = ex.reps.match(/\d+/g)?.map(Number) || [10]
   const maxReps = Math.max(...nums)
-  // "por lado" → ×2 (e.g. hip switches), "por brazo" on external rotation → both at once → ×1
-  const perSide = (text.includes('por lado')) ? 2 :
-    (text.includes('por brazo') && !isSimultaneous(ex.name)) ? 2 : 1
+  // "por lado" (hip switches etc) → both sides sequentially → ×2
+  // "por brazo" (band external rotation) → both arms simultaneously → ×1
+  const perSide = text.includes('por lado') ? 2 : 1
   return maxReps * perSide * 3
 }
 
@@ -281,15 +271,15 @@ export function FlexSession({ cachedData, onDataLoaded }: FlexSessionProps) {
     setExStates(prev => ({ ...prev, [ex.id]: { status: 'idle', currentSerie: 1, timeLeft: timePerSerie(ex), realSeconds: 0 } }))
   }
 
-  // Mark flex done locally (even with 1 exercise) and save to local history
-  const markAndSaveLocally = () => {
-    if (!data) return
+  // Save current progress to local history (called automatically when any exercise finishes)
+  const saveProgressLocally = (states: Record<string, ExerciseState>, exercises: FlexExercise[]) => {
     const date = getTodayStr()
-    const exList = data.exercises.map(ex => ({
-      name: ex.name,
-      seconds: Math.round(exStates[ex.id]?.realSeconds || 0),
-    }))
-    const log: FlexSessionLog = { id: `flex-${date}-${Date.now().toString(36)}`, date, exercises: exList }
+    const donExercises = exercises
+      .filter(ex => states[ex.id]?.status === 'done')
+      .map(ex => ({ name: ex.name, seconds: Math.round(states[ex.id]?.realSeconds || 0) }))
+    if (donExercises.length === 0) return
+    // Use fixed id per day so same-day exercises accumulate in one session
+    const log: FlexSessionLog = { id: `flex-${date}`, date, exercises: donExercises }
     saveFlexSessionLocal(log)
     setPastLogs(loadFlexLogs())
     logFlexDate(date)
@@ -323,9 +313,17 @@ export function FlexSession({ cachedData, onDataLoaded }: FlexSessionProps) {
     }
   }
 
+  // Auto-save whenever any exercise finishes
+  useEffect(() => {
+    if (!data || !sessionStarted) return
+    const anyDone = data.exercises.some(ex => exStates[ex.id]?.status === 'done')
+    if (anyDone) saveProgressLocally(exStates, data.exercises)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exStates])
+
   useEffect(() => () => clearTimers(), [])
 
-  const anySomeDone = data ? data.exercises.some(ex => exStates[ex.id]?.status === 'done') : false
+
   const allDone = data ? data.exercises.every(ex => exStates[ex.id]?.status === 'done') : false
 
   // ── Popup timer modal ──────────────────────────────────────────────────────
@@ -530,20 +528,10 @@ export function FlexSession({ cachedData, onDataLoaded }: FlexSessionProps) {
       </div>
 
       {/* Action buttons */}
-      {sessionStarted && !localSavedOk && (
-        <button
-          onClick={markAndSaveLocally}
-          disabled={!anySomeDone}
-          className="w-full py-3 rounded-xl bg-primary/10 text-primary font-medium text-sm flex items-center justify-center gap-2 mb-2 disabled:opacity-40"
-        >
-          <Check className="w-4 h-4" />
-          Marcar flex de hoy {!allDone && `(${data.exercises.filter(ex => exStates[ex.id]?.status === 'done').length}/${data.exercises.length})`}
-        </button>
-      )}
-
       {localSavedOk && (
         <div className="flex items-center gap-2 py-2 mb-2 text-green-600 text-sm font-medium">
-          <Check className="w-4 h-4" /> Flex marcado en Today y Stats
+          <Check className="w-4 h-4" />
+          Flex guardado · {data.exercises.filter(ex => exStates[ex.id]?.status === 'done').length} ejercicio{data.exercises.filter(ex => exStates[ex.id]?.status === 'done').length !== 1 ? 's' : ''} marcados en Today y Stats
         </div>
       )}
 
