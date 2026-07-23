@@ -103,6 +103,26 @@ function calcStepsStreak(history: Record<string, { steps: number }>): number {
   return streak
 }
 
+// ── Toggle descanso ────────────────────────────────────────────────────────────
+function toggleDescanso(date: string, currentlyDone: boolean) {
+  try {
+    const logs = JSON.parse(localStorage.getItem('sq_workout_logs') || '[]')
+    if (currentlyDone) {
+      // Remove descanso entry for this date
+      const filtered = logs.filter(
+        (l: any) => !(l.date === date && (l.activityType === 'descanso' || l.source === 'goal_descanso'))
+      )
+      localStorage.setItem('sq_workout_logs', JSON.stringify(filtered))
+    } else {
+      // Add descanso entry for this date
+      const id = `descanso-${date}-${Date.now().toString(36)}`
+      logs.push({ id, date, activityName: 'Descanso activo', activityType: 'descanso', source: 'manual_stats', addedManually: true })
+      localStorage.setItem('sq_workout_logs', JSON.stringify(logs))
+    }
+    window.dispatchEvent(new Event('sq-data-changed'))
+  } catch {}
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 export function StatsScreen({ metrics }: StatsScreenProps) {
   const [view, setView] = useState<'dia' | 'semana' | 'mes'>('semana')
@@ -547,10 +567,16 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
             <div className="flex gap-1 flex-wrap">
               {rows.map((r, i) => {
                 const done = getMetricDone(r, meta.id)
+                const isDescanso = meta.id === 'descanso'
+                const isClickable = isDescanso
                 return (
                   <div key={i} className="flex flex-col items-center gap-0.5">
-                    <div className="w-6 h-6 rounded-md flex items-center justify-center text-xs"
-                      style={{ backgroundColor: done ? meta.color : meta.color + '20', color: done ? 'white' : 'transparent' }}>
+                    <div
+                      className={`w-6 h-6 rounded-md flex items-center justify-center text-xs transition-opacity ${isClickable ? 'cursor-pointer active:opacity-60' : ''}`}
+                      style={{ backgroundColor: done ? meta.color : meta.color + '20', color: done ? 'white' : 'transparent' }}
+                      onClick={isClickable ? () => { toggleDescanso(r.date, done); loadAll() } : undefined}
+                      title={isClickable ? (done ? 'Quitar descanso' : 'Marcar como descanso') : undefined}
+                    >
                       ✓
                     </div>
                     {view === 'semana' && (
