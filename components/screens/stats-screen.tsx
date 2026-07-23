@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { Footprints, PersonStanding, Wallet, Dumbbell, GraduationCap, ChevronLeft, ChevronRight, Smartphone, Timer, Brain, ListChecks, Flame, Beef, Wheat, Droplets } from 'lucide-react'
 import type { DailyMetrics } from '@/lib/types'
 import { FOCUS_GOAL_MIN } from '@/components/screens/focus-screen'
+import { recordTombstones } from '@/lib/sync-tombstones'
 
 // ── Date helpers ───────────────────────────────────────────────────────────────
 const fmtLocal = (d: Date) =>
@@ -108,16 +109,20 @@ function toggleDescanso(date: string, currentlyDone: boolean) {
   try {
     const logs = JSON.parse(localStorage.getItem('sq_workout_logs') || '[]')
     if (currentlyDone) {
-      const filtered = logs.filter(
-        (l: any) => !(l.date === date && (l.activityType === 'descanso' || l.source === 'goal_descanso' || l.source === 'manual_stats'))
+      // Find ids of descanso entries for this date to tombstone them
+      const toRemove: any[] = logs.filter(
+        (l: any) => l.date === date && (l.activityType === 'descanso' || l.source === 'goal_descanso' || l.source === 'manual_stats')
       )
+      const ids = toRemove.map((l: any) => l.id).filter(Boolean)
+      const filtered = logs.filter((l: any) => !toRemove.includes(l))
       localStorage.setItem('sq_workout_logs', JSON.stringify(filtered))
+      // Tombstone the removed ids so they don't come back from Redis
+      if (ids.length > 0) recordTombstones('sq_workout_logs', ids)
     } else {
       const id = `descanso-${date}-${Date.now().toString(36)}`
       logs.push({ id, date, activityName: 'Descanso activo', activityType: 'descanso', source: 'manual_stats', addedManually: true })
       localStorage.setItem('sq_workout_logs', JSON.stringify(logs))
     }
-    // Bump last_modified so this change wins over Redis on next sync
     localStorage.setItem('sq_last_modified', Date.now().toString())
     window.dispatchEvent(new Event('sq-data-changed'))
   } catch {}
