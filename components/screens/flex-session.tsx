@@ -178,6 +178,13 @@ export function FlexSession({ cachedData, onDataLoaded }: FlexSessionProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Reload past logs when cloud sync brings in data from another device
+  useEffect(() => {
+    const handler = () => setPastLogs(loadFlexLogs())
+    window.addEventListener('sq-data-changed', handler)
+    return () => window.removeEventListener('sq-data-changed', handler)
+  }, [])
+
   // Init exercise states
   useEffect(() => {
     if (!data) return
@@ -325,6 +332,11 @@ export function FlexSession({ cachedData, onDataLoaded }: FlexSessionProps) {
 
 
   const allDone = data ? data.exercises.every(ex => exStates[ex.id]?.status === 'done') : false
+
+  // If there's a local log for today (synced from another device), allow uploading
+  // even if no session has been started on this device.
+  const todayLog = pastLogs.find(l => l.date === getTodayStr())
+  const canUploadFromSync = !sessionStarted && !!todayLog && !uploadedOk
 
   // ── Popup timer modal ──────────────────────────────────────────────────────
   const popupEx = popupExId ? data?.exercises.find(e => e.id === popupExId) : null
@@ -535,11 +547,43 @@ export function FlexSession({ cachedData, onDataLoaded }: FlexSessionProps) {
         </div>
       )}
 
-      {sessionStarted && (
+      {(sessionStarted || canUploadFromSync) && (
         uploadedOk ? (
           <div className="flex items-center justify-center gap-2 py-2 text-green-600 text-sm font-medium">
             <Check className="w-4 h-4" /> Subido al sheet
           </div>
+        ) : canUploadFromSync ? (
+          // Synced from another device: allow uploading today's session
+          <button
+            onClick={async () => {
+              if (!data || !todayLog) return
+              setUploading(true)
+              try {
+                const res = await fetch('/api/flex/log', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    date: todayLog.date,
+                    exercises: todayLog.exercises,
+                    timeColIndex: data.nextTimeColIndex,
+                    blockStartRow: data.nextBlockStartRow,
+                  }),
+                })
+                if (!res.ok) throw new Error('Error al guardar')
+                onDataLoaded({ ...data, nextTimeColIndex: -1 } as FlexData)
+                setUploadedOk(true)
+              } catch {
+                setError('No se pudo subir al sheet. Inténtalo de nuevo.')
+              } finally {
+                setUploading(false)
+              }
+            }}
+            disabled={uploading}
+            className="w-full py-3 rounded-xl border border-border text-foreground font-medium text-sm flex items-center justify-center gap-2 disabled:opacity-40"
+          >
+            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+            {uploading ? 'Subiendo…' : 'Subir al sheet'}
+          </button>
         ) : (
           <button
             onClick={uploadToSheet}

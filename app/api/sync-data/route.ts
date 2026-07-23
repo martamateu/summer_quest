@@ -15,6 +15,7 @@ const getUserRedisKey = (email: string) => `app:data:${email.toLowerCase()}`
 const ID_ARRAY_KEYS = new Set([
   'sq_notes', 'sq_super_list', 'sq_tasks_list', 'sq_goals',
   'sq_workout_logs', 'sq_run_logs', 'sq_gym_logs', 'sq_expenses', 'sq_favorite_recipes',
+  'sq_flex_session_logs',
 ])
 // Claves cuyo valor es un array de strings (fechas): se fusionan por unión de valores.
 const STR_ARRAY_KEYS = new Set(['sq_flex_log', 'sq_finance_log'])

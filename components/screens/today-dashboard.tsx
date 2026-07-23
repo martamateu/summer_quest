@@ -255,23 +255,42 @@ export function TodayDashboard({}: TodayDashboardProps) {
 
   // Load today's data from localStorage
   useEffect(() => {
-    setDayData(readDayData(today))
+    let current = readDayData(today)
+
+    // Auto-marcar flexibilidad si sq_flex_log ya tiene hoy al abrir la app
+    // (datos sincronizados desde otro dispositivo antes del mount)
+    if (!current.flexibilidad.done && isTodayLogged('sq_flex_log')) {
+      current = { ...current, flexibilidad: { ...current.flexibilidad, done: true } }
+      saveDayData(current)
+    }
+
+    setDayData(current)
     setTodayExpenseCount(countTodayExpenses())
     const SR = (typeof window !== 'undefined' &&
       ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)) || null
     speechSupported.current = !!SR
   }, [today])
 
-  // Escuchar cambios: si se añaden gastos hoy, auto-marcar finanzas
+  // Escuchar cambios: si se añaden gastos hoy, auto-marcar finanzas;
+  // si sq_flex_log tiene hoy (sincronizado desde otro dispositivo), auto-marcar flexibilidad.
   useEffect(() => {
     const handler = () => {
       // Refrescar objetivos del día (p. ej. un entreno marcado desde Entrenos/OCR)
-      setDayData(readDayData(today))
+      let current = readDayData(today)
+
+      // Auto-marcar flexibilidad si sq_flex_log tiene hoy pero el goal no está marcado
+      // (puede llegar por sync desde otro dispositivo donde se hizo el flex)
+      if (!current.flexibilidad.done && isTodayLogged('sq_flex_log')) {
+        current = { ...current, flexibilidad: { ...current.flexibilidad, done: true } }
+        saveDayData(current)
+      }
+
+      setDayData(current)
+
       const count = countTodayExpenses()
       setTodayExpenseCount(count)
       if (count > 0) {
         // Auto-marcar finanzas si hay gastos hoy y no estaba marcado
-        const current = readDayData(today)
         if (!current.finanzas) {
           const next = { ...current, finanzas: true }
           saveDayData(next)
