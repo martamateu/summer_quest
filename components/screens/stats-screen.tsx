@@ -108,17 +108,17 @@ function toggleDescanso(date: string, currentlyDone: boolean) {
   try {
     const logs = JSON.parse(localStorage.getItem('sq_workout_logs') || '[]')
     if (currentlyDone) {
-      // Remove descanso entry for this date
       const filtered = logs.filter(
-        (l: any) => !(l.date === date && (l.activityType === 'descanso' || l.source === 'goal_descanso'))
+        (l: any) => !(l.date === date && (l.activityType === 'descanso' || l.source === 'goal_descanso' || l.source === 'manual_stats'))
       )
       localStorage.setItem('sq_workout_logs', JSON.stringify(filtered))
     } else {
-      // Add descanso entry for this date
       const id = `descanso-${date}-${Date.now().toString(36)}`
       logs.push({ id, date, activityName: 'Descanso activo', activityType: 'descanso', source: 'manual_stats', addedManually: true })
       localStorage.setItem('sq_workout_logs', JSON.stringify(logs))
     }
+    // Bump last_modified so this change wins over Redis on next sync
+    localStorage.setItem('sq_last_modified', Date.now().toString())
     window.dispatchEvent(new Event('sq-data-changed'))
   } catch {}
 }
