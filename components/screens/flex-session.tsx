@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Play, Pause, RotateCcw, Check, Loader2, RefreshCw, Save } from 'lucide-react'
+import { Play, Pause, RotateCcw, Check, Loader2, RefreshCw, Upload, X } from 'lucide-react'
 
 export interface FlexExercise {
   id: string
@@ -18,11 +18,17 @@ export interface FlexData {
   nextBlockStartRow: number
 }
 
+interface FlexSessionLog {
+  id: string
+  date: string
+  exercises: { name: string; seconds: number }[]
+}
+
 interface ExerciseState {
   status: 'idle' | 'running' | 'paused' | 'done'
-  currentSerie: number   // 1-based
+  currentSerie: number
   timeLeft: number
-  realSeconds: number    // accumulated real time for this exercise
+  realSeconds: number
 }
 
 interface FlexSessionProps {
@@ -31,6 +37,7 @@ interface FlexSessionProps {
 }
 
 const REST_SECONDS = 30
+const FLEX_LOGS_KEY = 'sq_flex_session_logs'
 
 const getTodayStr = () => {
   const d = new Date()
@@ -58,6 +65,31 @@ function markFlexInToday(date: string) {
   } catch {}
 }
 
+function saveFlexSessionLocal(log: FlexSessionLog) {
+  try {
+    const logs: FlexSessionLog[] = JSON.parse(localStorage.getItem(FLEX_LOGS_KEY) || '[]')
+    // Replace if same date exists, otherwise prepend
+    const idx = logs.findIndex(l => l.date === log.date)
+    if (idx >= 0) logs[idx] = log
+    else logs.unshift(log)
+    localStorage.setItem(FLEX_LOGS_KEY, JSON.stringify(logs.slice(0, 20)))
+  } catch {}
+}
+
+function loadFlexLogs(): FlexSessionLog[] {
+  try { return JSON.parse(localStorage.getItem(FLEX_LOGS_KEY) || '[]') } catch { return [] }
+}
+
+// "rotación externa" has both arms simultaneously, not per side
+function isSimultaneous(reps: string): boolean {
+  const t = reps.toLowerCase()
+  // "por brazo" means alternating → each arm separately → ×2
+  // "rotación externa" specifically says "por brazo" but both arms move at same time per set
+  // Based on exercise description: Band External Rotation = per arm alternating
+  // User says it's both arms at once → treat as NOT per-side multiplier
+  return t.includes('rotación externa') || t.includes('rotacion externa')
+}
+
 function timePerSerie(ex: FlexExercise): number {
   const text = ex.reps.toLowerCase()
   if (text.includes('segundo')) {
@@ -66,7 +98,9 @@ function timePerSerie(ex: FlexExercise): number {
   }
   const nums = ex.reps.match(/\d+/g)?.map(Number) || [10]
   const maxReps = Math.max(...nums)
-  const perSide = text.includes('por lado') || text.includes('por brazo') ? 2 : 1
+  // "por lado" → ×2 (e.g. hip switches), "por brazo" on external rotation → both at once → ×1
+  const perSide = (text.includes('por lado')) ? 2 :
+    (text.includes('por brazo') && !isSimultaneous(ex.name)) ? 2 : 1
   return maxReps * perSide * 3
 }
 
@@ -76,17 +110,23 @@ function fmtTime(secs: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
-// Small circular progress ring
-function Ring({ seconds, total, color }: { seconds: number; total: number; color: string }) {
-  const r = 20
+function fmtDate(dateStr: string): string {
+  try {
+    return new Date(dateStr + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })
+  } catch { return dateStr }
+}
+
+// Large circular timer for popup
+function BigRing({ seconds, total, color, isRest }: { seconds: number; total: number; color: string; isRest?: boolean }) {
+  const r = 80
   const circ = 2 * Math.PI * r
   const offset = total > 0 ? circ * (1 - seconds / total) : circ
   return (
-    <svg width="48" height="48" className="rotate-[-90deg] shrink-0">
-      <circle cx="24" cy="24" r={r} fill="none" stroke="#E5E7EB" strokeWidth="4" />
+    <svg width="192" height="192" className="rotate-[-90deg]">
+      <circle cx="96" cy="96" r={r} fill="none" stroke={isRest ? '#dcfce7' : '#E8EEF7'} strokeWidth="12" />
       <circle
-        cx="24" cy="24" r={r}
-        fill="none" stroke={color} strokeWidth="4"
+        cx="96" cy="96" r={r}
+        fill="none" stroke={color} strokeWidth="12"
         strokeDasharray={circ}
         strokeDashoffset={offset}
         strokeLinecap="round"
@@ -96,62 +136,64 @@ function Ring({ seconds, total, color }: { seconds: number; total: number; color
   )
 }
 
+// Small ring for list
+function SmallRing({ seconds, total, color }: { seconds: number; total: number; color: string }) {
+  const r = 18
+  const circ = 2 * Math.PI * r
+  const offset = total > 0 ? circ * (1 - seconds / total) : circ
+  return (
+    <svg width="44" height="44" className="rotate-[-90deg] shrink-0">
+      <circle cx="22" cy="22" r={r} fill="none" stroke="#E5E7EB" strokeWidth="4" />
+      <circle cx="22" cy="22" r={r} fill="none" stroke={color} strokeWidth="4"
+        strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
+        style={{ transition: 'stroke-dashoffset 1s linear' }} />
+    </svg>
+  )
+}
+
 export function FlexSession({ cachedData, onDataLoaded }: FlexSessionProps) {
   const [data, setData] = useState<FlexData | null>(cachedData)
   const [loading, setLoading] = useState(!cachedData)
   const [error, setError] = useState<string | null>(null)
+  const [pastLogs, setPastLogs] = useState<FlexSessionLog[]>([])
 
-  // Per-exercise state
   const [exStates, setExStates] = useState<Record<string, ExerciseState>>({})
-  // Which exercise is currently active (running/paused)
   const [activeId, setActiveId] = useState<string | null>(null)
-  // Rest phase: resting between series for which exercise
   const [restingId, setRestingId] = useState<string | null>(null)
   const [restLeft, setRestLeft] = useState(0)
 
+  // Popup timer state
+  const [popupExId, setPopupExId] = useState<string | null>(null)
+
   const [sessionStarted, setSessionStarted] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [savedOk, setSavedOk] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [uploadedOk, setUploadedOk] = useState(false)
+  const [localSavedOk, setLocalSavedOk] = useState(false)
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const restIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // Load data
+  // Load data + past logs
   useEffect(() => {
-    if (cachedData) {
-      setData(cachedData)
-      setLoading(false)
-      return
-    }
+    setPastLogs(loadFlexLogs())
+    if (cachedData) { setData(cachedData); setLoading(false); return }
     fetch('/api/flex')
       .then(r => r.json())
       .then(d => {
         if (d.error) { setError(d.error); setLoading(false); return }
-        const fd: FlexData = {
-          exercises: d.exercises,
-          nextSession: d.nextSession,
-          nextTimeColIndex: d.nextTimeColIndex,
-          nextBlockStartRow: d.nextBlockStartRow,
-        }
-        setData(fd)
-        onDataLoaded(fd)
-        setLoading(false)
+        const fd: FlexData = { exercises: d.exercises, nextSession: d.nextSession, nextTimeColIndex: d.nextTimeColIndex, nextBlockStartRow: d.nextBlockStartRow }
+        setData(fd); onDataLoaded(fd); setLoading(false)
       })
       .catch(() => { setError('Error al cargar ejercicios'); setLoading(false) })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Init exercise states when data loads
+  // Init exercise states
   useEffect(() => {
     if (!data) return
     const init: Record<string, ExerciseState> = {}
     for (const ex of data.exercises) {
-      init[ex.id] = {
-        status: 'idle',
-        currentSerie: 1,
-        timeLeft: timePerSerie(ex),
-        realSeconds: 0,
-      }
+      init[ex.id] = { status: 'idle', currentSerie: 1, timeLeft: timePerSerie(ex), realSeconds: 0 }
     }
     setExStates(init)
   }, [data])
@@ -161,28 +203,7 @@ export function FlexSession({ cachedData, onDataLoaded }: FlexSessionProps) {
     if (restIntervalRef.current) { clearInterval(restIntervalRef.current); restIntervalRef.current = null }
   }
 
-  // Start timer for an exercise
-  const startExercise = (ex: FlexExercise) => {
-    if (!data) return
-    // Pause currently active exercise if any
-    if (activeId && activeId !== ex.id) {
-      clearTimers()
-      setExStates(prev => ({
-        ...prev,
-        [activeId]: { ...prev[activeId], status: 'paused' },
-      }))
-    }
-    // Clear rest if any
-    clearTimers()
-    setRestingId(null)
-
-    setSessionStarted(true)
-    setActiveId(ex.id)
-    setExStates(prev => ({
-      ...prev,
-      [ex.id]: { ...prev[ex.id], status: 'running' },
-    }))
-
+  const runExerciseTimer = (ex: FlexExercise) => {
     intervalRef.current = setInterval(() => {
       setExStates(prev => {
         const cur = prev[ex.id]
@@ -191,13 +212,10 @@ export function FlexSession({ cachedData, onDataLoaded }: FlexSessionProps) {
         const newReal = cur.realSeconds + 1
         if (newTime <= 0) {
           clearInterval(intervalRef.current!)
-          // Check if more series
           if (cur.currentSerie < ex.series) {
-            // Start rest
             startRest(ex, cur.currentSerie, newReal)
             return { ...prev, [ex.id]: { ...cur, status: 'paused', timeLeft: 0, realSeconds: newReal } }
           } else {
-            // Done
             setActiveId(null)
             return { ...prev, [ex.id]: { ...cur, status: 'done', timeLeft: 0, realSeconds: newReal } }
           }
@@ -207,43 +225,33 @@ export function FlexSession({ cachedData, onDataLoaded }: FlexSessionProps) {
     }, 1000)
   }
 
+  const startExercise = (ex: FlexExercise) => {
+    if (activeId && activeId !== ex.id) {
+      clearTimers()
+      setExStates(prev => ({ ...prev, [activeId]: { ...prev[activeId], status: 'paused' } }))
+    }
+    clearTimers(); setRestingId(null)
+    setSessionStarted(true)
+    setActiveId(ex.id)
+    setPopupExId(ex.id)
+    setExStates(prev => ({ ...prev, [ex.id]: { ...prev[ex.id], status: 'running' } }))
+    runExerciseTimer(ex)
+  }
+
   const startRest = (ex: FlexExercise, completedSerie: number, accReal: number) => {
     clearTimers()
     setRestingId(ex.id)
     setRestLeft(REST_SECONDS)
-
     restIntervalRef.current = setInterval(() => {
       setRestLeft(prev => {
         if (prev <= 1) {
           clearInterval(restIntervalRef.current!)
           setRestingId(null)
-          // Auto-start next serie
           const nextSerie = completedSerie + 1
           const secs = timePerSerie(ex)
-          setExStates(p => ({
-            ...p,
-            [ex.id]: { ...p[ex.id], status: 'running', currentSerie: nextSerie, timeLeft: secs },
-          }))
+          setExStates(p => ({ ...p, [ex.id]: { ...p[ex.id], status: 'running', currentSerie: nextSerie, timeLeft: secs } }))
           setActiveId(ex.id)
-          intervalRef.current = setInterval(() => {
-            setExStates(pp => {
-              const cur = pp[ex.id]
-              if (!cur || cur.status !== 'running') return pp
-              const newTime = cur.timeLeft - 1
-              const newReal = cur.realSeconds + 1
-              if (newTime <= 0) {
-                clearInterval(intervalRef.current!)
-                if (cur.currentSerie < ex.series) {
-                  startRest(ex, cur.currentSerie, newReal)
-                  return { ...pp, [ex.id]: { ...cur, status: 'paused', timeLeft: 0, realSeconds: newReal } }
-                } else {
-                  setActiveId(null)
-                  return { ...pp, [ex.id]: { ...cur, status: 'done', timeLeft: 0, realSeconds: newReal } }
-                }
-              }
-              return { ...pp, [ex.id]: { ...cur, timeLeft: newTime, realSeconds: newReal } }
-            })
-          }, 1000)
+          runExerciseTimer(ex)
           return 0
         }
         return prev - 1
@@ -252,13 +260,8 @@ export function FlexSession({ cachedData, onDataLoaded }: FlexSessionProps) {
   }
 
   const pauseExercise = (exId: string) => {
-    clearTimers()
-    setRestingId(null)
-    setActiveId(null)
-    setExStates(prev => ({
-      ...prev,
-      [exId]: { ...prev[exId], status: 'paused' },
-    }))
+    clearTimers(); setRestingId(null); setActiveId(null)
+    setExStates(prev => ({ ...prev, [exId]: { ...prev[exId], status: 'paused' } }))
   }
 
   const skipRest = (ex: FlexExercise) => {
@@ -267,66 +270,70 @@ export function FlexSession({ cachedData, onDataLoaded }: FlexSessionProps) {
     const cur = exStates[ex.id]
     const nextSerie = (cur?.currentSerie || 1) + 1
     const secs = timePerSerie(ex)
-    setExStates(prev => ({
-      ...prev,
-      [ex.id]: { ...prev[ex.id], status: 'idle', currentSerie: nextSerie, timeLeft: secs },
-    }))
+    setExStates(prev => ({ ...prev, [ex.id]: { ...prev[ex.id], status: 'idle', currentSerie: nextSerie, timeLeft: secs } }))
     setActiveId(null)
   }
 
   const resetExercise = (ex: FlexExercise) => {
     if (activeId === ex.id) { clearTimers(); setActiveId(null) }
     if (restingId === ex.id) { clearTimers(); setRestingId(null) }
-    setExStates(prev => ({
-      ...prev,
-      [ex.id]: { status: 'idle', currentSerie: 1, timeLeft: timePerSerie(ex), realSeconds: 0 },
-    }))
+    if (popupExId === ex.id) setPopupExId(null)
+    setExStates(prev => ({ ...prev, [ex.id]: { status: 'idle', currentSerie: 1, timeLeft: timePerSerie(ex), realSeconds: 0 } }))
   }
 
-  const allDone = data ? data.exercises.every(ex => exStates[ex.id]?.status === 'done') : false
-
-  const saveSession = async () => {
+  // Mark flex done locally (even with 1 exercise) and save to local history
+  const markAndSaveLocally = () => {
     if (!data) return
-    setSaving(true)
+    const date = getTodayStr()
+    const exList = data.exercises.map(ex => ({
+      name: ex.name,
+      seconds: Math.round(exStates[ex.id]?.realSeconds || 0),
+    }))
+    const log: FlexSessionLog = { id: `flex-${date}-${Date.now().toString(36)}`, date, exercises: exList }
+    saveFlexSessionLocal(log)
+    setPastLogs(loadFlexLogs())
+    logFlexDate(date)
+    markFlexInToday(date)
+    localStorage.setItem('sq_last_modified', Date.now().toString())
+    window.dispatchEvent(new Event('sq-data-changed'))
+    setLocalSavedOk(true)
+  }
+
+  const uploadToSheet = async () => {
+    if (!data) return
+    setUploading(true)
     const date = getTodayStr()
     const exList = data.exercises.map(ex => ({
       name: ex.name,
       seconds: Math.round(exStates[ex.id]?.realSeconds || ex.targetSeconds),
     }))
-
     try {
       const res = await fetch('/api/flex/log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          date,
-          exercises: exList,
-          timeColIndex: data.nextTimeColIndex,
-          blockStartRow: data.nextBlockStartRow,
-        }),
+        body: JSON.stringify({ date, exercises: exList, timeColIndex: data.nextTimeColIndex, blockStartRow: data.nextBlockStartRow }),
       })
       if (!res.ok) throw new Error('Error al guardar')
-
-      // Mark flex in Today and Stats
-      logFlexDate(date)
-      markFlexInToday(date)
-      localStorage.setItem('sq_last_modified', Date.now().toString())
-      window.dispatchEvent(new Event('sq-data-changed'))
-
-      // Invalidate cache so next load re-reads sheet
       onDataLoaded({ ...data, nextTimeColIndex: -1 } as FlexData)
-
-      setSavedOk(true)
+      setUploadedOk(true)
     } catch {
-      setError('No se pudo guardar en el sheet. Inténtalo de nuevo.')
+      setError('No se pudo subir al sheet. Inténtalo de nuevo.')
     } finally {
-      setSaving(false)
+      setUploading(false)
     }
   }
 
-  // Cleanup on unmount
   useEffect(() => () => clearTimers(), [])
 
+  const anySomeDone = data ? data.exercises.some(ex => exStates[ex.id]?.status === 'done') : false
+  const allDone = data ? data.exercises.every(ex => exStates[ex.id]?.status === 'done') : false
+
+  // ── Popup timer modal ──────────────────────────────────────────────────────
+  const popupEx = popupExId ? data?.exercises.find(e => e.id === popupExId) : null
+  const popupSt = popupExId ? exStates[popupExId] : null
+  const isPopupResting = restingId === popupExId
+
+  // ── Loading ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-3">
@@ -339,39 +346,99 @@ export function FlexSession({ cachedData, onDataLoaded }: FlexSessionProps) {
   if (!data || data.exercises.length === 0) {
     return (
       <div className="text-center py-12">
-        <p className="text-sm text-muted-foreground mb-3">No se encontraron ejercicios en el sheet</p>
-        <button
-          onClick={() => { setLoading(true); fetch('/api/flex?refresh=true').then(r => r.json()).then(d => { if (d.exercises) { const fd = { exercises: d.exercises, nextSession: d.nextSession, nextTimeColIndex: d.nextTimeColIndex, nextBlockStartRow: d.nextBlockStartRow }; setData(fd); onDataLoaded(fd) } setLoading(false) }) }}
-          className="text-sm text-primary underline"
-        >
-          Reintentar
-        </button>
+        <p className="text-sm text-muted-foreground mb-3">No se encontraron ejercicios</p>
+        <button onClick={() => { setLoading(true); fetch('/api/flex?refresh=true').then(r => r.json()).then(d => { if (d.exercises) { const fd = { exercises: d.exercises, nextSession: d.nextSession, nextTimeColIndex: d.nextTimeColIndex, nextBlockStartRow: d.nextBlockStartRow }; setData(fd); onDataLoaded(fd) }; setLoading(false) }) }} className="text-sm text-primary underline">Reintentar</button>
       </div>
     )
   }
 
   return (
     <div>
+      {/* Timer popup */}
+      {popupEx && popupSt && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center" onClick={() => setPopupExId(null)}>
+          <div className="bg-background w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 flex flex-col items-center gap-4" onClick={e => e.stopPropagation()}>
+            {/* Close */}
+            <button onClick={() => setPopupExId(null)} className="self-end p-1.5 rounded-full hover:bg-secondary">
+              <X className="w-5 h-5 text-muted-foreground" />
+            </button>
+
+            {/* Exercise name */}
+            <div className="text-center px-2">
+              <p className="text-base font-bold text-foreground leading-tight">{popupEx.name}</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                {isPopupResting ? `Descanso · serie ${popupSt.currentSerie}/${popupEx.series} completada` :
+                 popupSt.status === 'done' ? `Completado · ${popupSt.realSeconds}s` :
+                 `Serie ${popupSt.currentSerie}/${popupEx.series} · ${popupEx.reps}`}
+              </p>
+            </div>
+
+            {/* Big ring */}
+            <div className="relative">
+              {isPopupResting ? (
+                <>
+                  <BigRing seconds={restLeft} total={REST_SECONDS} color="#22c55e" isRest />
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-4xl font-bold text-green-600 tabular-nums">{fmtTime(restLeft)}</span>
+                    <span className="text-xs text-green-600 mt-1">Descansa</span>
+                  </div>
+                </>
+              ) : popupSt.status === 'done' ? (
+                <div className="w-48 h-48 rounded-full bg-green-100 flex items-center justify-center">
+                  <Check className="w-16 h-16 text-green-600" />
+                </div>
+              ) : (
+                <>
+                  <BigRing seconds={popupSt.timeLeft} total={timePerSerie(popupEx)} color="#6B8EC7" />
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-4xl font-bold text-foreground tabular-nums">{fmtTime(popupSt.timeLeft)}</span>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Controls */}
+            <div className="flex gap-3 w-full">
+              {popupSt.status === 'done' ? (
+                <button onClick={() => { resetExercise(popupEx); }} className="flex-1 py-3 rounded-xl bg-secondary text-foreground text-sm font-medium flex items-center justify-center gap-2">
+                  <RotateCcw className="w-4 h-4" /> Repetir
+                </button>
+              ) : isPopupResting ? (
+                <button onClick={() => skipRest(popupEx)} className="flex-1 py-3 rounded-xl bg-secondary text-foreground text-sm font-medium">
+                  Saltar descanso
+                </button>
+              ) : (
+                <>
+                  {popupSt.status === 'running' ? (
+                    <button onClick={() => pauseExercise(popupEx.id)} className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground text-sm font-medium flex items-center justify-center gap-2">
+                      <Pause className="w-4 h-4" /> Pausa
+                    </button>
+                  ) : (
+                    <button onClick={() => startExercise(popupEx)} className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground text-sm font-medium flex items-center justify-center gap-2">
+                      <Play className="w-4 h-4" /> {popupSt.status === 'paused' ? 'Reanudar' : 'Iniciar'}
+                    </button>
+                  )}
+                  {popupSt.realSeconds > 0 && (
+                    <button onClick={() => resetExercise(popupEx)} className="px-4 py-3 rounded-xl bg-secondary flex items-center justify-center">
+                      <RotateCcw className="w-4 h-4 text-muted-foreground" />
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
           <p className="text-sm font-medium text-foreground">Sesión {data.nextSession}</p>
-          <p className="text-xs text-muted-foreground">{data.exercises.length} ejercicios · toca ▶ para iniciar cada uno</p>
+          <p className="text-xs text-muted-foreground">Toca ▶ para iniciar cada ejercicio</p>
         </div>
         <button
-          onClick={() => {
-            setLoading(true)
-            fetch('/api/flex?refresh=true').then(r => r.json()).then(d => {
-              if (d.exercises) {
-                const fd: FlexData = { exercises: d.exercises, nextSession: d.nextSession, nextTimeColIndex: d.nextTimeColIndex, nextBlockStartRow: d.nextBlockStartRow }
-                setData(fd)
-                onDataLoaded(fd)
-              }
-              setLoading(false)
-            })
-          }}
-          className="p-1.5 rounded-full hover:bg-secondary"
-          title="Recargar del sheet"
+          onClick={() => { setLoading(true); fetch('/api/flex?refresh=true').then(r => r.json()).then(d => { if (d.exercises) { const fd: FlexData = { exercises: d.exercises, nextSession: d.nextSession, nextTimeColIndex: d.nextTimeColIndex, nextBlockStartRow: d.nextBlockStartRow }; setData(fd); onDataLoaded(fd) }; setLoading(false) }) }}
+          className="p-1.5 rounded-full hover:bg-secondary" title="Recargar del sheet"
         >
           <RefreshCw className="w-4 h-4 text-muted-foreground" />
         </button>
@@ -380,99 +447,79 @@ export function FlexSession({ cachedData, onDataLoaded }: FlexSessionProps) {
       {error && <p className="text-sm text-red-500 mb-3">{error}</p>}
 
       {/* Exercise list */}
-      <div className="space-y-2 mb-6">
+      <div className="space-y-2 mb-4">
         {data.exercises.map((ex) => {
           const st = exStates[ex.id]
           if (!st) return null
           const isActive = activeId === ex.id && st.status === 'running'
-          const isPaused = st.status === 'paused' && activeId !== ex.id || (st.status === 'paused')
           const isDone = st.status === 'done'
           const isResting = restingId === ex.id
           const serieTime = timePerSerie(ex)
 
           return (
-            <div
-              key={ex.id}
-              className={`rounded-xl p-3 border transition-all ${
-                isDone ? 'bg-green-50 border-green-200' :
-                isActive || isResting ? 'bg-primary/5 border-primary/30' :
-                'bg-card border-border'
-              }`}
-            >
+            <div key={ex.id} className={`rounded-xl p-3 border transition-all ${isDone ? 'bg-green-50 border-green-200' : isActive || isResting ? 'bg-primary/5 border-primary/30' : 'bg-card border-border'}`}>
               <div className="flex items-center gap-3">
-                {/* Status indicator / ring */}
-                {isDone ? (
-                  <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center shrink-0">
-                    <Check className="w-5 h-5 text-green-600" />
-                  </div>
-                ) : isResting ? (
-                  <div className="relative shrink-0">
-                    <Ring seconds={restLeft} total={REST_SECONDS} color="#22c55e" />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-[10px] font-bold text-green-600">{restLeft}s</span>
+                {/* Mini ring / status */}
+                <button
+                  className="shrink-0 relative"
+                  onClick={() => {
+                    if (isDone) return
+                    setPopupExId(ex.id)
+                    if (st.status === 'idle' || st.status === 'paused') startExercise(ex)
+                  }}
+                >
+                  {isDone ? (
+                    <div className="w-11 h-11 rounded-full bg-green-100 flex items-center justify-center">
+                      <Check className="w-5 h-5 text-green-600" />
                     </div>
-                  </div>
-                ) : (isActive || isPaused) ? (
-                  <div className="relative shrink-0">
-                    <Ring seconds={st.timeLeft} total={serieTime} color="#6B8EC7" />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-[9px] font-bold text-primary">{fmtTime(st.timeLeft)}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center shrink-0">
-                    <span className="text-xs text-muted-foreground font-medium">~{Math.round(ex.targetSeconds / 60)}m</span>
-                  </div>
-                )}
-
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <p className={`text-sm font-medium leading-tight ${isDone ? 'text-green-700' : 'text-foreground'}`}>
-                    {ex.name}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {isResting ? `Descanso · serie ${(st.currentSerie)}/${ex.series} completada` :
-                     isDone ? `${st.realSeconds}s · ${ex.series} serie${ex.series > 1 ? 's' : ''}` :
-                     isActive ? `Serie ${st.currentSerie}/${ex.series} · ${ex.reps}` :
-                     `${ex.series} serie${ex.series > 1 ? 's' : ''} · ${ex.reps}`}
-                  </p>
-                </div>
-
-                {/* Controls */}
-                <div className="flex items-center gap-1 shrink-0">
-                  {!isDone && !isResting && (
+                  ) : isResting ? (
                     <>
-                      {isActive ? (
-                        <button
-                          onClick={() => pauseExercise(ex.id)}
-                          className="w-9 h-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center"
-                        >
-                          <Pause className="w-4 h-4" />
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => startExercise(ex)}
-                          className="w-9 h-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center"
-                        >
-                          <Play className="w-4 h-4" />
-                        </button>
-                      )}
-                      {(isPaused || st.realSeconds > 0) && (
-                        <button
-                          onClick={() => resetExercise(ex)}
-                          className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5 text-muted-foreground" />
-                        </button>
-                      )}
+                      <SmallRing seconds={restLeft} total={REST_SECONDS} color="#22c55e" />
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-[9px] font-bold text-green-600">{restLeft}s</span>
+                      </div>
                     </>
+                  ) : (isActive || st.status === 'paused') ? (
+                    <>
+                      <SmallRing seconds={st.timeLeft} total={serieTime} color="#6B8EC7" />
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-[8px] font-bold text-primary">{fmtTime(st.timeLeft)}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="w-11 h-11 rounded-full bg-primary flex items-center justify-center">
+                      <Play className="w-4 h-4 text-primary-foreground ml-0.5" />
+                    </div>
+                  )}
+                </button>
+
+                {/* Info — tap to open popup */}
+                <button
+                  className="flex-1 min-w-0 text-left"
+                  onClick={() => { setPopupExId(ex.id); if (!isDone && st.status === 'idle') startExercise(ex) }}
+                >
+                  <p className={`text-sm font-medium leading-tight ${isDone ? 'text-green-700' : 'text-foreground'}`}>{ex.name}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {isResting ? `Descansando · serie ${st.currentSerie}/${ex.series}` :
+                     isDone ? `✓ ${st.realSeconds}s · ${ex.series} serie${ex.series > 1 ? 's' : ''}` :
+                     isActive ? `Serie ${st.currentSerie}/${ex.series} · ${ex.reps}` :
+                     `${ex.series} serie${ex.series > 1 ? 's' : ''} · ${ex.reps} · ~${Math.round(ex.targetSeconds / 60)}m`}
+                  </p>
+                </button>
+
+                {/* Pause / Reset */}
+                <div className="flex gap-1 shrink-0">
+                  {isActive && (
+                    <button onClick={() => pauseExercise(ex.id)} className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
+                      <Pause className="w-3.5 h-3.5 text-muted-foreground" />
+                    </button>
                   )}
                   {isResting && (
-                    <button
-                      onClick={() => skipRest(ex)}
-                      className="text-xs text-primary underline px-2"
-                    >
-                      Saltar
+                    <button onClick={() => skipRest(ex)} className="text-xs text-primary underline px-1">Saltar</button>
+                  )}
+                  {(st.realSeconds > 0 || isDone) && !isResting && (
+                    <button onClick={() => resetExercise(ex)} className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
+                      <RotateCcw className="w-3 h-3 text-muted-foreground" />
                     </button>
                   )}
                 </div>
@@ -482,22 +529,61 @@ export function FlexSession({ cachedData, onDataLoaded }: FlexSessionProps) {
         })}
       </div>
 
-      {/* Save button */}
+      {/* Action buttons */}
+      {sessionStarted && !localSavedOk && (
+        <button
+          onClick={markAndSaveLocally}
+          disabled={!anySomeDone}
+          className="w-full py-3 rounded-xl bg-primary/10 text-primary font-medium text-sm flex items-center justify-center gap-2 mb-2 disabled:opacity-40"
+        >
+          <Check className="w-4 h-4" />
+          Marcar flex de hoy {!allDone && `(${data.exercises.filter(ex => exStates[ex.id]?.status === 'done').length}/${data.exercises.length})`}
+        </button>
+      )}
+
+      {localSavedOk && (
+        <div className="flex items-center gap-2 py-2 mb-2 text-green-600 text-sm font-medium">
+          <Check className="w-4 h-4" /> Flex marcado en Today y Stats
+        </div>
+      )}
+
       {sessionStarted && (
-        savedOk ? (
-          <div className="flex items-center justify-center gap-2 py-3 text-green-600 text-sm font-medium">
-            <Check className="w-4 h-4" /> Guardado en el sheet · flexibilidad marcada
+        uploadedOk ? (
+          <div className="flex items-center justify-center gap-2 py-2 text-green-600 text-sm font-medium">
+            <Check className="w-4 h-4" /> Subido al sheet
           </div>
         ) : (
           <button
-            onClick={saveSession}
-            disabled={saving || !allDone}
-            className="w-full py-3.5 rounded-xl bg-primary text-primary-foreground font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+            onClick={uploadToSheet}
+            disabled={uploading || !allDone}
+            className="w-full py-3 rounded-xl border border-border text-foreground font-medium text-sm flex items-center justify-center gap-2 disabled:opacity-40"
           >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {saving ? 'Guardando…' : allDone ? 'Guardar sesión' : `Completa todos los ejercicios (${data.exercises.filter(ex => exStates[ex.id]?.status === 'done').length}/${data.exercises.length})`}
+            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+            {uploading ? 'Subiendo…' : allDone ? 'Subir al sheet' : `Completa todos para subir al sheet`}
           </button>
         )
+      )}
+
+      {/* Past sessions */}
+      {pastLogs.length > 0 && (
+        <div className="mt-6">
+          <h3 className="text-sm font-semibold text-foreground mb-3">Últimas sesiones</h3>
+          <div className="space-y-3">
+            {pastLogs.slice(0, 5).map(log => (
+              <div key={log.id} className="bg-card rounded-xl p-3">
+                <p className="text-xs font-medium text-muted-foreground mb-2">{fmtDate(log.date)}</p>
+                <div className="space-y-1">
+                  {log.exercises.filter(e => e.seconds > 0).map((e, i) => (
+                    <div key={i} className="flex items-center justify-between">
+                      <span className="text-xs text-foreground truncate flex-1">{e.name}</span>
+                      <span className="text-xs text-muted-foreground ml-2 shrink-0">{e.seconds}s</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   )

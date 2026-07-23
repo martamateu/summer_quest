@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
-import { Dumbbell, Plus, Check, X, TrendingUp, ChevronDown, ChevronUp, Info, Trash2, PersonStanding, RefreshCw, Loader2, Wind } from 'lucide-react'
+import { useEffect, useState, useMemo, useRef } from 'react'
+import { Dumbbell, Plus, Check, X, TrendingUp, ChevronDown, ChevronUp, Info, Trash2, PersonStanding, RefreshCw, Loader2, Wind, Timer } from 'lucide-react'
 import type { GymSessionLog, GymExerciseLog, GymSet, GymWorkout } from '@/lib/types'
 import { WorkoutScreen } from '@/components/screens/workout-screen'
 import { FlexSession, FlexData } from '@/components/screens/flex-session'
@@ -135,6 +135,12 @@ export function GymScreen() {
   const [statsPeriod, setStatsPeriod] = useState<'week' | 'month'>('week')
   const [sessionStart, setSessionStart] = useState<number | null>(null)
   const [syncStatus, setSyncStatus] = useState<string | null>(null)
+  // Rest timer between sets
+  const [restTimerExId, setRestTimerExId] = useState<string | null>(null)
+  const [restSecsLeft, setRestSecsLeft] = useState(0)
+  const restTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Per-exercise saved state (to show ✓ after saving individual set)
+  const [savedSets, setSavedSets] = useState<Record<string, number>>({})
 
   // Entreno C (lo apunta el entrenador en el Sheet; se lee cada noche por cron)
   const [entrenoC, setEntrenoC] = useState<EntrenoCData | null>(null)
@@ -310,7 +316,7 @@ export function GymScreen() {
     setSessionStart(null)
 
     // Sync to Google Sheet with feedback
-    setSyncStatus('Sincronizando con Google Sheet...')
+    setSyncStatus('Sincronizando con el Sheet…')
     fetch('/api/sync-sheet', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -338,6 +344,40 @@ export function GymScreen() {
     setLogs(updated)
     saveLogs(updated)
   }
+
+  // Start rest timer after completing a set (90s default)
+  const startRestTimer = (exerciseId: string, seconds = 90) => {
+    if (restTimerRef.current) clearInterval(restTimerRef.current)
+    setRestTimerExId(exerciseId)
+    setRestSecsLeft(seconds)
+    restTimerRef.current = setInterval(() => {
+      setRestSecsLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(restTimerRef.current!)
+          setRestTimerExId(null)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+  }
+
+  const stopRestTimer = () => {
+    if (restTimerRef.current) clearInterval(restTimerRef.current)
+    setRestTimerExId(null)
+    setRestSecsLeft(0)
+  }
+
+  // Save individual set and sync to sheet
+  const saveSetAndSync = (exerciseId: string, setIndex: number) => {
+    const sets = (currentSets[exerciseId] || []).filter(s => s.reps > 0)
+    if (sets.length === 0) return
+    setSavedSets(prev => ({ ...prev, [exerciseId]: (prev[exerciseId] || 0) + 1 }))
+    startRestTimer(exerciseId)
+  }
+
+  // Cleanup rest timer on unmount
+  useEffect(() => () => { if (restTimerRef.current) clearInterval(restTimerRef.current) }, [])
 
   // Per-exercise progression across all sessions for the selected workout
   const exerciseProgression = useMemo(() => {
@@ -480,36 +520,63 @@ export function GymScreen() {
                   </div>
                 )}
 
+                {/* Rest timer for this exercise */}
+                {restTimerExId === ex.id && (
+                  <div className="mt-2 mb-1 flex items-center gap-2 p-2 rounded-lg bg-green-50 border border-green-200">
+                    <Timer className="w-4 h-4 text-green-600 shrink-0" />
+                    <div className="flex-1">
+                      <p className="text-xs font-medium text-green-700">Descansando…</p>
+                      <div className="h-1.5 bg-green-100 rounded-full overflow-hidden mt-1">
+                        <div className="h-full bg-green-500 rounded-full transition-all duration-1000"
+                          style={{ width: `${(restSecsLeft / 90) * 100}%` }} />
+                      </div>
+                    </div>
+                    <span className="text-sm font-bold text-green-700 tabular-nums w-8 text-right">{restSecsLeft}s</span>
+                    <button onClick={stopRestTimer} className="text-xs text-green-600 underline shrink-0">Saltar</button>
+                  </div>
+                )}
+
                 {/* Current sets */}
                 <div className="mt-3 space-y-2">
-                  <div className="grid grid-cols-[auto_1fr_1fr_auto] gap-2 items-center">
+                  <div className="grid grid-cols-[auto_1fr_1fr_auto_auto] gap-2 items-center">
                     <span className="text-[10px] text-muted-foreground w-6">Set</span>
                     <span className="text-[10px] text-muted-foreground text-center">Kg</span>
                     <span className="text-[10px] text-muted-foreground text-center">Reps</span>
-                    <span className="w-7" />
+                    <span className="text-[10px] text-muted-foreground text-center w-8">✓</span>
+                    <span className="w-5" />
                   </div>
-                  {sets.map((s, i) => (
-                    <div key={i} className="grid grid-cols-[auto_1fr_1fr_auto] gap-2 items-center">
-                      <span className="text-xs text-muted-foreground w-6">{i + 1}</span>
-                      <input
-                        type="number"
-                        value={s.weight || ''}
-                        onChange={e => updateSet(ex.id, i, 'weight', parseFloat(e.target.value) || 0)}
-                        placeholder="0"
-                        className="w-full px-2 py-1.5 text-sm text-center rounded-lg bg-secondary text-foreground outline-none focus:ring-2 focus:ring-primary"
-                      />
-                      <input
-                        type="number"
-                        value={s.reps || ''}
-                        onChange={e => updateSet(ex.id, i, 'reps', parseInt(e.target.value) || 0)}
-                        placeholder="0"
-                        className="w-full px-2 py-1.5 text-sm text-center rounded-lg bg-secondary text-foreground outline-none focus:ring-2 focus:ring-primary"
-                      />
-                      <button onClick={() => removeSet(ex.id, i)} className="p-1">
-                        <X className="w-4 h-4 text-muted-foreground" />
-                      </button>
-                    </div>
-                  ))}
+                  {sets.map((s, i) => {
+                    const saved = (savedSets[ex.id] || 0) > i
+                    return (
+                      <div key={i} className={`grid grid-cols-[auto_1fr_1fr_auto_auto] gap-2 items-center ${saved ? 'opacity-60' : ''}`}>
+                        <span className="text-xs text-muted-foreground w-6">{i + 1}</span>
+                        <input
+                          type="number"
+                          value={s.weight || ''}
+                          onChange={e => updateSet(ex.id, i, 'weight', parseFloat(e.target.value) || 0)}
+                          placeholder="0"
+                          className="w-full px-2 py-1.5 text-sm text-center rounded-lg bg-secondary text-foreground outline-none focus:ring-2 focus:ring-primary"
+                        />
+                        <input
+                          type="number"
+                          value={s.reps || ''}
+                          onChange={e => updateSet(ex.id, i, 'reps', parseInt(e.target.value) || 0)}
+                          placeholder="0"
+                          className="w-full px-2 py-1.5 text-sm text-center rounded-lg bg-secondary text-foreground outline-none focus:ring-2 focus:ring-primary"
+                        />
+                        <button
+                          onClick={() => saveSetAndSync(ex.id, i)}
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${saved ? 'bg-green-100 text-green-600' : 'bg-secondary text-muted-foreground hover:bg-primary/10 hover:text-primary'}`}
+                          title={saved ? 'Serie guardada' : 'Guardar serie'}
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => removeSet(ex.id, i)} className="p-1">
+                          <X className="w-4 h-4 text-muted-foreground" />
+                        </button>
+                      </div>
+                    )
+                  })}
                   <button
                     onClick={() => addSet(ex.id)}
                     className="w-full py-1.5 rounded-lg bg-secondary text-muted-foreground text-xs flex items-center justify-center gap-1 hover:bg-secondary/80"
