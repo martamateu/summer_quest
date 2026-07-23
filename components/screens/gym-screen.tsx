@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { Dumbbell, Plus, Check, X, TrendingUp, ChevronDown, ChevronUp, Info, Trash2, PersonStanding, RefreshCw, Loader2 } from 'lucide-react'
+import { Dumbbell, Plus, Check, X, TrendingUp, ChevronDown, ChevronUp, Info, Trash2, PersonStanding, RefreshCw, Loader2, Wind } from 'lucide-react'
 import type { GymSessionLog, GymExerciseLog, GymSet, GymWorkout } from '@/lib/types'
 import { WorkoutScreen } from '@/components/screens/workout-screen'
+import { FlexSession } from '@/components/screens/flex-session'
 import { recordTombstones } from '@/lib/sync-tombstones'
 
 // Entreno C leído del Google Sheet del entrenador
@@ -122,7 +123,7 @@ const fmtDuration = (min: number) => {
 }
 
 export function GymScreen() {
-  const [gymTab, setGymTab] = useState<'gym' | 'entrenos'>('gym')
+  const [gymTab, setGymTab] = useState<'gym' | 'entrenos' | 'flex'>('gym')
   const [logs, setLogs] = useState<GymSessionLog[]>([])
   const [selectedWorkout, setSelectedWorkout] = useState<string>('A')
   const [activeSession, setActiveSession] = useState(false)
@@ -533,12 +534,21 @@ export function GymScreen() {
           <Dumbbell className="w-4 h-4" /> Pesas
         </button>
         <button
+          onClick={() => setGymTab('flex')}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium ${gymTab === 'flex' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
+        >
+          <Wind className="w-4 h-4" /> Flex
+        </button>
+        <button
           onClick={() => setGymTab('entrenos')}
           className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium ${gymTab === 'entrenos' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
         >
           <PersonStanding className="w-4 h-4" /> Entrenos
         </button>
       </div>
+
+      {/* Flex sub-tab */}
+      {gymTab === 'flex' && <FlexSession />}
 
       {/* Entrenos sub-tab */}
       {gymTab === 'entrenos' && <WorkoutScreen embedded />}
