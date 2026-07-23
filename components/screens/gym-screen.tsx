@@ -155,6 +155,20 @@ export function GymScreen() {
       .then(r => r.json())
       .then(d => { if (d?.data) setGymABData(d.data) })
       .catch(() => {})
+    // Preload flex data so the Flex tab shows instantly
+    fetch('/api/flex')
+      .then(r => r.json())
+      .then(d => {
+        if (d?.exercises?.length) {
+          setFlexData({
+            exercises: d.exercises,
+            nextSession: d.nextSession,
+            nextTimeColIndex: d.nextTimeColIndex,
+            nextBlockStartRow: d.nextBlockStartRow,
+          })
+        }
+      })
+      .catch(() => {})
   }, [])
 
   const refreshEntrenoC = async () => {
