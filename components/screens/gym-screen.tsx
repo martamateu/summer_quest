@@ -287,35 +287,39 @@ export function GymScreen() {
     }))
   }
 
-  const saveSession = () => {
+  // Upsert session into logs (replace if same id exists, otherwise append)
+  const upsertSession = (session: GymSessionLog) => {
+    setLogs(prev => {
+      const idx = prev.findIndex(l => l.id === session.id)
+      const updated = idx >= 0
+        ? prev.map((l, i) => i === idx ? session : l)
+        : [...prev, session]
+      saveLogs(updated)
+      return updated
+    })
+  }
+
+  // Build current session snapshot from currentSets
+  const buildSession = (): GymSessionLog | null => {
     const exercises: GymExerciseLog[] = workout.exercises.map(ex => ({
       exerciseId: ex.id,
       sets: (currentSets[ex.id] || []).filter(s => s.reps > 0),
     })).filter(e => e.sets.length > 0)
-
-    if (exercises.length === 0) return
-
+    if (exercises.length === 0) return null
     const durationMin = sessionStart
       ? Math.min(240, Math.max(1, Math.round((Date.now() - sessionStart) / 60000)))
       : undefined
-
-    const session: GymSessionLog = {
+    return {
       id: `gym-${sessionDate}-${selectedWorkout}`,
       date: sessionDate,
       workoutId: selectedWorkout,
       exercises,
       durationMin,
     }
+  }
 
-    const updated = [...logs, session]
-    setLogs(updated)
-    saveLogs(updated)
-    markGoalFuerza(session.date) // auto-marca goal Fuerza si el entreno es hoy
-    setActiveSession(false)
-    setCurrentSets({})
-    setSessionStart(null)
-
-    // Sync to Google Sheet with feedback
+  // Sync session to Google Sheet
+  const syncToSheet = (session: GymSessionLog) => {
     setSyncStatus('Sincronizando con el Sheet…')
     fetch('/api/sync-sheet', {
       method: 'POST',
@@ -324,12 +328,8 @@ export function GymScreen() {
     })
       .then(r => r.json())
       .then(data => {
-        if (data.ok) {
-          setSyncStatus(`✓ Sincronizado (Semana ${data.week}, ${data.updated} ejercicios)`)
-        } else {
-          setSyncStatus(`✗ Error: ${data.error}`)
-          console.error('Sheet sync error:', data)
-        }
+        if (data.ok) setSyncStatus(`✓ Sincronizado (Semana ${data.week}, ${data.updated} ejercicios)`)
+        else { setSyncStatus(`✗ Error: ${data.error}`); console.error('Sheet sync error:', data) }
         setTimeout(() => setSyncStatus(null), 5000)
       })
       .catch(err => {
@@ -337,6 +337,18 @@ export function GymScreen() {
         console.error('Sheet sync failed:', err)
         setTimeout(() => setSyncStatus(null), 5000)
       })
+  }
+
+  const saveSession = () => {
+    const session = buildSession()
+    if (!session) return
+    upsertSession(session)
+    markGoalFuerza(session.date)
+    setActiveSession(false)
+    setCurrentSets({})
+    setSessionStart(null)
+    setSavedSets({})
+    syncToSheet(session)
   }
 
   const deleteSession = (index: number) => {
@@ -368,11 +380,18 @@ export function GymScreen() {
     setRestSecsLeft(0)
   }
 
-  // Save individual set and sync to sheet
-  const saveSetAndSync = (exerciseId: string, setIndex: number) => {
+  // Save individual set: upserts session locally + syncs to sheet + starts rest timer
+  const saveSetAndSync = (exerciseId: string) => {
     const sets = (currentSets[exerciseId] || []).filter(s => s.reps > 0)
     if (sets.length === 0) return
-    setSavedSets(prev => ({ ...prev, [exerciseId]: (prev[exerciseId] || 0) + 1 }))
+    setSavedSets(prev => ({ ...prev, [exerciseId]: sets.length }))
+    // Save/update session in localStorage immediately
+    const session = buildSession()
+    if (session) {
+      upsertSession(session)
+      markGoalFuerza(session.date)
+      syncToSheet(session)
+    }
     startRestTimer(exerciseId)
   }
 
@@ -565,7 +584,7 @@ export function GymScreen() {
                           className="w-full px-2 py-1.5 text-sm text-center rounded-lg bg-secondary text-foreground outline-none focus:ring-2 focus:ring-primary"
                         />
                         <button
-                          onClick={() => saveSetAndSync(ex.id, i)}
+                          onClick={() => saveSetAndSync(ex.id)}
                           className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${saved ? 'bg-green-100 text-green-600' : 'bg-secondary text-muted-foreground hover:bg-primary/10 hover:text-primary'}`}
                           title={saved ? 'Serie guardada' : 'Guardar serie'}
                         >
