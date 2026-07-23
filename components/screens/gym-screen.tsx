@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { Dumbbell, Plus, Check, X, TrendingUp, ChevronDown, ChevronUp, Info, Trash2, PersonStanding, RefreshCw, Loader2, Wind } from 'lucide-react'
 import type { GymSessionLog, GymExerciseLog, GymSet, GymWorkout } from '@/lib/types'
 import { WorkoutScreen } from '@/components/screens/workout-screen'
-import { FlexSession } from '@/components/screens/flex-session'
+import { FlexSession, FlexData } from '@/components/screens/flex-session'
 import { recordTombstones } from '@/lib/sync-tombstones'
 
 // Entreno C leído del Google Sheet del entrenador
@@ -124,6 +124,7 @@ const fmtDuration = (min: number) => {
 
 export function GymScreen() {
   const [gymTab, setGymTab] = useState<'gym' | 'entrenos' | 'flex'>('gym')
+  const [flexData, setFlexData] = useState<FlexData | null>(null)
   const [logs, setLogs] = useState<GymSessionLog[]>([])
   const [selectedWorkout, setSelectedWorkout] = useState<string>('A')
   const [activeSession, setActiveSession] = useState(false)
@@ -548,7 +549,12 @@ export function GymScreen() {
       </div>
 
       {/* Flex sub-tab */}
-      {gymTab === 'flex' && <FlexSession />}
+      {gymTab === 'flex' && (
+        <FlexSession
+          cachedData={flexData}
+          onDataLoaded={setFlexData}
+        />
+      )}
 
       {/* Entrenos sub-tab */}
       {gymTab === 'entrenos' && <WorkoutScreen embedded />}
