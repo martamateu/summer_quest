@@ -130,6 +130,22 @@ export async function GET(request: Request) {
   }
 }
 
+// DELETE /api/weight/history — borra el hash weight:daily de Redis
+export async function DELETE(request: Request) {
+  const session = await auth()
+  if (!session?.user?.email) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  try {
+    await redis.del('weight:daily')
+    return Response.json({ ok: true, message: 'Historial de peso borrado de Redis' })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return Response.json({ error: message }, { status: 500 })
+  }
+}
+
 // POST /api/weight/history — backfill: lee el Sheet y migra todo a Redis
 // Solo accesible con sesión de usuario o CRON_SECRET
 export async function POST(request: Request) {
