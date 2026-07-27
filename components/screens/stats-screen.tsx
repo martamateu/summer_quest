@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { Footprints, PersonStanding, Wallet, Dumbbell, GraduationCap, ChevronLeft, ChevronRight, Smartphone, Timer, Brain, ListChecks, Flame, Beef, Wheat, Droplets } from 'lucide-react'
+import { Footprints, PersonStanding, Wallet, Dumbbell, GraduationCap, ChevronLeft, ChevronRight, Smartphone, Timer, Brain, ListChecks, Flame, Beef, Wheat, Droplets, Scale } from 'lucide-react'
 import type { DailyMetrics } from '@/lib/types'
 import { FOCUS_GOAL_MIN } from '@/components/screens/focus-screen'
 import { recordTombstones } from '@/lib/sync-tombstones'
@@ -53,7 +53,7 @@ function readObj<T>(key: string, fallback: T): T {
 }
 
 // ── Metric definitions ─────────────────────────────────────────────────────────
-type MetricId = 'pasos' | 'flexibilidad' | 'gastos' | 'fuerza' | 'run' | 'descanso' | 'master' | 'focus' | 'screentime'
+type MetricId = 'pasos' | 'flexibilidad' | 'gastos' | 'fuerza' | 'run' | 'descanso' | 'master' | 'focus' | 'screentime' | 'peso'
 
 interface MetricMeta {
   id: MetricId
@@ -73,6 +73,7 @@ const METRICS: MetricMeta[] = [
   { id: 'master',       label: 'Máster',         color: '#8b5cf6', icon: <GraduationCap className="w-4 h-4" />,  hasHistory: true },
   { id: 'focus',        label: 'Focus',          color: '#6366f1', icon: <Brain className="w-4 h-4" />,         hasHistory: true },
   { id: 'screentime',   label: 'Pantalla',       color: '#f97316', icon: <Smartphone className="w-4 h-4" />,     hasHistory: false },
+  { id: 'peso',         label: 'Peso',           color: '#8b5cf6', icon: <Scale className="w-4 h-4" />,           hasHistory: true },
 ]
 
 // ── Props ──────────────────────────────────────────────────────────────────────
@@ -147,6 +148,7 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
   const [tasksList, setTasksList] = useState<{ id: string; done: boolean; date: string; tag?: string }[]>([])
   const [taskTags, setTaskTags] = useState<string[]>([])
   const [foodLog, setFoodLog] = useState<Record<string, { dayType: 'entreno' | 'descanso'; meals: Record<string, boolean>; customMeals?: Record<string, string> }>>({})
+  const [weightHistory, setWeightHistory] = useState<Record<string, number>>({})
 
   // Food plan macro constants (mirrors food-screen.tsx)
   const FOOD_MEALS = [
@@ -173,6 +175,7 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
     setTasksList(readArr('sq_tasks_list'))
     setTaskTags(readArr<string>('sq_task_tags'))
     setFoodLog(readObj('sq_food_log', {}))
+    setWeightHistory(readObj('sq_weight_history', {}))
     // Máster: leer sq_today_goals cada vez para que se actualice cuando focus completa 25 min
     const todayGoals = readObj<{ date: string; master?: { done: boolean } }>('sq_today_goals', { date: '' })
     if (todayGoals.date && todayGoals.master?.done) {
@@ -539,8 +542,117 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
         </div>
       )}
 
+      {/* Peso — gráfica de línea/barras con valor en kg */}
+      {(activeMetric === 'all' || activeMetric === 'peso') && (() => {
+        const weightRows = dates.map(date => ({
+          date,
+          weight: weightHistory[date] ?? null,
+        }))
+        const daysWithWeight = weightRows.filter(r => r.weight !== null)
+        if (daysWithWeight.length === 0 && activeMetric !== 'peso') return null
+
+        const weights = daysWithWeight.map(r => r.weight as number)
+        const minW = weights.length > 0 ? Math.min(...weights) : 44
+        const maxW = weights.length > 0 ? Math.max(...weights) : 46
+        const rangeW = maxW - minW || 0.5
+        const avgW = weights.length > 0 ? weights.reduce((a, b) => a + b, 0) / weights.length : null
+
+        // Peso de hoy o último peso registrado en el rango
+        const todayWeight = weightHistory[today] ?? (daysWithWeight.length > 0 ? daysWithWeight[daysWithWeight.length - 1].weight : null)
+
+        return (
+          <div className="bg-card rounded-2xl p-4 mb-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Scale className="w-4 h-4" style={{ color: '#8b5cf6' }} />
+              <p className="text-sm font-semibold text-foreground">Peso</p>
+              {todayWeight !== null && (
+                <span className="ml-auto text-sm font-bold" style={{ color: '#8b5cf6' }}>
+                  {todayWeight.toString().replace('.', ',')} kg
+                </span>
+              )}
+            </div>
+
+            {view === 'dia' ? (
+              <div className="text-center py-4">
+                {weightRows[0]?.weight !== null ? (
+                  <>
+                    <p className="text-4xl font-bold text-foreground">
+                      {(weightRows[0].weight as number).toString().replace('.', ',')}
+                      <span className="text-xl font-normal text-muted-foreground"> kg</span>
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">registrado este día</p>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground py-2">Sin registro de peso este día</p>
+                )}
+              </div>
+            ) : daysWithWeight.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">Sin datos de peso en este período</p>
+            ) : (
+              <>
+                {/* Estadísticas del período */}
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  <div className="bg-secondary rounded-xl p-2 text-center">
+                    <p className="text-[10px] text-muted-foreground uppercase">Mín</p>
+                    <p className="text-sm font-bold text-foreground">{minW.toString().replace('.', ',')}kg</p>
+                  </div>
+                  <div className="bg-secondary rounded-xl p-2 text-center">
+                    <p className="text-[10px] text-muted-foreground uppercase">Media</p>
+                    <p className="text-sm font-bold text-foreground">
+                      {avgW !== null ? avgW.toFixed(1).replace('.', ',') : '—'}kg
+                    </p>
+                  </div>
+                  <div className="bg-secondary rounded-xl p-2 text-center">
+                    <p className="text-[10px] text-muted-foreground uppercase">Máx</p>
+                    <p className="text-sm font-bold text-foreground">{maxW.toString().replace('.', ',')}kg</p>
+                  </div>
+                </div>
+
+                {/* Gráfico de barras */}
+                <div className="flex items-end gap-1" style={{ height: view === 'semana' ? 100 : 80 }}>
+                  {weightRows.map((r, i) => {
+                    const hasData = r.weight !== null
+                    // Altura relativa: mapeamos [minW-0.5, maxW+0.5] → [4px, 72px]
+                    const barH = hasData
+                      ? Math.max(Math.round(((r.weight as number - (minW - 0.5)) / (rangeW + 1)) * 68) + 4, 6)
+                      : 2
+                    return (
+                      <div
+                        key={i}
+                        className="flex-1 flex flex-col items-center justify-end gap-0.5"
+                        style={{ height: view === 'semana' ? 100 : 80 }}
+                      >
+                        {view === 'semana' && hasData && (
+                          <span className="text-[8px] font-medium leading-none mb-0.5" style={{ color: '#8b5cf6' }}>
+                            {(r.weight as number).toString().replace('.', ',')}
+                          </span>
+                        )}
+                        <div
+                          className="w-full rounded-t transition-all"
+                          style={{ height: barH, backgroundColor: hasData ? '#8b5cf6' : '#8b5cf620' }}
+                        />
+                        {view === 'semana' && (
+                          <span className="text-[8px] text-muted-foreground leading-none">
+                            {fmtDateLabel(r.date).split(' ')[0]}
+                          </span>
+                        )}
+                        {view === 'mes' && Number(r.date.split('-')[2]) % 5 === 1 && (
+                          <span className="text-[8px] text-muted-foreground leading-none">
+                            {Number(r.date.split('-')[2])}
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        )
+      })()}
+
       {/* Boolean metrics — grid de checkmarks por día */}
-      {visibleMetrics.filter(m => m.id !== 'pasos').map(meta => (
+      {visibleMetrics.filter(m => m.id !== 'pasos' && m.id !== 'peso').map(meta => (
         <div key={meta.id} className="bg-card rounded-2xl p-4 mb-4">
           <div className="flex items-center gap-2 mb-3">
             <span style={{ color: meta.color }}>{meta.icon}</span>

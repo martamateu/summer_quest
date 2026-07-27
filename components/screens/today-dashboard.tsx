@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Dumbbell, GraduationCap, PersonStanding, CheckCircle2, Circle, Wallet, CloudRain, Sun, Cloud, CloudSnow, Wind, Loader2, Mic, MicOff } from 'lucide-react'
+import { Dumbbell, GraduationCap, PersonStanding, CheckCircle2, Circle, Wallet, CloudRain, Sun, Cloud, CloudSnow, Wind, Loader2, Mic, MicOff, Scale } from 'lucide-react'
 import { TaskBreakdown } from '@/components/task-breakdown'
 
 // ── localStorage helpers ───────────────────────────────────────────────────────
@@ -235,6 +235,15 @@ function GoalCard({
   )
 }
 
+// Lee el peso de hoy de sq_weight_history
+function readTodayWeight(today: string): number | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const history: Record<string, number> = JSON.parse(localStorage.getItem('sq_weight_history') || '{}')
+    return history[today] ?? null
+  } catch { return null }
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 export function TodayDashboard({}: TodayDashboardProps) {
   const today = getLocalDateStr()
@@ -244,6 +253,7 @@ export function TodayDashboard({}: TodayDashboardProps) {
   const [weatherLoading, setWeatherLoading] = useState(false)
   const [showTaskHelp, setShowTaskHelp] = useState(false)
   const [todayExpenseCount, setTodayExpenseCount] = useState(0)
+  const [todayWeight, setTodayWeight] = useState<number | null>(null)
 
   // Grabadora de voz (reconocimiento en vivo + autoguardado, como Admin Life)
   const [listening, setListening] = useState(false)
@@ -266,6 +276,7 @@ export function TodayDashboard({}: TodayDashboardProps) {
 
     setDayData(current)
     setTodayExpenseCount(countTodayExpenses())
+    setTodayWeight(readTodayWeight(today))
     const SR = (typeof window !== 'undefined' &&
       ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)) || null
     speechSupported.current = !!SR
@@ -286,6 +297,7 @@ export function TodayDashboard({}: TodayDashboardProps) {
       }
 
       setDayData(current)
+      setTodayWeight(readTodayWeight(today))
 
       const count = countTodayExpenses()
       setTodayExpenseCount(count)
@@ -491,6 +503,19 @@ export function TodayDashboard({}: TodayDashboardProps) {
           )}
         </div>
       </div>
+
+      {/* Peso de hoy */}
+      {todayWeight !== null && (
+        <div className="bg-card rounded-2xl p-4 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: '#8b5cf620' }}>
+            <Scale className="w-5 h-5" style={{ color: '#8b5cf6' }} />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Peso hoy</p>
+            <p className="text-xl font-bold text-foreground">{todayWeight.toString().replace('.', ',')} <span className="text-sm font-normal text-muted-foreground">kg</span></p>
+          </div>
+        </div>
+      )}
 
       {/* Goal cards */}
       {(() => {

@@ -9,6 +9,7 @@ export default auth((req) => {
     pathname.startsWith('/api/auth') ||
     pathname.startsWith('/login') ||
     pathname.startsWith('/api/steps') ||
+    pathname.startsWith('/api/weight') ||
     pathname.startsWith('/api/screen-time') ||
     pathname.startsWith('/api/trigger-sync') ||
     pathname.startsWith('/api/fcm-token') ||

@@ -218,6 +218,25 @@ export default function Page() {
       .catch(() => {})
   }
 
+  // Backfill weight history from Google Sheets → sq_weight_history { "YYYY-MM-DD": kg }
+  const fetchWeightHistory = () => {
+    fetch('/api/weight/history')
+      .then((r) => r.json())
+      .then((data) => {
+        const days = data?.days as Record<string, number> | undefined
+        if (!days || Object.keys(days).length === 0) return
+        try {
+          const key = 'sq_weight_history'
+          const local = JSON.parse(localStorage.getItem(key) || '{}') as Record<string, number>
+          // Merge: Sheet is authoritative for past days; keep any local-only entries
+          const merged: Record<string, number> = { ...local, ...days }
+          localStorage.setItem(key, JSON.stringify(merged))
+          window.dispatchEvent(new CustomEvent('sq-data-changed', { detail: { source: 'weight-history' } }))
+        } catch {}
+      })
+      .catch(() => {})
+  }
+
   // Backfill run history from Redis → sq_run_logs (merge by id, array)
   const fetchRunsHistory = () => {
     fetch('/api/runs/history')
@@ -244,7 +263,7 @@ export default function Page() {
   }
 
   // ── Cloud backup: sync localStorage ↔ Redis ──
-  const SYNC_KEYS = ['sq_habits', 'sq_today', 'sq_history', 'sq_expenses', 'sq_finance_started_at', 'sq_gym_logs', 'sq_gym_seeded', 'sq_steps_history', 'sq_food_log', 'sq_favorite_recipes', 'sq_notes', 'sq_super_list', 'sq_home', 'sq_cleaning_history', 'sq_cycle', 'sq_run_logs', 'sq_today_goals', 'sq_flex_log', 'sq_flex_session_logs', 'sq_finance_log', 'sq_workout_logs', 'sq_tasks_list', 'sq_task_tags', 'sq_focus_log', 'sq_focus_subject_log', 'sq_tombstones', 'sq_last_modified', 'sq_goals']
+  const SYNC_KEYS = ['sq_habits', 'sq_today', 'sq_history', 'sq_expenses', 'sq_finance_started_at', 'sq_gym_logs', 'sq_gym_seeded', 'sq_steps_history', 'sq_food_log', 'sq_favorite_recipes', 'sq_notes', 'sq_super_list', 'sq_home', 'sq_cleaning_history', 'sq_cycle', 'sq_run_logs', 'sq_today_goals', 'sq_flex_log', 'sq_flex_session_logs', 'sq_finance_log', 'sq_workout_logs', 'sq_tasks_list', 'sq_task_tags', 'sq_focus_log', 'sq_focus_subject_log', 'sq_tombstones', 'sq_last_modified', 'sq_goals', 'sq_weight_history']
 
   // Debounced upload: cancel previous pending upload so only the latest data is sent
   const uploadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -532,6 +551,7 @@ export default function Page() {
     fetchSteps() // show cached data immediately
     fetchStepsHistory() // backfill full daily history from the cloud
     fetchRunsHistory() // backfill NRC run sessions from the cloud
+    fetchWeightHistory() // backfill weight history from Google Sheets
     triggerAndroidSync() // ping Android, then re-fetch after 5s
 
     // Restore from cloud if localStorage is empty, then upload
