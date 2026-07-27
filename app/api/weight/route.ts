@@ -90,19 +90,8 @@ export async function GET(request: Request) {
 
 // POST /api/weight — escribe el peso de hoy en el Sheet
 // Body: { weight: number, date?: string }
-// Busca la última fila vacía en columna B que corresponda al día de hoy y la rellena.
-// Si ya tiene valor para hoy, lo actualiza.
+// Abierto sin autenticación (igual que /api/steps) — lo llama la app Android.
 export async function POST(request: Request) {
-  const authHeader = request.headers.get('authorization')
-  const isCron = !!process.env.CRON_SECRET && authHeader === `Bearer ${process.env.CRON_SECRET}`
-
-  if (!isCron) {
-    const session = await auth()
-    if (!session?.user?.email) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-  }
-
   let weight: number
   try {
     const body = await request.json()
