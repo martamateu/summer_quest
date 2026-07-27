@@ -9,7 +9,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     async signIn({ profile }) {
       const email = profile?.email?.toLowerCase() || ''
       if (ALLOWED_EMAILS.length === 0) return true
-      return ALLOWED_EMAILS.includes(email)
+      const allowed = ALLOWED_EMAILS.includes(email)
+      if (!allowed) {
+        console.error(`[AUTH] Unauthorized login attempt: ${email} (name: ${profile?.name})`)
+      }
+      return allowed
     },
   },
   pages: {
