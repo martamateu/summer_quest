@@ -115,13 +115,32 @@ export async function POST(request: Request) {
     const rows = res.data.values || []
     const todayDayName = DAY_NAMES_ES[new Date().getDay()]
 
-    // Buscar todas las filas con el nombre del día de hoy
-    // La última de ellas (en el tiempo) es la que corresponde a esta semana
-    let targetRowIndex = -1 // 0-based
+    // 1. Encontrar la última fila que tenga un peso registrado (la más reciente)
+    let lastFilledIndex = -1
     for (let i = 0; i < rows.length; i++) {
-      const dayName = rows[i][0]?.toString().trim().toLowerCase()
-      if (dayName === todayDayName) {
-        targetRowIndex = i
+      if (parseWeight(rows[i][1]?.toString()) !== null) {
+        lastFilledIndex = i
+      }
+    }
+
+    // 2. Decidir dónde escribir:
+    //    - Si la última fila con valor ya es hoy → sobreescribir esa misma fila
+    //    - Si no → buscar la primera fila DESPUÉS de la última con valor cuyo día coincida con hoy
+    let targetRowIndex = -1
+    if (lastFilledIndex >= 0) {
+      const lastDayName = rows[lastFilledIndex][0]?.toString().trim().toLowerCase()
+      if (lastDayName === todayDayName) {
+        // Mismo día → sobreescribir
+        targetRowIndex = lastFilledIndex
+      } else {
+        // Día distinto → buscar la primera fila después cuyo nombre sea hoy
+        for (let i = lastFilledIndex + 1; i < rows.length; i++) {
+          const dayName = rows[i][0]?.toString().trim().toLowerCase()
+          if (dayName === todayDayName) {
+            targetRowIndex = i
+            break
+          }
+        }
       }
     }
 
