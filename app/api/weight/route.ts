@@ -1,5 +1,11 @@
 import { google } from 'googleapis'
+import { Redis } from '@upstash/redis'
 import { auth } from '@/auth'
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+})
 
 // Sheet de control de peso: columnas A=Dia, B=PESO
 // GET  → devuelve el peso de hoy (o el último peso registrado)
@@ -150,6 +156,9 @@ export async function POST(request: Request) {
     // Formatear el peso con coma decimal (como el Sheet usa formato ES)
     const weightStr = weight.toString().replace('.', ',')
 
+    // Fecha local para Redis (YYYY-MM-DD)
+    const today = localDateStr()
+
     if (targetRowIndex >= 0) {
       // Actualizar la fila existente (1-based para Sheets API)
       const sheetRow = targetRowIndex + 1
@@ -159,6 +168,9 @@ export async function POST(request: Request) {
         valueInputOption: 'RAW',
         requestBody: { values: [[weightStr]] },
       })
+      // Guardar también en Redis para sync instantáneo en la web
+      await redis.set(`weight:${today}`, weight, { ex: 172800 }) // 48h TTL para hoy
+      await redis.hset('weight:daily', { [today]: weight })       // historial permanente
       return Response.json({
         ok: true,
         updated: true,
@@ -175,6 +187,9 @@ export async function POST(request: Request) {
         insertDataOption: 'INSERT_ROWS',
         requestBody: { values: [[todayDayName, weightStr]] },
       })
+      // Guardar también en Redis
+      await redis.set(`weight:${today}`, weight, { ex: 172800 })
+      await redis.hset('weight:daily', { [today]: weight })
       return Response.json({
         ok: true,
         updated: false,
