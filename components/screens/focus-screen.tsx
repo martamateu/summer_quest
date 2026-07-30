@@ -159,6 +159,7 @@ export function FocusScreen() {
   const [isRunning, setIsRunning] = useState(false)
   const [isWorkPhase, setIsWorkPhase] = useState(true)
   const [sessionsCompleted, setSessionsCompleted] = useState(0)
+  const timerEndTimeRef = useRef<number | null>(null) // timestamp cuando acaba el bloque actual
   const [showSettings, setShowSettings] = useState(false)
   const [todayFocus, setTodayFocus] = useState(0)
   const [log, setLog] = useState<Record<string, number>>({})
@@ -238,23 +239,59 @@ export function FocusScreen() {
   const completeRef = useRef(handleComplete)
   completeRef.current = handleComplete
 
+  // Guardar/limpiar el timestamp de fin cuando arranca o para el timer
+  useEffect(() => {
+    if (isRunning && timeLeft > 0) {
+      timerEndTimeRef.current = Date.now() + timeLeft * 1000
+    } else if (!isRunning) {
+      timerEndTimeRef.current = null
+    }
+  }, [isRunning])
+
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null
     if (isRunning && timeLeft > 0) {
-      interval = setInterval(() => setTimeLeft((prev) => prev - 1), 1000)
+      interval = setInterval(() => {
+        const remaining = timerEndTimeRef.current
+          ? Math.round((timerEndTimeRef.current - Date.now()) / 1000)
+          : 0
+        if (remaining <= 0) {
+          setTimeLeft(0)
+        } else {
+          setTimeLeft(remaining)
+        }
+      }, 500)
     } else if (timeLeft === 0) {
       completeRef.current()
     }
     return () => { if (interval) clearInterval(interval) }
   }, [isRunning, timeLeft])
 
+  // Al volver al foco, recalcular el tiempo restante inmediatamente
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && isRunning && timerEndTimeRef.current) {
+        const remaining = Math.round((timerEndTimeRef.current - Date.now()) / 1000)
+        if (remaining <= 0) {
+          setTimeLeft(0)
+        } else {
+          setTimeLeft(remaining)
+        }
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [isRunning])
+
   const handleReset = () => {
     setIsRunning(false)
+    timerEndTimeRef.current = null
     setTimeLeft(isWorkPhase ? workMinutes * 60 : breakMinutes * 60)
   }
 
   const handleSkip = () => {
     setIsRunning(false)
+    timerEndTimeRef.current = null
     if (isWorkPhase) setTimeLeft(breakMinutes * 60)
     else setTimeLeft(workMinutes * 60)
     setIsWorkPhase(!isWorkPhase)
