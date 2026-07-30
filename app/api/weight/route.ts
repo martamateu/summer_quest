@@ -154,6 +154,8 @@ export async function POST(request: Request) {
     }
 
     // Formatear el peso con coma decimal (como el Sheet usa formato ES)
+    // USER_ENTERED deja que Sheets interprete la coma decimal según la configuración
+    // regional del Sheet (ES), evitando el apóstrofe que RAW añade al texto
     const weightStr = weight.toString().replace('.', ',')
 
     // Fecha local para Redis (YYYY-MM-DD)
@@ -165,7 +167,7 @@ export async function POST(request: Request) {
       await sheets.spreadsheets.values.update({
         spreadsheetId: WEIGHT_SPREADSHEET_ID,
         range: `B${sheetRow}`,
-        valueInputOption: 'RAW',
+        valueInputOption: 'USER_ENTERED',
         requestBody: { values: [[weightStr]] },
       })
       // Guardar también en Redis para sync instantáneo en la web
@@ -183,7 +185,7 @@ export async function POST(request: Request) {
       await sheets.spreadsheets.values.append({
         spreadsheetId: WEIGHT_SPREADSHEET_ID,
         range: 'A:B',
-        valueInputOption: 'RAW',
+        valueInputOption: 'USER_ENTERED',
         insertDataOption: 'INSERT_ROWS',
         requestBody: { values: [[todayDayName, weightStr]] },
       })
