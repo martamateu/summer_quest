@@ -135,9 +135,11 @@ export function GymScreen() {
   const [statsPeriod, setStatsPeriod] = useState<'week' | 'month'>('week')
   const [sessionStart, setSessionStart] = useState<number | null>(null)
   const [syncStatus, setSyncStatus] = useState<string | null>(null)
-  // Rest timer between sets
+  // Rest timer between sets — guardamos el timestamp de fin para que funcione
+  // aunque la app se vaya a background y vuelva
   const [restTimerExId, setRestTimerExId] = useState<string | null>(null)
   const [restSecsLeft, setRestSecsLeft] = useState(0)
+  const restEndTimeRef = useRef<number | null>(null)   // Date.now() cuando acaba el descanso
   const restTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   // Per-exercise saved state (to show ✓ after saving individual set)
   const [savedSets, setSavedSets] = useState<Record<string, number>>({})
@@ -357,28 +359,51 @@ export function GymScreen() {
     saveLogs(updated)
   }
 
-  // Start rest timer after completing a set (90s default)
+  // Start rest timer after completing a set (90s default).
+  // Usa timestamp de fin para que el tiempo siga corriendo aunque la app vaya a background.
   const startRestTimer = (exerciseId: string, seconds = 90) => {
     if (restTimerRef.current) clearInterval(restTimerRef.current)
+    const endTime = Date.now() + seconds * 1000
+    restEndTimeRef.current = endTime
     setRestTimerExId(exerciseId)
     setRestSecsLeft(seconds)
     restTimerRef.current = setInterval(() => {
-      setRestSecsLeft(prev => {
-        if (prev <= 1) {
-          clearInterval(restTimerRef.current!)
-          setRestTimerExId(null)
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
+      const remaining = Math.round((restEndTimeRef.current! - Date.now()) / 1000)
+      if (remaining <= 0) {
+        clearInterval(restTimerRef.current!)
+        restTimerRef.current = null
+        restEndTimeRef.current = null
+        setRestTimerExId(null)
+        setRestSecsLeft(0)
+      } else {
+        setRestSecsLeft(remaining)
+      }
+    }, 500) // cada 500ms para más precisión al volver del background
   }
 
   const stopRestTimer = () => {
     if (restTimerRef.current) clearInterval(restTimerRef.current)
+    restTimerRef.current = null
+    restEndTimeRef.current = null
     setRestTimerExId(null)
     setRestSecsLeft(0)
   }
+
+  // Al volver al foco (visibilitychange), recalcular el tiempo restante inmediatamente
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && restEndTimeRef.current) {
+        const remaining = Math.round((restEndTimeRef.current - Date.now()) / 1000)
+        if (remaining <= 0) {
+          stopRestTimer()
+        } else {
+          setRestSecsLeft(remaining)
+        }
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [])
 
   // Save individual set: upserts session locally + syncs to sheet + starts rest timer
   const saveSetAndSync = (exerciseId: string) => {
