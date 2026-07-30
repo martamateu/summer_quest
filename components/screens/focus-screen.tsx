@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Play, Pause, RotateCcw, SkipForward, Minus, Plus, Brain, BookOpen, Code2, AlertTriangle, ChevronDown, ChevronUp, Check } from 'lucide-react'
-import { IMAS_PLAN, getCurrentImasWeek, getImasWeekDateRange, getCarryoverTasks, getCarryoverId, type StudyTask } from '@/lib/study-plan'
+import { IMAS_PLAN, CI_PLAN, getCurrentImasWeek, getCurrentCiWeek, getImasWeekDateRange, getCiWeekDateRange, getCarryoverTasks, getCarryoverId, type StudyTask } from '@/lib/study-plan'
 
 // ── Date helpers ───────────────────────────────────────────────────────────────
 const fmtLocal = (d: Date) =>
@@ -140,10 +140,10 @@ function readStudyHours(): Record<string, number> {
   try { return JSON.parse(localStorage.getItem(STUDY_HOURS_KEY) || '{}') } catch { return {} }
 }
 
-// Acumula minutos de IMAS en la clave "IMAS-wN" de la semana actual
-function addImasMinutes(weekNum: number, minutes: number) {
+// Acumula minutos de estudio en la clave "{subject}-wN" de la semana actual
+function addStudyMinutes(subject: string, weekNum: number, minutes: number) {
   try {
-    const key = `IMAS-w${weekNum}`
+    const key = `${subject}-w${weekNum}`
     const hours = readStudyHours()
     hours[key] = (hours[key] || 0) + minutes
     localStorage.setItem(STUDY_HOURS_KEY, JSON.stringify(hours))
@@ -170,9 +170,17 @@ export function FocusScreen() {
   const [studyChecks, setStudyChecks] = useState<Record<string, boolean>>({})
   const [studyHours, setStudyHours] = useState<Record<string, number>>({})
   const [showFullPlan, setShowFullPlan] = useState(false)
-  const currentWeekNum = getCurrentImasWeek()
-  const [viewWeek, setViewWeek] = useState(currentWeekNum)
-  const currentWeek = IMAS_PLAN[viewWeek - 1]
+
+  // Plan activo según asignatura seleccionada (IMAS o CI)
+  const activePlan = selectedSubject === 'CI' ? CI_PLAN : IMAS_PLAN
+  const activePlanKey = selectedSubject === 'CI' ? 'CI' : 'IMAS'
+  const totalWeeks = activePlan.length
+  const currentWeekNum = selectedSubject === 'CI' ? getCurrentCiWeek() : getCurrentImasWeek()
+  const [imasViewWeek, setImasViewWeek] = useState(getCurrentImasWeek())
+  const [ciViewWeek, setCiViewWeek] = useState(getCurrentCiWeek())
+  const viewWeek = selectedSubject === 'CI' ? ciViewWeek : imasViewWeek
+  const setViewWeek = selectedSubject === 'CI' ? setCiViewWeek : setImasViewWeek
+  const currentWeek = activePlan[viewWeek - 1]
 
   // Load today's focus + history on mount, and refresh on external changes (cloud sync)
   useEffect(() => {
@@ -218,7 +226,8 @@ export function FocusScreen() {
       setSessionsCompleted((prev) => prev + 1)
       addFocusMinutes(workMinutes)
       addFocusSubjectMinutes(selectedSubject, workMinutes)
-      if (selectedSubject === 'IMAS') addImasMinutes(currentWeekNum, workMinutes)
+      if (selectedSubject === 'IMAS') addStudyMinutes('IMAS', getCurrentImasWeek(), workMinutes)
+      if (selectedSubject === 'CI') addStudyMinutes('CI', getCurrentCiWeek(), workMinutes)
       setTodayFocus((prev) => {
         const newTotal = prev + workMinutes
         // Marcar Máster como hecha al completar el primer bloque de 25 min
@@ -493,14 +502,14 @@ export function FocusScreen() {
         </div>
       </div>
 
-      {/* ── IMAS Study Plan ─────────────────────────────────────────────── */}
-      {currentWeek && (() => {
-        const weekKey = `IMAS-w${viewWeek}`
+      {/* ── Study Plan (IMAS o CI según asignatura seleccionada) ────────── */}
+      {(selectedSubject === 'IMAS' || selectedSubject === 'CI') && currentWeek && (() => {
+        const weekKey = `${activePlanKey}-w${viewWeek}`
         const imasMinutesThisWeek = studyHours[weekKey] || 0
         const imasHoursThisWeek = imasMinutesThisWeek / 60
         const targetHours = currentWeek.totalHours
         const pct = Math.min(100, Math.round((imasHoursThisWeek / targetHours) * 100))
-        const dateRange = getImasWeekDateRange(viewWeek)
+        const dateRange = selectedSubject === 'CI' ? getCiWeekDateRange(viewWeek) : getImasWeekDateRange(viewWeek)
         const isCurrentWeek = viewWeek === currentWeekNum
         const fmtDate = (s: string) => {
           const [, m, d] = s.split('-').map(Number)
@@ -574,7 +583,7 @@ export function FocusScreen() {
               <div className="flex-1 text-center">
                 <div className="flex items-center justify-center gap-2">
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-pink-500">
-                    IMAS · Semana {viewWeek}/9
+                    {activePlanKey} · Semana {viewWeek}/{totalWeeks}
                   </span>
                   {isCurrentWeek && (
                     <span className="text-[9px] bg-pink-500 text-white px-1.5 py-0.5 rounded-full font-medium">Esta semana</span>
@@ -590,8 +599,8 @@ export function FocusScreen() {
               </div>
 
               <button
-                onClick={() => { setViewWeek(w => Math.min(9, w + 1)); setShowFullPlan(false) }}
-                disabled={viewWeek >= 9}
+                onClick={() => { setViewWeek(w => Math.min(totalWeeks, w + 1)); setShowFullPlan(false) }}
+                disabled={viewWeek >= totalWeeks}
                 className="p-1.5 rounded-full hover:bg-secondary disabled:opacity-30"
               >
                 <ChevronDown className="w-4 h-4 -rotate-90 text-muted-foreground" />

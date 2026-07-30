@@ -205,6 +205,170 @@ export const IMAS_PLAN: StudyWeek[] = [
   },
 ]
 
+// ── CI 7-Week Study Plan ───────────────────────────────────────────────────────
+// Source: "Plan de Estudio Consolidado: Inteligencia Computacional (CI-MAI)"
+// Engelbrecht, Computational Intelligence: An Introduction (2nd Ed.)
+// Course starts: 17 September 2026 — prep starts 3 August 2026
+
+export const CI_PLAN: StudyWeek[] = [
+  {
+    week: 1,
+    title: 'La Neurona Artificial y Fundamentos',
+    phase: 'Sprint 1: Computación Neuronal',
+    chapters: 'Ch 2 (Sección 2.1)',
+    pages: '3 ago – 9 ago',
+    theoryHours: 3,
+    practiceHours: 2,
+    totalHours: 5,
+    deliverable: 'Derivar la regla de Descenso de Gradiente y calcular E = Σ(t_p - f_p)²',
+    tasks: [
+      { id: 'ci-w1-t1', type: 'theory', text: 'Estudiar las Funciones de Activación: Lineal, Escalón, Rampa, Sigmoide, Tanh y Gaussiana' },
+      { id: 'ci-w1-t2', type: 'theory', text: 'Comprender la Geometría de la Neurona: hiperplano y separabilidad lineal' },
+      { id: 'ci-w1-t3', type: 'theory', text: 'Analizar la diferencia entre Unidades de Suma (SUs) y Unidades de Producto (PUs) — Sección 2.1' },
+      { id: 'ci-w1-p1', type: 'practice', text: 'Derivar manualmente la regla de aprendizaje de Descenso de Gradiente (GD)' },
+      { id: 'ci-w1-p2', type: 'practice', text: 'Calcular la métrica de error con Suma de Errores Cuadrados: E = Σ(t_p - f_p)² (Ec. 2.11)' },
+      { id: 'ci-w1-d1', type: 'deliverable', text: '📋 Deliverable: Derivación GD + cálculo de error cuadrático documentado' },
+    ],
+  },
+  {
+    week: 2,
+    title: 'Arquitecturas y Aprendizaje Supervisado',
+    phase: 'Sprint 1: Computación Neuronal',
+    chapters: 'Ch 7 (rendimiento), Fig 1.4',
+    pages: '10 ago – 16 ago',
+    theoryHours: 3,
+    practiceHours: 2,
+    totalHours: 5,
+    deliverable: 'Esquema de red neuronal multicapa (entrada, ocultas, salida)',
+    tasks: [
+      { id: 'ci-w2-t1', type: 'theory', text: 'Estudiar arquitecturas supervisadas: Feedforward (FFNN), FLNN y Redes Recurrentes' },
+      { id: 'ci-w2-t2', type: 'theory', text: 'Estudiar modelos Elman y Jordan para características temporales' },
+      { id: 'ci-w2-t3', type: 'theory', text: 'Factores críticos de rendimiento: preparación de datos, inicialización de pesos, tasa de aprendizaje y momentum (Ch 7)' },
+      { id: 'ci-w2-p1', type: 'practice', text: 'Esquematizar una red multicapa (entrada → ocultas → salida) según Figura 1.4 del libro' },
+      { id: 'ci-w2-p2', type: 'practice', text: 'Analizar cómo la selección de activación impacta la convergencia' },
+      { id: 'ci-w2-d1', type: 'deliverable', text: '📋 Deliverable: Diagrama de red multicapa documentado' },
+    ],
+  },
+  {
+    week: 3,
+    title: 'Algoritmos Genéticos y Programación Genética',
+    phase: 'Sprint 2: Computación Evolutiva',
+    chapters: 'Ch 1 (Sección 1.1.2)',
+    pages: '17 ago – 23 ago',
+    theoryHours: 3,
+    practiceHours: 2,
+    totalHours: 5,
+    deliverable: 'Función de aptitud (fitness) para un problema de optimización simple',
+    tasks: [
+      { id: 'ci-w3-t1', type: 'theory', text: 'Estudiar estructura evolutiva: Cromosomas, genes y alelos' },
+      { id: 'ci-w3-t2', type: 'theory', text: 'Dominar operadores: Selección (Torneo, Ruleta), Cruce (Crossover) y Mutación' },
+      { id: 'ci-w3-t3', type: 'theory', text: 'Distinguir Algoritmos Genéticos vs Programación Genética (GP) — individuos son árboles de programas (Sección 1.1.2)' },
+      { id: 'ci-w3-p1', type: 'practice', text: 'Definir una función de aptitud (fitness) para un problema de optimización simple' },
+      { id: 'ci-w3-p2', type: 'practice', text: 'Integrar conceptos de culling y elitismo en la función de aptitud' },
+      { id: 'ci-w3-d1', type: 'deliverable', text: '📋 Deliverable: Función fitness definida + justificación de culling/elitismo' },
+    ],
+  },
+  {
+    week: 4,
+    title: 'Estrategias y Programación Evolutiva',
+    phase: 'Sprint 2: Computación Evolutiva',
+    chapters: 'Ch 8',
+    pages: '24 ago – 30 ago',
+    theoryHours: 3,
+    practiceHours: 2,
+    totalHours: 5,
+    deliverable: 'Aplicaciones reales de EC: minería de datos, optimización combinatoria',
+    tasks: [
+      { id: 'ci-w4-t1', type: 'theory', text: 'Estudiar Estrategias Evolutivas (ES) y Evolución Diferencial' },
+      { id: 'ci-w4-t2', type: 'theory', text: 'Comprender Evolución Cultural (espacio de creencias) y Coevolución' },
+      { id: 'ci-w4-t3', type: 'theory', text: 'Analizar el ciclo general de un Algoritmo Evolutivo según Ch 8: representación de soluciones' },
+      { id: 'ci-w4-p1', type: 'practice', text: 'Investigar aplicaciones reales del texto: minería de datos, optimización combinatoria y diagnóstico de fallas' },
+      { id: 'ci-w4-d1', type: 'deliverable', text: '📋 Deliverable: Resumen de aplicaciones reales de EC documentadas' },
+    ],
+  },
+  {
+    week: 5,
+    title: 'Sistemas Difusos e Inteligencia de Enjambre',
+    phase: 'Sprint 3: Lógica Difusa e Inteligencia de Enjambre',
+    chapters: 'Ch 19, Sección 1.1.3',
+    pages: '31 ago – 6 sep',
+    theoryHours: 3,
+    practiceHours: 2,
+    totalHours: 5,
+    deliverable: 'Análisis de PSO y ACO aplicados a un problema de optimización',
+    tasks: [
+      { id: 'ci-w5-t1', type: 'theory', text: 'Dominar el proceso de Fuzzificación → Inferencia → Defuzzificación (Ch 19)' },
+      { id: 'ci-w5-t2', type: 'theory', text: 'Estudiar Funciones de membresía, variables lingüísticas y hedges' },
+      { id: 'ci-w5-t3', type: 'theory', text: 'Comparar controladores Mamdani y Takagi-Sugeno' },
+      { id: 'ci-w5-t4', type: 'theory', text: 'Estudiar PSO (bandadas de aves) y ACO (rastro de feromonas) para rutas óptimas — Sección 1.1.3' },
+      { id: 'ci-w5-p1', type: 'practice', text: 'Analizar cómo las partículas/hormigas ajustan su comportamiento por experiencia propia y vecindario' },
+      { id: 'ci-w5-d1', type: 'deliverable', text: '📋 Deliverable: Análisis comparativo PSO vs ACO para optimización global' },
+    ],
+  },
+  {
+    week: 6,
+    title: 'Refactorización y Consolidación',
+    phase: 'Semana Buffer',
+    chapters: 'Ch 1, 2, 3 (Assignments)',
+    pages: '7 sep – 13 sep',
+    theoryHours: 3,
+    practiceHours: 2,
+    totalHours: 5,
+    deliverable: 'Assignments resueltos de Ch 1, 2 y 3 + revisión de debilidades',
+    tasks: [
+      { id: 'ci-w6-t1', type: 'theory', text: 'Resolver los Assignments de los Capítulos 1, 2 y 3' },
+      { id: 'ci-w6-t2', type: 'theory', text: 'Estudiar Sistemas Híbridos: NN para aprendizaje + FS para razonamiento' },
+      { id: 'ci-w6-p1', type: 'practice', text: 'Revisar debilidades en derivación de reglas de aprendizaje y operadores evolutivos' },
+      { id: 'ci-w6-p2', type: 'practice', text: 'Refactorizar notas y esquemas de las semanas anteriores' },
+      { id: 'ci-w6-d1', type: 'deliverable', text: '📋 Deliverable: Assignments completados + lista de debilidades resueltas' },
+    ],
+  },
+  {
+    week: 7,
+    title: 'Preparación Final para el Inicio del Curso',
+    phase: 'Semana de Inicio',
+    chapters: 'Prefacio (Pág. xx, 12)',
+    pages: '14 sep – 17 sep',
+    theoryHours: 2,
+    practiceHours: 1,
+    totalHours: 3,
+    deliverable: 'Checklist completado antes del primer día de clase (17 sep)',
+    mandatory: true,
+    tasks: [
+      { id: 'ci-w7-t1', type: 'theory', text: 'Repaso histórico: Alan Turing (Test de Turing), John McCarthy (acuñó "AI"), Minsky (crítica 1969 sobre perceptrones — Pág. 12)' },
+      { id: 'ci-w7-t2', type: 'theory', text: 'Verificar acceso a UCI ML Repository y Delve (benchmarks del prefacio, Pág. xx)' },
+      { id: 'ci-w7-p1', type: 'practice', text: 'Confirmar comprensión de los 4 pilares: NN, EC, SI y FS' },
+      { id: 'ci-w7-d1', type: 'deliverable', text: '⚠️ MANDATORY: Checklist pre-curso completado — listo para el 17 sep' },
+    ],
+  },
+]
+
+// ── CI Week calculation ────────────────────────────────────────────────────────
+// Prep starts: Monday 3 August 2026 (week 1)
+// Course starts: 17 September 2026
+export const CI_START_DATE = '2026-08-03' // Monday of week 1
+
+export function getCurrentCiWeek(): number {
+  const start = new Date(CI_START_DATE + 'T00:00:00')
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const diffMs = today.getTime() - start.getTime()
+  const diffDays = Math.floor(diffMs / 86400000)
+  if (diffDays < 0) return 1
+  const week = Math.floor(diffDays / 7) + 1
+  return Math.min(week, 7)
+}
+
+export function getCiWeekDateRange(week: number): { start: string; end: string } {
+  const start = new Date(CI_START_DATE + 'T00:00:00')
+  start.setDate(start.getDate() + (week - 1) * 7)
+  const end = new Date(start)
+  end.setDate(start.getDate() + 6)
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return { start: fmt(start), end: fmt(end) }
+}
+
 // ── Week calculation ───────────────────────────────────────────────────────────
 // Course starts: Monday 14 July 2026 (week 1)
 // Marta starts studying: 16 July 2026
