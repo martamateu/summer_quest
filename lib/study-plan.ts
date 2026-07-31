@@ -347,6 +347,172 @@ export const CI_PLAN: StudyWeek[] = [
   },
 ]
 
+// ── PAR 7-Week Study Plan ──────────────────────────────────────────────────────
+// Source: "Comprehensive 7-Week Study Plan: Planning and Approximate Reasoning (PAR)"
+// Primary refs: Klir & Yuan (Fuzzy Sets), Ghallab et al. (Automated Planning and Acting)
+// 125h total · Aug 3 – Sep 17 2026
+
+export const PAR_PLAN: StudyWeek[] = [
+  {
+    week: 1,
+    title: 'The Grand Paradigm Shift: Fuzzy Sets',
+    phase: 'Phase 1: Approximate Reasoning',
+    chapters: 'Klir & Yuan Ch 1-3',
+    pages: '3 Aug – 9 Aug',
+    theoryHours: 10,
+    practiceHours: 8,
+    totalHours: 18,
+    deliverable: 'Environment setup + membership functions defined for simple variables',
+    tasks: [
+      { id: 'par-w1-t1', type: 'theory', text: 'Study Klir & Yuan Ch 1-3: transition from crisp sets to fuzzy sets' },
+      { id: 'par-w1-t2', type: 'theory', text: 'Master membership functions, t-norms, and i-conorms' },
+      { id: 'par-w1-t3', type: 'theory', text: 'Understand Bremermann\'s Limit (10^93 bits): precise Newtonian laws are "transcomputational" — fuzzy logic bypasses these fundamental limits' },
+      { id: 'par-w1-p1', type: 'practice', text: 'Set up laboratory environment and locate manuals for your fuzzy toolboxes (Objective 2)' },
+      { id: 'par-w1-p2', type: 'practice', text: 'Begin defining membership functions for simple variables using your toolbox' },
+      { id: 'par-w1-d1', type: 'deliverable', text: '📋 Deliverable: Environment configured + first membership functions defined' },
+    ],
+  },
+  {
+    week: 2,
+    title: 'Probabilistic Models and Evidence Theory',
+    phase: 'Phase 1: Approximate Reasoning',
+    chapters: 'Klir & Yuan Ch 7, Russell & Norvig',
+    pages: '10 Aug – 16 Aug',
+    theoryHours: 10,
+    practiceHours: 8,
+    totalHours: 18,
+    deliverable: 'Architectural comparison: Probabilistic vs Evidence-based modeling',
+    tasks: [
+      { id: 'par-w2-t1', type: 'theory', text: 'Review Klir & Yuan Ch 7: Evidence Theory foundations' },
+      { id: 'par-w2-t2', type: 'theory', text: 'Study Russell & Norvig probabilistic reasoning sections' },
+      { id: 'par-w2-t3', type: 'theory', text: 'Master Dempster-Shafer Theory of Evidence: measuring intervals of belief (Belief and Plausibility measures) — unlike standard probability' },
+      { id: 'par-w2-t4', type: 'theory', text: 'Compare Bayesian Networks with Evidence Theory: when does a system need an "interval of belief" vs a single probability point?' },
+      { id: 'par-w2-p1', type: 'practice', text: 'Architectural comparison: Probabilistic modeling vs Evidence-based modeling — document key differences' },
+      { id: 'par-w2-d1', type: 'deliverable', text: '📋 Deliverable: Comparison document Bayesian Networks vs Dempster-Shafer' },
+    ],
+  },
+  {
+    week: 3,
+    title: 'Fuzzy Expert System Implementation',
+    phase: 'Phase 1: Approximate Reasoning',
+    chapters: 'Klir & Yuan synthesis + exam prep',
+    pages: '17 Aug – 23 Aug',
+    theoryHours: 8,
+    practiceHours: 10,
+    totalHours: 18,
+    deliverable: 'Fuzzy Expert System implemented (Mamdani or Sugeno) — 30% exam prep',
+    mandatory: true,
+    tasks: [
+      { id: 'par-w3-t1', type: 'theory', text: 'Synthesize fuzzy operations: equilibrium points, standard fuzzy complement, t-norms and i-conorms — exam revision (30%)' },
+      { id: 'par-w3-t2', type: 'theory', text: 'Review standard fuzzy operations for first proficiency exam (30% of grade)' },
+      { id: 'par-w3-p1', type: 'practice', text: 'Complete "Ejercicio de diseño y desarrollo de un sistema experto difuso"' },
+      { id: 'par-w3-p2', type: 'practice', text: 'Implement Mamdani or Sugeno inference system using your toolbox' },
+      { id: 'par-w3-d1', type: 'deliverable', text: '⚠️ MANDATORY: Fuzzy Expert System submission + first 30% exam preparation complete' },
+    ],
+  },
+  {
+    week: 4,
+    title: 'Deterministic Planning and PDDL',
+    phase: 'Phase 2: Planning Methods',
+    chapters: 'Ghallab et al. Ch 2, Haslum (PDDL)',
+    pages: '24 Aug – 30 Aug',
+    theoryHours: 10,
+    practiceHours: 8,
+    totalHours: 18,
+    deliverable: 'Planning Case Study started: domain and problem PDDL files defined',
+    tasks: [
+      { id: 'par-w4-t1', type: 'theory', text: 'Study Ghallab et al. Ch 2: PDDL and STRIPS — Planning Domain Definition Language' },
+      { id: 'par-w4-t2', type: 'theory', text: 'Master Forward State-Space Search and the role of Heuristic Functions in search efficiency' },
+      { id: 'par-w4-t3', type: 'theory', text: 'Read Haslum et al.: An Introduction to PDDL — syntax and semantics' },
+      { id: 'par-w4-p1', type: 'practice', text: 'Start Planning Case Study: formalize domain file in PDDL' },
+      { id: 'par-w4-p2', type: 'practice', text: 'Define problem file in PDDL — initial state, goal state, action schemas' },
+      { id: 'par-w4-d1', type: 'deliverable', text: '📋 Deliverable: PDDL domain and problem files for Case Study initiated' },
+    ],
+  },
+  {
+    week: 5,
+    title: 'Refinement Acting Engine and HTN Planning',
+    phase: 'Phase 2: Planning Methods',
+    chapters: 'Ghallab et al. Ch 3-4',
+    pages: '31 Aug – 6 Sep',
+    theoryHours: 8,
+    practiceHours: 10,
+    totalHours: 18,
+    deliverable: 'PDDL models implemented and tested against problem instances',
+    tasks: [
+      { id: 'par-w5-t1', type: 'theory', text: 'Study Ghallab et al. Ch 3-4: Refinement Acting Engine (RAE)' },
+      { id: 'par-w5-t2', type: 'theory', text: 'Master Hierarchical Task Networks (HTN): how HTN decomposes complex goals into primitive actions' },
+      { id: 'par-w5-p1', type: 'practice', text: 'Implement PDDL models in your planner' },
+      { id: 'par-w5-p2', type: 'practice', text: 'Begin testing planner against problem instances provided in the laboratory' },
+      { id: 'par-w5-d1', type: 'deliverable', text: '📋 Deliverable: PDDL models tested against lab problem instances' },
+    ],
+  },
+  {
+    week: 6,
+    title: 'Nondeterministic and Probabilistic Planning',
+    phase: 'Phase 2: Planning Methods',
+    chapters: 'Ghallab et al. Ch 5-6',
+    pages: '7 Sep – 13 Sep',
+    theoryHours: 10,
+    practiceHours: 8,
+    totalHours: 18,
+    deliverable: 'Case Study finalized + results compared against theoretical search models (Objective 5)',
+    mandatory: true,
+    tasks: [
+      { id: 'par-w6-t1', type: 'theory', text: 'Study Ghallab et al. Ch 5-6: Markov Decision Processes (MDPs)' },
+      { id: 'par-w6-t2', type: 'theory', text: 'Study Symbolic Model Checking for nondeterministic planning' },
+      { id: 'par-w6-p1', type: 'practice', text: 'Finalize Case Study technical documentation' },
+      { id: 'par-w6-p2', type: 'practice', text: '⚠️ Critical: explicitly compare implementation results with theoretical search models from Week 4 to satisfy Objective 5' },
+      { id: 'par-w6-d1', type: 'deliverable', text: '⚠️ MANDATORY: Case Study documentation complete with theoretical comparison (Obj. 5)' },
+    ],
+  },
+  {
+    week: 7,
+    title: 'Final Synthesis and Exam Preparation',
+    phase: 'Phase 3: Final Synthesis',
+    chapters: 'All — Block A + Block B revision',
+    pages: '14 Sep – 17 Sep',
+    theoryHours: 10,
+    practiceHours: 7,
+    totalHours: 17,
+    deliverable: 'Syllabus Audit complete + all deliverables verified (40% grade)',
+    mandatory: true,
+    tasks: [
+      { id: 'par-w7-t1', type: 'theory', text: 'Block A revision (5h): re-verify fuzzy formalization — t-norms, i-conorms and Evidence Theory intervals' },
+      { id: 'par-w7-t2', type: 'theory', text: 'Block B revision (5h): drill Forward/Backward state-space search and HTN decomposition. Practice MDP transition probabilities' },
+      { id: 'par-w7-p1', type: 'practice', text: 'Perform final "Syllabus Audit" against Objectives 1-6' },
+      { id: 'par-w7-p2', type: 'practice', text: 'Final sanity check: Fuzzy Expert System + Planning Case Study submissions (40% of grade)' },
+      { id: 'par-w7-p3', type: 'practice', text: 'Ensure all toolbox manuals are correctly cited in practical reports' },
+      { id: 'par-w7-d1', type: 'deliverable', text: '⚠️ MANDATORY: All deliverables verified and submitted before 17 Sep' },
+    ],
+  },
+]
+
+// ── PAR Week calculation ───────────────────────────────────────────────────────
+// Prep starts: Monday 3 August 2026 (week 1) — same as CI
+export const PAR_START_DATE = '2026-08-03'
+
+export function getCurrentParWeek(): number {
+  const start = new Date(PAR_START_DATE + 'T00:00:00')
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const diffMs = today.getTime() - start.getTime()
+  const diffDays = Math.floor(diffMs / 86400000)
+  if (diffDays < 0) return 1
+  const week = Math.floor(diffDays / 7) + 1
+  return Math.min(week, 7)
+}
+
+export function getParWeekDateRange(week: number): { start: string; end: string } {
+  const start = new Date(PAR_START_DATE + 'T00:00:00')
+  start.setDate(start.getDate() + (week - 1) * 7)
+  const end = new Date(start)
+  end.setDate(start.getDate() + 6)
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return { start: fmt(start), end: fmt(end) }
+}
+
 // ── CI Week calculation ────────────────────────────────────────────────────────
 // Prep starts: Monday 3 August 2026 (week 1)
 // Course starts: 17 September 2026

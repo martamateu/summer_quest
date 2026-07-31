@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Play, Pause, RotateCcw, SkipForward, Minus, Plus, Brain, BookOpen, Code2, AlertTriangle, ChevronDown, ChevronUp, Check } from 'lucide-react'
-import { IMAS_PLAN, CI_PLAN, getCurrentImasWeek, getCurrentCiWeek, getImasWeekDateRange, getCiWeekDateRange, getCarryoverTasks, getCarryoverId, type StudyTask } from '@/lib/study-plan'
+import { IMAS_PLAN, CI_PLAN, PAR_PLAN, getCurrentImasWeek, getCurrentCiWeek, getCurrentParWeek, getImasWeekDateRange, getCiWeekDateRange, getParWeekDateRange, getCarryoverTasks, getCarryoverId, type StudyTask } from '@/lib/study-plan'
 
 // ── Date helpers ───────────────────────────────────────────────────────────────
 const fmtLocal = (d: Date) =>
@@ -171,15 +171,16 @@ export function FocusScreen() {
   const [studyHours, setStudyHours] = useState<Record<string, number>>({})
   const [showFullPlan, setShowFullPlan] = useState(false)
 
-  // Plan activo según asignatura seleccionada (IMAS o CI)
-  const activePlan = selectedSubject === 'CI' ? CI_PLAN : IMAS_PLAN
-  const activePlanKey = selectedSubject === 'CI' ? 'CI' : 'IMAS'
+  // Plan activo según asignatura seleccionada (IMAS, CI o PAR)
+  const activePlan = selectedSubject === 'CI' ? CI_PLAN : selectedSubject === 'PAR' ? PAR_PLAN : IMAS_PLAN
+  const activePlanKey = selectedSubject === 'CI' ? 'CI' : selectedSubject === 'PAR' ? 'PAR' : 'IMAS'
   const totalWeeks = activePlan.length
-  const currentWeekNum = selectedSubject === 'CI' ? getCurrentCiWeek() : getCurrentImasWeek()
+  const currentWeekNum = selectedSubject === 'CI' ? getCurrentCiWeek() : selectedSubject === 'PAR' ? getCurrentParWeek() : getCurrentImasWeek()
   const [imasViewWeek, setImasViewWeek] = useState(getCurrentImasWeek())
   const [ciViewWeek, setCiViewWeek] = useState(getCurrentCiWeek())
-  const viewWeek = selectedSubject === 'CI' ? ciViewWeek : imasViewWeek
-  const setViewWeek = selectedSubject === 'CI' ? setCiViewWeek : setImasViewWeek
+  const [parViewWeek, setParViewWeek] = useState(getCurrentParWeek())
+  const viewWeek = selectedSubject === 'CI' ? ciViewWeek : selectedSubject === 'PAR' ? parViewWeek : imasViewWeek
+  const setViewWeek = selectedSubject === 'CI' ? setCiViewWeek : selectedSubject === 'PAR' ? setParViewWeek : setImasViewWeek
   const currentWeek = activePlan[viewWeek - 1]
 
   // Load today's focus + history on mount, and refresh on external changes (cloud sync)
@@ -228,6 +229,7 @@ export function FocusScreen() {
       addFocusSubjectMinutes(selectedSubject, workMinutes)
       if (selectedSubject === 'IMAS') addStudyMinutes('IMAS', getCurrentImasWeek(), workMinutes)
       if (selectedSubject === 'CI') addStudyMinutes('CI', getCurrentCiWeek(), workMinutes)
+      if (selectedSubject === 'PAR') addStudyMinutes('PAR', getCurrentParWeek(), workMinutes)
       setTodayFocus((prev) => {
         const newTotal = prev + workMinutes
         // Marcar Máster como hecha al completar el primer bloque de 25 min
@@ -503,13 +505,13 @@ export function FocusScreen() {
       </div>
 
       {/* ── Study Plan (IMAS o CI según asignatura seleccionada) ────────── */}
-      {(selectedSubject === 'IMAS' || selectedSubject === 'CI') && currentWeek && (() => {
+      {(selectedSubject === 'IMAS' || selectedSubject === 'CI' || selectedSubject === 'PAR') && currentWeek && (() => {
         const weekKey = `${activePlanKey}-w${viewWeek}`
         const imasMinutesThisWeek = studyHours[weekKey] || 0
         const imasHoursThisWeek = imasMinutesThisWeek / 60
         const targetHours = currentWeek.totalHours
         const pct = Math.min(100, Math.round((imasHoursThisWeek / targetHours) * 100))
-        const dateRange = selectedSubject === 'CI' ? getCiWeekDateRange(viewWeek) : getImasWeekDateRange(viewWeek)
+        const dateRange = selectedSubject === 'CI' ? getCiWeekDateRange(viewWeek) : selectedSubject === 'PAR' ? getParWeekDateRange(viewWeek) : getImasWeekDateRange(viewWeek)
         const isCurrentWeek = viewWeek === currentWeekNum
         const fmtDate = (s: string) => {
           const [, m, d] = s.split('-').map(Number)
