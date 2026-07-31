@@ -410,12 +410,12 @@ export function GymScreen() {
     const sets = (currentSets[exerciseId] || []).filter(s => s.reps > 0)
     if (sets.length === 0) return
     setSavedSets(prev => ({ ...prev, [exerciseId]: sets.length }))
-    // Save/update session in localStorage immediately
+    // Save/update session in localStorage immediately (NO Sheet sync here —
+    // that only happens on "Guardar" to avoid duplicate columns in the Sheet)
     const session = buildSession()
     if (session) {
       upsertSession(session)
       markGoalFuerza(session.date)
-      syncToSheet(session)
     }
     startRestTimer(exerciseId)
   }
