@@ -20,6 +20,7 @@ export default auth((req) => {
     pathname.startsWith('/api/gym-c/sync') ||
     pathname.startsWith('/api/gym-ab/sync') ||
     pathname.startsWith('/api/run-sheet/sync') ||
+    pathname.startsWith('/api/runs') ||
     pathname.startsWith('/_next') ||
     pathname.includes('.')
   ) {
