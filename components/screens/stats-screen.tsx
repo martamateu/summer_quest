@@ -72,7 +72,7 @@ const METRICS: MetricMeta[] = [
   { id: 'descanso',     label: 'Descanso',       color: '#6b7280', icon: <span className="text-sm">😴</span>,    hasHistory: true },
   { id: 'master',       label: 'Máster',         color: '#8b5cf6', icon: <GraduationCap className="w-4 h-4" />,  hasHistory: true },
   { id: 'focus',        label: 'Focus',          color: '#6366f1', icon: <Brain className="w-4 h-4" />,         hasHistory: true },
-  { id: 'screentime',   label: 'Pantalla',       color: '#f97316', icon: <Smartphone className="w-4 h-4" />,     hasHistory: false },
+  { id: 'screentime',   label: 'Pantalla',       color: '#f97316', icon: <Smartphone className="w-4 h-4" />,     hasHistory: true },
   { id: 'peso',         label: 'Peso',           color: '#8b5cf6', icon: <Scale className="w-4 h-4" />,           hasHistory: true },
 ]
 
@@ -149,6 +149,9 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
   const [taskTags, setTaskTags] = useState<string[]>([])
   const [foodLog, setFoodLog] = useState<Record<string, { dayType: 'entreno' | 'descanso'; meals: Record<string, boolean>; customMeals?: Record<string, string> }>>({})
   const [weightHistory, setWeightHistory] = useState<Record<string, number>>({})
+  const [screenTimeHistory, setScreenTimeHistory] = useState<Record<string, { minutes: number; instagramMinutes: number | null }>>({})
+
+  const IG_GOAL_MIN = 20 // objetivo: ≤20 min de Instagram al día
 
   // Food plan macro constants (mirrors food-screen.tsx)
   const FOOD_MEALS = [
@@ -189,6 +192,15 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
     loadAll()
     const handler = () => loadAll()
     window.addEventListener('sq-data-changed', handler)
+
+    // Cargar histórico de screen time desde la API
+    fetch('/api/screen-time/history?days=90')
+      .then(r => r.json())
+      .then((data: { history: Record<string, { minutes: number; instagramMinutes: number | null }> }) => {
+        if (data?.history) setScreenTimeHistory(data.history)
+      })
+      .catch(() => {})
+
     return () => window.removeEventListener('sq-data-changed', handler)
   }, [])
 
@@ -318,20 +330,32 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
     <div className="px-4 pt-6 pb-24">
       <h1 className="text-2xl font-bold text-foreground mb-4">Stats</h1>
 
-      {/* Screen time — solo hoy */}
-      <div className="bg-card rounded-2xl p-4 mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Smartphone className="w-5 h-5 text-orange-500" />
-          <div>
-            <p className="text-xs text-muted-foreground">Pantalla hoy</p>
-            <p className="text-lg font-bold text-foreground">{metrics.screenTime}</p>
+      {/* Screen time — hoy */}
+      {(() => {
+        const todayStr = getTodayStr()
+        const igToday = screenTimeHistory[todayStr]?.instagramMinutes ?? null
+        const igOk = igToday !== null && igToday <= IG_GOAL_MIN
+        return (
+          <div className="bg-card rounded-2xl p-4 mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Smartphone className="w-5 h-5 text-orange-500" />
+              <div>
+                <p className="text-xs text-muted-foreground">Pantalla hoy</p>
+                <p className="text-lg font-bold text-foreground">{metrics.screenTime}</p>
+                {igToday !== null && (
+                  <p className="text-[11px] font-medium" style={{ color: igOk ? '#22c55e' : '#e1306c' }}>
+                    Instagram: {igToday}min {igOk ? '✓' : '↑'}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-muted-foreground">Pasos hoy</p>
+              <p className="text-lg font-bold text-foreground">{(metrics.steps.current / 1000).toFixed(1)}k</p>
+            </div>
           </div>
-        </div>
-        <div className="text-right">
-          <p className="text-xs text-muted-foreground">Pasos hoy</p>
-          <p className="text-lg font-bold text-foreground">{(metrics.steps.current / 1000).toFixed(1)}k</p>
-        </div>
-      </div>
+        )
+      })()}
 
       {/* Monthly counters — días conseguidos este mes */}
       {(() => {
@@ -356,6 +380,12 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
           if (!log) return false
           return Object.values(log.meals).filter(Boolean).length === 5
         }).length
+        // Días con datos de Instagram donde se ha cumplido el objetivo (≤20 min)
+        const igDays = monthDates2.filter(d => {
+          const ig = screenTimeHistory[d]?.instagramMinutes
+          return ig !== null && ig !== undefined && ig <= IG_GOAL_MIN
+        }).length
+        const hasIgData = monthDates2.some(d => screenTimeHistory[d]?.instagramMinutes !== null && screenTimeHistory[d]?.instagramMinutes !== undefined)
 
         const items = [
           { label: 'Pasos 15k', days: pasosDays, color: '#3b82f6', icon: <Footprints className="w-4 h-4" /> },
@@ -364,6 +394,7 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
           { label: 'Run',       days: runDays,    color: '#f97316', icon: <Timer className="w-4 h-4" /> },
           { label: 'Focus',     days: focusDays,  color: '#6366f1', icon: <Brain className="w-4 h-4" /> },
           { label: 'Dieta',     days: dietaDays,  color: '#ec4899', icon: <Flame className="w-4 h-4" /> },
+          ...(hasIgData ? [{ label: 'Insta ≤20m', days: igDays, color: '#e1306c', icon: <Smartphone className="w-4 h-4" /> }] : []),
         ]
 
         return (
@@ -541,6 +572,119 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
           )}
         </div>
       )}
+
+      {/* Pantalla — gráfica de barras con screen time total e Instagram */}
+      {(activeMetric === 'all' || activeMetric === 'screentime') && (() => {
+        const stRows = dates.map(date => ({
+          date,
+          minutes: screenTimeHistory[date]?.minutes ?? null,
+          igMinutes: screenTimeHistory[date]?.instagramMinutes ?? null,
+        }))
+        const hasData = stRows.some(r => r.minutes !== null)
+        const hasIg = stRows.some(r => r.igMinutes !== null)
+        if (!hasData && activeMetric !== 'screentime') return null
+
+        const maxMin = Math.max(...stRows.map(r => r.minutes ?? 0), 1)
+        const totalMin = stRows.reduce((s, r) => s + (r.minutes ?? 0), 0)
+        const daysWithData = stRows.filter(r => r.minutes !== null).length
+        const avgMin = daysWithData > 0 ? Math.round(totalMin / daysWithData) : 0
+        const igGoalDays = hasIg ? stRows.filter(r => r.igMinutes !== null && r.igMinutes <= IG_GOAL_MIN).length : 0
+        const igDaysWithData = stRows.filter(r => r.igMinutes !== null).length
+
+        const fmtMin = (m: number) => m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`
+
+        return (
+          <div className="bg-card rounded-2xl p-4 mb-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Smartphone className="w-4 h-4 text-orange-500" />
+              <p className="text-sm font-semibold text-foreground">Pantalla</p>
+              {hasIg && (
+                <span className="text-[10px] text-muted-foreground ml-auto">
+                  Instagram: {igGoalDays}/{igDaysWithData} días ≤{IG_GOAL_MIN}min
+                </span>
+              )}
+            </div>
+            {view === 'dia' ? (
+              <div className="text-center py-4">
+                {stRows[0]?.minutes !== null ? (
+                  <>
+                    <p className="text-4xl font-bold text-foreground">{fmtMin(stRows[0].minutes!)}</p>
+                    <p className="text-sm text-muted-foreground mt-1">tiempo de pantalla</p>
+                    {stRows[0].igMinutes !== null && (
+                      <p className="text-xs mt-2" style={{ color: stRows[0].igMinutes! <= IG_GOAL_MIN ? '#22c55e' : '#e1306c' }}>
+                        Instagram: {fmtMin(stRows[0].igMinutes!)} {stRows[0].igMinutes! <= IG_GOAL_MIN ? '✓' : '↑'}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground py-4">Sin datos para este día</p>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  <div className="bg-secondary rounded-xl p-2 text-center">
+                    <p className="text-[10px] text-muted-foreground uppercase">Total</p>
+                    <p className="text-sm font-bold text-foreground">{fmtMin(totalMin)}</p>
+                  </div>
+                  <div className="bg-secondary rounded-xl p-2 text-center">
+                    <p className="text-[10px] text-muted-foreground uppercase">Media</p>
+                    <p className="text-sm font-bold text-foreground">{daysWithData > 0 ? fmtMin(avgMin) : '—'}</p>
+                  </div>
+                  <div className="bg-secondary rounded-xl p-2 text-center">
+                    <p className="text-[10px] text-muted-foreground uppercase">{hasIg ? `Insta ≤${IG_GOAL_MIN}m` : 'Días'}</p>
+                    <p className="text-sm font-bold text-foreground">{hasIg ? `${igGoalDays}/${igDaysWithData}` : `${daysWithData}/${dates.length}`}</p>
+                  </div>
+                </div>
+                {hasData ? (
+                  <div className="flex items-end gap-1" style={{ height: view === 'semana' ? 100 : 80 }}>
+                    {stRows.map((r, i) => {
+                      const barH = r.minutes !== null && r.minutes > 0
+                        ? Math.max(Math.round((r.minutes / maxMin) * 72), 4)
+                        : 2
+                      const igOk = r.igMinutes !== null && r.igMinutes <= IG_GOAL_MIN
+                      const barColor = hasIg
+                        ? (r.igMinutes === null ? '#f9731640' : igOk ? '#22c55e' : '#e1306c')
+                        : '#f97316'
+                      return (
+                        <div key={i} className="flex-1 flex flex-col items-center justify-end gap-0.5" style={{ height: view === 'semana' ? 100 : 80 }}>
+                          {view === 'semana' && r.minutes !== null && r.minutes > 0 && (
+                            <span className="text-[8px] font-medium leading-none mb-0.5" style={{ color: hasIg && r.igMinutes !== null ? (igOk ? '#22c55e' : '#e1306c') : '#f97316' }}>
+                              {fmtMin(r.minutes)}
+                            </span>
+                          )}
+                          <div
+                            className="w-full rounded-t transition-all"
+                            style={{ height: barH, backgroundColor: r.minutes !== null ? barColor : '#f9731620' }}
+                          />
+                          {view === 'semana' && (
+                            <span className="text-[8px] text-muted-foreground leading-none">
+                              {fmtDateLabel(r.date).split(' ')[0]}
+                            </span>
+                          )}
+                          {view === 'mes' && Number(r.date.split('-')[2]) % 5 === 1 && (
+                            <span className="text-[8px] text-muted-foreground leading-none">
+                              {Number(r.date.split('-')[2])}
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">Sin datos de pantalla en este período</p>
+                )}
+                {hasIg && (
+                  <div className="flex items-center gap-3 mt-2">
+                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-green-500" /><span className="text-[10px] text-muted-foreground">≤{IG_GOAL_MIN}min insta</span></div>
+                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full" style={{ backgroundColor: '#e1306c' }} /><span className="text-[10px] text-muted-foreground">&gt;{IG_GOAL_MIN}min insta</span></div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Peso — gráfica de línea/barras con valor en kg */}
       {(activeMetric === 'all' || activeMetric === 'peso') && (() => {
