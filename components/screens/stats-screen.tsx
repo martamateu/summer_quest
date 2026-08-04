@@ -393,7 +393,6 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
           { label: 'Fuerza',    days: fuerzaDays, color: '#ef4444', icon: <Dumbbell className="w-4 h-4" /> },
           { label: 'Run',       days: runDays,    color: '#f97316', icon: <Timer className="w-4 h-4" /> },
           { label: 'Focus',     days: focusDays,  color: '#6366f1', icon: <Brain className="w-4 h-4" /> },
-          { label: 'Dieta',     days: dietaDays,  color: '#ec4899', icon: <Flame className="w-4 h-4" /> },
           ...(hasIgData ? [{ label: 'Insta ≤20m', days: igDays, color: '#e1306c', icon: <Smartphone className="w-4 h-4" /> }] : []),
         ]
 
