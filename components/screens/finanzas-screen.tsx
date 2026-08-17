@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { Camera, Plus, X, Check, Loader2, Receipt, TrendingDown, TrendingUp, Trash2, ChevronLeft, ChevronRight, ArrowDownCircle, ArrowUpCircle, Lightbulb, Pencil, FileText } from 'lucide-react'
+import { Camera, Plus, X, Check, Loader2, Receipt, TrendingDown, TrendingUp, Trash2, ChevronLeft, ChevronRight, ArrowDownCircle, ArrowUpCircle, Lightbulb, Pencil, FileText, Sparkles, Trophy, Star, Zap, RefreshCw } from 'lucide-react'
 import type { Expense, ExpenseCategory } from '@/lib/types'
 import { EXPENSE_CATEGORY_LABELS } from '@/lib/types'
-import { ReportExportModal } from '@/components/report-export-modal'
+import { ReportExportModal, type MonthlyReportData } from '@/components/report-export-modal'
 import { recordTombstones } from '@/lib/sync-tombstones'
 
 const EXPENSES_STORAGE_KEY = 'sq_expenses'
@@ -22,11 +22,50 @@ interface PendingItem {
   isIncome: boolean
 }
 
-type FinanceView = 'dia' | 'semana' | 'mes'
+interface FinanceQuest {
+  id: string
+  title: string
+  description: string
+  category: 'ahorro' | 'categoria' | 'habito'
+  targetAmount?: number
+  difficulty: 'facil' | 'medio' | 'dificil'
+  icon: string
+}
+
+// Static monthly quests that always show regardless of AI
+const STATIC_MONTHLY_QUESTS: FinanceQuest[] = [
+  {
+    id: 'static-registrar-gastos',
+    title: 'Registra todos tus gastos',
+    description: 'Añade cada gasto el mismo día que lo haces. Sin excepciones durante todo el mes.',
+    category: 'habito',
+    difficulty: 'facil',
+    icon: '📝',
+  },
+  {
+    id: 'static-revisar-suscripciones',
+    title: 'Audita tus suscripciones',
+    description: 'Revisa todas tus suscripciones activas y cancela al menos una que no uses al 100%.',
+    category: 'habito',
+    difficulty: 'medio',
+    icon: '🔍',
+  },
+  {
+    id: 'static-no-compras-impulsivas',
+    title: 'Regla de las 48h',
+    description: 'Antes de cualquier compra >30€ no planificada, espera 48h. Si aún la quieres, compra. Si no, cancela.',
+    category: 'habito',
+    difficulty: 'medio',
+    icon: '⏳',
+  },
+]
+
+type FinanceView = 'dia' | 'semana' | 'mes' | 'quests'
 
 const categories: ExpenseCategory[] = ['nomina', 'comida', 'supermercado', 'cafe', 'horchata', 'transporte', 'ocio', 'cine', 'libros', 'uni', 'hogar', 'salud', 'lentillas', 'psicologo', 'entrenador', 'urbansports', 'ropa', 'suscripciones', 'hipoteca', 'seguros', 'viajes', 'nails', 'skincare', 'hair', 'ai', 'investments', 'otros']
 
-const FIXED_EXPENSE_CATEGORIES: ExpenseCategory[] = ['hogar', 'suscripciones', 'hipoteca', 'seguros', 'ai', 'investments', 'urbansports', 'psicologo', 'entrenador']
+const FIXED_EXPENSE_CATEGORIES: ExpenseCategory[] = ['hogar', 'suscripciones', 'hipoteca', 'seguros', 'ai', 'urbansports', 'psicologo', 'entrenador']
+const INVESTMENT_CATEGORIES: ExpenseCategory[] = ['investments']
 
 const SUPERMARKET_KEYWORDS = [
   'mercadona', 'condis', 'dia', 'lidl', 'aldi', 'carrefour', 'alcampo',
@@ -146,6 +185,19 @@ export function FinanzasScreen() {
   const [editCategory, setEditCategory] = useState<ExpenseCategory>('otros')
   const [editDate, setEditDate] = useState('')
   const [editIsIncome, setEditIsIncome] = useState(false)
+  // Finance Quests state
+  const [quests, setQuests] = useState<FinanceQuest[]>([])
+  const [questsLoading, setQuestsLoading] = useState(false)
+  const [questsError, setQuestsError] = useState<string | null>(null)
+  const [completedQuestIds, setCompletedQuestIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem('sq_finance_quest_completed')
+      if (!stored) return new Set()
+      const { month, ids } = JSON.parse(stored)
+      const curMonth = new Date().toISOString().slice(0, 7)
+      return month === curMonth ? new Set(ids) : new Set()
+    } catch { return new Set() }
+  })
 
   // Always read from localStorage and sync to React state
   const saveExpenses = (updated: Expense[]) => {
@@ -255,32 +307,42 @@ export function FinanzasScreen() {
   const thisMonthIncome = onlyIncome(thisMonthItems)
   const prevMonthIncome = onlyIncome(filterByRange(expenses, prevMonth.start, prevMonth.end))
   const prevMonthExpenses = onlyExpenses(filterByRange(expenses, prevMonth.start, prevMonth.end))
+  const monthlyInvestmentTotal = thisMonthExpenses
+    .filter(e => INVESTMENT_CATEGORIES.includes(e.category))
+    .reduce((s, e) => s + e.amount, 0)
   const monthlyTotal = thisMonthExpenses.reduce((s, e) => s + e.amount, 0)
+  const monthlySpendingTotal = monthlyTotal - monthlyInvestmentTotal // gastos reales sin inversión
   const prevMonthPayrollIncome = prevMonthIncome.filter(isPayrollIncome).reduce((s, e) => s + e.amount, 0)
   const prevMonthTotal = prevMonthExpenses.reduce((s, e) => s + e.amount, 0)
   const thisMonthCats = categoryTotals(thisMonthExpenses)
   const monthlyFixedTotal = thisMonthExpenses
     .filter(e => FIXED_EXPENSE_CATEGORIES.includes(e.category))
     .reduce((s, e) => s + e.amount, 0)
-  const monthlyVariableTotal = monthlyTotal - monthlyFixedTotal
+  const monthlyVariableTotal = monthlySpendingTotal - monthlyFixedTotal
   // Base fórmula: otros ingresos del mes actual (excluida nómina) + nómina del mes anterior
   const thisMonthOtherIncome = thisMonthIncome.filter(e => !isPayrollIncome(e)).reduce((s, e) => s + e.amount, 0)
   const incomeBase = thisMonthOtherIncome + prevMonthPayrollIncome
-  const monthlySavings = incomeBase - monthlyTotal
+  // Ahorro líquido = ingresos - gastos reales (sin inversión). Inversión se suma aparte al ahorro total.
+  const monthlySavingsLiquid = incomeBase - monthlySpendingTotal
+  const monthlySavingsTotal = monthlySavingsLiquid + monthlyInvestmentTotal // ahorro + inversión = patrimonio ganado
+  const monthlySavings = monthlySavingsLiquid // alias para compatibilidad
   const monthlyFixedPct = incomeBase > 0 ? (monthlyFixedTotal / incomeBase) * 100 : 0
   const monthlyVariablePct = incomeBase > 0 ? (monthlyVariableTotal / incomeBase) * 100 : 0
-  const monthlySavingsRatePct = incomeBase > 0 ? 100 - (monthlyFixedPct + monthlyVariablePct) : 0
+  const monthlyInvestmentPct = incomeBase > 0 ? (monthlyInvestmentTotal / incomeBase) * 100 : 0
+  const monthlySavingsRatePct = incomeBase > 0 ? 100 - (monthlyFixedPct + monthlyVariablePct + monthlyInvestmentPct) : 0
   const needsDeltaPct = monthlyFixedPct - 50
   const wantsDeltaPct = monthlyVariablePct - 30
-  const savingsDeltaPct = monthlySavingsRatePct - 20
-  // Donut = reparto de la base de ingresos: fijos / variables / ahorro (suma 100%)
-  const spentPct = monthlyFixedPct + monthlyVariablePct
+  const savingsDeltaPct = (monthlySavingsRatePct + monthlyInvestmentPct) - 20
+  // Donut = reparto: fijos / variables / inversión / ahorro líquido (suma 100%)
+  const spentPct = monthlyFixedPct + monthlyVariablePct + monthlyInvestmentPct
   const overspend = spentPct > 100
   const donutFixedPct = overspend ? (monthlyFixedPct / spentPct) * 100 : monthlyFixedPct
   const donutVariablePct = overspend ? (monthlyVariablePct / spentPct) * 100 : monthlyVariablePct
+  const donutInvestmentPct = overspend ? (monthlyInvestmentPct / spentPct) * 100 : monthlyInvestmentPct
   const donutSavingsPct = overspend ? 0 : Math.max(0, monthlySavingsRatePct)
   const dF = donutFixedPct
   const dFV = donutFixedPct + donutVariablePct
+  const dFVI = donutFixedPct + donutVariablePct + donutInvestmentPct
 
   // Monthly report (markdown) for export to NotebookLM
   const buildMonthReport = () => {
@@ -303,10 +365,11 @@ export function FinanzasScreen() {
 
 ## Resumen
 - Ingresos base: ${eur(incomeBase)}
-- Gastos totales: ${eur(monthlyTotal)}
-- Ahorro: ${eur(monthlySavings)}${incomeBase > 0 ? ` (${Math.round((monthlySavings / incomeBase) * 100)}%)` : ''}
 - Gastos fijos: ${eur(monthlyFixedTotal)}${incomeBase > 0 ? ` (${Math.round(monthlyFixedPct)}%)` : ''}
 - Gastos variables: ${eur(monthlyVariableTotal)}${incomeBase > 0 ? ` (${Math.round(monthlyVariablePct)}%)` : ''}
+- Inversión: ${eur(monthlyInvestmentTotal)}${incomeBase > 0 ? ` (${Math.round(monthlyInvestmentPct)}%)` : ''}
+- Ahorro líquido: ${eur(monthlySavingsLiquid)}${incomeBase > 0 ? ` (${Math.round((monthlySavingsLiquid / incomeBase) * 100)}%)` : ''}
+- Ahorro total (líquido + inversión): ${eur(monthlySavingsTotal)}${incomeBase > 0 ? ` (${Math.round((monthlySavingsTotal / incomeBase) * 100)}%)` : ''}
 
 ## Gastos por categoría
 ${catLines}
@@ -321,7 +384,87 @@ _Generado por Summer Quest · ${getTodayStr()}_
 `
   }
   const donutStyle = {
-    background: `conic-gradient(#8b5cf6 0% ${dF.toFixed(2)}%, #f59e0b ${dF.toFixed(2)}% ${dFV.toFixed(2)}%, #22c55e ${dFV.toFixed(2)}% 100%)`,
+    background: `conic-gradient(#8b5cf6 0% ${dF.toFixed(2)}%, #f59e0b ${dF.toFixed(2)}% ${dFV.toFixed(2)}%, #60a5fa ${dFV.toFixed(2)}% ${dFVI.toFixed(2)}%, #22c55e ${dFVI.toFixed(2)}% 100%)`,
+  }
+
+  // Build structured report data for the PDF modal (with AI insights + yearly chart)
+  const buildReportData = (): MonthlyReportData => {
+    const prevMonthInvestmentTotal = prevMonthExpenses
+      .filter(e => INVESTMENT_CATEGORIES.includes(e.category))
+      .reduce((s, e) => s + e.amount, 0)
+    const prevMonthSpendingTotal = prevMonthTotal - prevMonthInvestmentTotal
+    const prevMonthFixedTotal = prevMonthExpenses
+      .filter(e => FIXED_EXPENSE_CATEGORIES.includes(e.category))
+      .reduce((s, e) => s + e.amount, 0)
+    const prevMonthVariableTotal = prevMonthSpendingTotal - prevMonthFixedTotal
+    const prevMonthOtherIncome = prevMonthIncome.filter(e => !isPayrollIncome(e)).reduce((s, e) => s + e.amount, 0)
+    const prevPrevMonth = getMonthRange(now, monthOffset - 2)
+    const prevPrevMonthIncome = onlyIncome(filterByRange(expenses, prevPrevMonth.start, prevPrevMonth.end))
+    const prevPrevPayroll = prevPrevMonthIncome.filter(isPayrollIncome).reduce((s, e) => s + e.amount, 0)
+    const prevIncomeBase = prevMonthOtherIncome + prevPrevPayroll
+    const prevMonthlySavingsLiquid = prevIncomeBase - prevMonthSpendingTotal
+
+    // Category breakdown strings for AI
+    const catBreakdown = Object.entries(categoryTotals(thisMonthExpenses))
+      .sort((a, b) => (b[1] as number) - (a[1] as number))
+      .map(([cat, total]) => `${EXPENSE_CATEGORY_LABELS[cat as ExpenseCategory]}: ${eur(total as number)}`)
+      .join('\n') || '(sin gastos)'
+
+    const prevCatBreakdown = Object.entries(categoryTotals(prevMonthExpenses))
+      .sort((a, b) => (b[1] as number) - (a[1] as number))
+      .map(([cat, total]) => `${EXPENSE_CATEGORY_LABELS[cat as ExpenseCategory]}: ${eur(total as number)}`)
+      .join('\n') || '(sin gastos)'
+
+    // Yearly chart data: last 12 months
+    const yearlyChartData = Array.from({ length: 12 }, (_, i) => {
+      const offset = monthOffset - 11 + i
+      const range = getMonthRange(now, offset)
+      const monthExpenses = onlyExpenses(filterByRange(expenses, range.start, range.end))
+      const monthIncome = onlyIncome(filterByRange(expenses, range.start, range.end))
+      const monthInv = monthExpenses.filter(e => INVESTMENT_CATEGORIES.includes(e.category)).reduce((s, e) => s + e.amount, 0)
+      const monthSpend = monthExpenses.reduce((s, e) => s + e.amount, 0) - monthInv
+      const prevRange = getMonthRange(now, offset - 1)
+      const prevPayroll = onlyIncome(filterByRange(expenses, prevRange.start, prevRange.end))
+        .filter(isPayrollIncome).reduce((s, e) => s + e.amount, 0)
+      const otherInc = monthIncome.filter(e => !isPayrollIncome(e)).reduce((s, e) => s + e.amount, 0)
+      const base = otherInc + prevPayroll
+      const savLiq = Math.max(0, base - monthSpend)
+      return {
+        month: range.startDate.toLocaleDateString('es-ES', { month: 'short' }),
+        spending: monthSpend,
+        investment: monthInv,
+        savings: savLiq,
+        incomeBase: base,
+      }
+    })
+
+    const yearlyDataStr = yearlyChartData
+      .map(d => `${d.month}: gastos ${eur(d.spending)}, inversión ${eur(d.investment)}, ahorro líquido ${eur(d.savings)}`)
+      .join('\n')
+
+    const prevMonthLabelStr = prevMonth.startDate.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
+
+    return {
+      monthLabel,
+      incomeBase,
+      monthlySpendingTotal,
+      monthlyFixedTotal,
+      monthlyVariableTotal,
+      monthlyInvestmentTotal,
+      monthlySavingsLiquid,
+      monthlySavingsTotal,
+      prevMonthLabel: prevMonthLabelStr,
+      prevMonthSpendingTotal,
+      prevMonthFixedTotal,
+      prevMonthVariableTotal,
+      prevMonthInvestmentTotal,
+      prevMonthlySavingsLiquid,
+      prevIncomeBase,
+      categoryBreakdown: catBreakdown,
+      prevCategoryBreakdown: prevCatBreakdown,
+      yearlyData: yearlyDataStr,
+      yearlyChartData,
+    }
   }
 
   // Insights
@@ -355,11 +498,16 @@ _Generado por Summer Quest · ${getTodayStr()}_
       }
     }
     if (view === 'mes') {
-      if (monthlySavings > 0) {
-        const savingsRate = incomeBase > 0 ? Math.round((monthlySavings / incomeBase) * 100) : 0
-        msgs.push(`Estás ahorrando un ${savingsRate}% de tu base de ingresos (${eur(monthlySavings)})`)
-      } else if (monthlySavings < 0 && incomeBase > 0) {
-        msgs.push(`Gastas ${eur(Math.abs(monthlySavings))} más que tu base de ingresos este mes`)
+      if (monthlySavingsTotal > 0 && incomeBase > 0) {
+        const savingsRate = Math.round((monthlySavingsTotal / incomeBase) * 100)
+        const liquidRate = Math.round((monthlySavingsLiquid / incomeBase) * 100)
+        if (monthlyInvestmentTotal > 0) {
+          msgs.push(`Ahorro total: ${savingsRate}% (${eur(monthlySavingsLiquid)} líquido + ${eur(monthlyInvestmentTotal)} invertido)`)
+        } else {
+          msgs.push(`Estás ahorrando un ${liquidRate}% de tu base de ingresos (${eur(monthlySavingsLiquid)})`)
+        }
+      } else if (monthlySavingsLiquid < 0 && incomeBase > 0) {
+        msgs.push(`Gastas ${eur(Math.abs(monthlySavingsLiquid))} más que tu base de ingresos este mes`)
       }
       if (prevMonthTotal > 0) {
         const pct = Math.round(Math.abs(monthlyTotal - prevMonthTotal) / prevMonthTotal * 100)
@@ -534,6 +682,65 @@ _Generado por Summer Quest · ${getTodayStr()}_
     cancelEditExpense()
   }
 
+  // Finance quests helpers
+  const fetchAIQuests = async () => {
+    if (incomeBase === 0) return
+    setQuestsLoading(true)
+    setQuestsError(null)
+    try {
+      const data = buildReportData()
+      const res = await fetch('/api/finance-quests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const result = await res.json()
+      if (result.quests) {
+        setQuests(result.quests)
+        try {
+          localStorage.setItem('sq_finance_quests', JSON.stringify({
+            month: new Date().toISOString().slice(0, 7),
+            quests: result.quests,
+          }))
+        } catch { /* ignore */ }
+      }
+    } catch {
+      setQuestsError('No se pudieron generar los retos. Inténtalo de nuevo.')
+    } finally {
+      setQuestsLoading(false)
+    }
+  }
+
+  const loadCachedQuests = () => {
+    try {
+      const stored = localStorage.getItem('sq_finance_quests')
+      if (!stored) return false
+      const { month, quests: cachedQuests } = JSON.parse(stored)
+      const curMonth = new Date().toISOString().slice(0, 7)
+      if (month === curMonth && Array.isArray(cachedQuests)) {
+        setQuests(cachedQuests)
+        return true
+      }
+    } catch { /* ignore */ }
+    return false
+  }
+
+  const toggleQuestComplete = (id: string) => {
+    setCompletedQuestIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      try {
+        localStorage.setItem('sq_finance_quest_completed', JSON.stringify({
+          month: new Date().toISOString().slice(0, 7),
+          ids: Array.from(next),
+        }))
+      } catch { /* ignore */ }
+      return next
+    })
+  }
+
   // Current view items
   const viewItemsUnfiltered = view === 'dia'
     ? expenses.filter(e => e.date === todayStr)
@@ -576,7 +783,7 @@ _Generado por Summer Quest · ${getTodayStr()}_
 
       {/* View Tabs */}
       <div className="flex gap-1 mb-4 bg-secondary rounded-xl p-1">
-        {(['dia', 'semana', 'mes'] as FinanceView[]).map(v => (
+        {(['dia', 'semana', 'mes', 'quests'] as FinanceView[]).map(v => (
           <button
             key={v}
             onClick={() => { setView(v); setWeekOffset(0); setMonthOffset(0) }}
@@ -584,7 +791,9 @@ _Generado por Summer Quest · ${getTodayStr()}_
               view === v ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
             }`}
           >
-            {v === 'dia' ? 'Día' : v === 'semana' ? 'Semana' : 'Mes'}
+            {v === 'dia' ? 'Día' : v === 'semana' ? 'Semana' : v === 'mes' ? 'Mes' : (
+              <span className="flex items-center justify-center gap-1"><Trophy className="w-3.5 h-3.5" />Retos</span>
+            )}
           </button>
         ))}
       </div>
@@ -692,7 +901,7 @@ _Generado por Summer Quest · ${getTodayStr()}_
           </button>
 
           {/* Income / Expenses / Savings */}
-          <div className="grid grid-cols-3 gap-2 mb-4">
+          <div className="grid grid-cols-2 gap-2 mb-2">
             <div className="bg-card rounded-2xl p-3 text-center">
               <ArrowDownCircle className="w-5 h-5 text-green-500 mx-auto mb-1" />
               <p className="text-[10px] text-muted-foreground">Ingresos base</p>
@@ -700,19 +909,32 @@ _Generado por Summer Quest · ${getTodayStr()}_
             </div>
             <div className="bg-card rounded-2xl p-3 text-center">
               <ArrowUpCircle className="w-5 h-5 text-red-500 mx-auto mb-1" />
-              <p className="text-[10px] text-muted-foreground">Gastos</p>
-              <p className="text-lg font-bold text-foreground">{eur(monthlyTotal)}</p>
+              <p className="text-[10px] text-muted-foreground">Gastos reales</p>
+              <p className="text-lg font-bold text-foreground">{eur(monthlySpendingTotal)}</p>
             </div>
-            <div className={`rounded-2xl p-3 text-center ${monthlySavings >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
-              <p className="text-[10px] text-muted-foreground mt-1">Ahorro</p>
-              <p className={`text-lg font-bold ${monthlySavings >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {monthlySavings >= 0 ? '+' : ''}{eur(monthlySavings)}
+          </div>
+          <div className="grid grid-cols-2 gap-2 mb-4">
+            <div className="bg-blue-50 rounded-2xl p-3 text-center">
+              <p className="text-[10px] text-blue-600 font-medium">Inversión</p>
+              <p className="text-lg font-bold text-blue-600">{eur(monthlyInvestmentTotal)}</p>
+              {incomeBase > 0 && <p className="text-[10px] text-blue-400">{monthlyInvestmentPct.toFixed(1)}%</p>}
+            </div>
+            <div className={`rounded-2xl p-3 text-center ${monthlySavingsLiquid >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
+              <p className={`text-[10px] font-medium ${monthlySavingsLiquid >= 0 ? 'text-green-600' : 'text-red-600'}`}>Ahorro líquido</p>
+              <p className={`text-lg font-bold ${monthlySavingsLiquid >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {monthlySavingsLiquid >= 0 ? '+' : ''}{eur(monthlySavingsLiquid)}
               </p>
               {incomeBase > 0 && (
-                <p className="text-[10px] text-muted-foreground">{Math.round((monthlySavings / incomeBase) * 100)}%</p>
+                <p className={`text-[10px] ${monthlySavingsLiquid >= 0 ? 'text-green-400' : 'text-red-400'}`}>{Math.round((monthlySavingsLiquid / incomeBase) * 100)}%</p>
               )}
             </div>
           </div>
+          {(monthlySavingsTotal > 0 && incomeBase > 0) && (
+            <div className="bg-emerald-50 rounded-xl px-4 py-2 mb-4 flex items-center justify-between">
+              <span className="text-xs text-emerald-700 font-medium">Ahorro total (líquido + inversión)</span>
+              <span className="text-sm font-bold text-emerald-700">+{eur(monthlySavingsTotal)} · {Math.round((monthlySavingsTotal / incomeBase) * 100)}%</span>
+            </div>
+          )}
 
           {/* Financial pie (percentages over net income) */}
           <div className="bg-card rounded-2xl p-4 mb-4">
@@ -736,9 +958,15 @@ _Generado por Summer Quest · ${getTodayStr()}_
                       <span className="flex items-center gap-1.5 text-foreground"><span className="w-2.5 h-2.5 rounded-full bg-orange-400" />Gastos variables</span>
                       <span className="text-muted-foreground">{monthlyVariablePct.toFixed(1)}% · {eur(monthlyVariableTotal)}</span>
                     </div>
+                    {monthlyInvestmentTotal > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1.5 text-foreground"><span className="w-2.5 h-2.5 rounded-full bg-blue-400" />Inversión</span>
+                        <span className="text-blue-600">{monthlyInvestmentPct.toFixed(1)}% · {eur(monthlyInvestmentTotal)}</span>
+                      </div>
+                    )}
                     <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-1.5 text-foreground"><span className="w-2.5 h-2.5 rounded-full bg-green-500" />Ahorro</span>
-                      <span className={monthlySavings >= 0 ? 'text-green-600' : 'text-red-600'}>{donutSavingsPct.toFixed(1)}% · {eur(monthlySavings)}</span>
+                      <span className="flex items-center gap-1.5 text-foreground"><span className="w-2.5 h-2.5 rounded-full bg-green-500" />Ahorro líquido</span>
+                      <span className={monthlySavingsLiquid >= 0 ? 'text-green-600' : 'text-red-600'}>{donutSavingsPct.toFixed(1)}% · {eur(monthlySavingsLiquid)}</span>
                     </div>
                   </div>
                 </div>
@@ -751,33 +979,33 @@ _Generado por Summer Quest · ${getTodayStr()}_
                   <p className="text-xs font-semibold text-foreground mb-2">Regla 50 / 30 / 20</p>
                   <div className="space-y-2 text-xs">
                     <div className="flex items-center justify-between">
-                      <span className="text-foreground">Necesidades</span>
+                      <span className="text-foreground">Necesidades (fijos)</span>
                       <span className={needsDeltaPct <= 0 ? 'text-green-600' : 'text-red-600'}>
                         {monthlyFixedPct.toFixed(1)}% / 50% {needsDeltaPct <= 0 ? `(${Math.abs(needsDeltaPct).toFixed(1)} pts por debajo)` : `(${needsDeltaPct.toFixed(1)} pts por encima)`}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-foreground">Deseos</span>
+                      <span className="text-foreground">Deseos (variables)</span>
                       <span className={wantsDeltaPct <= 0 ? 'text-green-600' : 'text-red-600'}>
                         {monthlyVariablePct.toFixed(1)}% / 30% {wantsDeltaPct <= 0 ? `(${Math.abs(wantsDeltaPct).toFixed(1)} pts por debajo)` : `(${wantsDeltaPct.toFixed(1)} pts por encima)`}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-foreground">Ahorro e inversión</span>
+                      <span className="text-foreground">Ahorro + inversión</span>
                       <span className={savingsDeltaPct >= 0 ? 'text-green-600' : 'text-red-600'}>
-                        {monthlySavingsRatePct.toFixed(1)}% / 20% {savingsDeltaPct >= 0 ? `(${savingsDeltaPct.toFixed(1)} pts por encima)` : `(${Math.abs(savingsDeltaPct).toFixed(1)} pts por debajo)`}
+                        {(monthlySavingsRatePct + monthlyInvestmentPct).toFixed(1)}% / 20% {savingsDeltaPct >= 0 ? `(${savingsDeltaPct.toFixed(1)} pts por encima)` : `(${Math.abs(savingsDeltaPct).toFixed(1)} pts por debajo)`}
                       </span>
                     </div>
                   </div>
                 </div>
 
-                {monthlySavingsRatePct < 0 && (
+                {monthlySavingsLiquid < 0 && (
                   <div className="mt-3 rounded-xl bg-red-50 p-2.5 text-xs text-red-700">
-                    Alerta: te estás pasando de la fórmula. Tus gastos superan la base de ingresos en {Math.abs(monthlySavingsRatePct).toFixed(1)} puntos.
+                    Alerta: tus gastos reales superan la base de ingresos en {eur(Math.abs(monthlySavingsLiquid))}.
                   </div>
                 )}
 
-                {monthlySavingsRatePct >= 0 && savingsDeltaPct < 0 && (
+                {monthlySavingsLiquid >= 0 && savingsDeltaPct < 0 && (
                   <div className="mt-3 rounded-xl bg-amber-50 p-2.5 text-xs text-amber-700">
                     Aviso 50/30/20: podrías ahorrar o invertir {eur(incomeBase * Math.abs(savingsDeltaPct) / 100)} más este mes para llegar al 20%.
                   </div>
@@ -792,11 +1020,11 @@ _Generado por Summer Quest · ${getTodayStr()}_
                     {wantsDeltaPct > 5 && (
                       <p>• Deseos por encima del 30% ({monthlyVariablePct.toFixed(0)}%): ocio, ropa y compras es donde más fácil recortas.</p>
                     )}
-                    {monthlySavingsRatePct >= 20 && (
-                      <p>• Buena tasa de ahorro ({monthlySavingsRatePct.toFixed(0)}%). Podrías destinar parte a un ETF o cuenta remunerada.</p>
+                    {(monthlySavingsRatePct + monthlyInvestmentPct) >= 20 && (
+                      <p>• Buena tasa de ahorro+inversión ({(monthlySavingsRatePct + monthlyInvestmentPct).toFixed(0)}%). Sigue así.</p>
                     )}
-                    {needsDeltaPct <= 5 && wantsDeltaPct <= 5 && monthlySavingsRatePct < 20 && monthlySavingsRatePct >= 0 && (
-                      <p>• Vas equilibrada. Un pequeño recorte en gastos variables te acercaría al 20% de ahorro.</p>
+                    {needsDeltaPct <= 5 && wantsDeltaPct <= 5 && (monthlySavingsRatePct + monthlyInvestmentPct) < 20 && monthlySavingsLiquid >= 0 && (
+                      <p>• Vas equilibrada. Un pequeño recorte en gastos variables te acercaría al 20% de ahorro e inversión.</p>
                     )}
                   </div>
                 </div>
@@ -844,8 +1072,171 @@ _Generado por Summer Quest · ${getTodayStr()}_
         </>
       )}
 
+      {/* ────── QUESTS VIEW ────── */}
+      {view === 'quests' && (
+        <>
+          <div className="mb-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Trophy className="w-5 h-5 text-primary" />
+              <h2 className="text-lg font-bold text-foreground">Retos del mes</h2>
+            </div>
+            <p className="text-xs text-muted-foreground">Completa estos retos para mejorar tus finanzas este mes.</p>
+          </div>
+
+          {/* Static quests — always visible */}
+          <div className="space-y-3 mb-4">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Retos fijos</p>
+            {STATIC_MONTHLY_QUESTS.map(quest => {
+              const done = completedQuestIds.has(quest.id)
+              return (
+                <button
+                  key={quest.id}
+                  onClick={() => toggleQuestComplete(quest.id)}
+                  className={`w-full text-left rounded-2xl p-4 transition-all border-2 ${
+                    done ? 'bg-green-50 border-green-200 opacity-80' : 'bg-card border-transparent'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <span className="text-2xl">{quest.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className={`text-sm font-semibold ${done ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                          {quest.title}
+                        </p>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
+                          quest.difficulty === 'facil' ? 'bg-green-100 text-green-700' :
+                          quest.difficulty === 'medio' ? 'bg-amber-100 text-amber-700' :
+                          'bg-red-100 text-red-700'
+                        }`}>
+                          {quest.difficulty === 'facil' ? 'Fácil' : quest.difficulty === 'medio' ? 'Medio' : 'Difícil'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{quest.description}</p>
+                    </div>
+                    {done && <Check className="w-5 h-5 text-green-500 shrink-0 mt-0.5" />}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+
+          {/* AI-generated quests */}
+          <div className="space-y-3 mb-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Retos personalizados IA</p>
+              {quests.length > 0 && (
+                <button
+                  onClick={() => { setQuests([]); fetchAIQuests() }}
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  Regenerar
+                </button>
+              )}
+            </div>
+
+            {quests.length === 0 && !questsLoading && !questsError && (
+              <div className="bg-card rounded-2xl p-5 text-center">
+                <Sparkles className="w-8 h-8 text-primary mx-auto mb-2" />
+                <p className="text-sm font-medium text-foreground mb-1">Retos personalizados con IA</p>
+                <p className="text-xs text-muted-foreground mb-4">Gemini analizará tus gastos del mes y generará retos específicos para ti.</p>
+                <button
+                  onClick={() => { if (!loadCachedQuests()) fetchAIQuests() }}
+                  disabled={incomeBase === 0}
+                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-violet-500 to-blue-500 text-white text-sm font-medium disabled:opacity-50"
+                >
+                  Generar mis retos
+                </button>
+                {incomeBase === 0 && (
+                  <p className="text-xs text-muted-foreground mt-2">Registra ingresos del mes para activar esta función.</p>
+                )}
+              </div>
+            )}
+
+            {questsLoading && (
+              <div className="bg-card rounded-2xl p-6 flex flex-col items-center gap-2">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground">Gemini está analizando tus finanzas...</p>
+              </div>
+            )}
+
+            {questsError && (
+              <div className="bg-red-50 rounded-2xl p-4 text-center">
+                <p className="text-sm text-red-600 mb-2">{questsError}</p>
+                <button onClick={fetchAIQuests} className="text-xs text-red-700 underline">Intentar de nuevo</button>
+              </div>
+            )}
+
+            {quests.map(quest => {
+              const done = completedQuestIds.has(quest.id)
+              const catIcon = quest.category === 'ahorro' ? <Star className="w-3.5 h-3.5" /> :
+                              quest.category === 'categoria' ? <Zap className="w-3.5 h-3.5" /> :
+                              <Sparkles className="w-3.5 h-3.5" />
+              return (
+                <button
+                  key={quest.id}
+                  onClick={() => toggleQuestComplete(quest.id)}
+                  className={`w-full text-left rounded-2xl p-4 transition-all border-2 ${
+                    done ? 'bg-green-50 border-green-200 opacity-80' : 'bg-card border-transparent'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <span className="text-2xl">{quest.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <p className={`text-sm font-semibold ${done ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                          {quest.title}
+                        </p>
+                        <span className={`flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
+                          quest.difficulty === 'facil' ? 'bg-green-100 text-green-700' :
+                          quest.difficulty === 'medio' ? 'bg-amber-100 text-amber-700' :
+                          'bg-red-100 text-red-700'
+                        }`}>
+                          {catIcon}
+                          {quest.difficulty === 'facil' ? 'Fácil' : quest.difficulty === 'medio' ? 'Medio' : 'Difícil'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{quest.description}</p>
+                      {quest.targetAmount && (
+                        <p className="text-xs font-semibold text-primary mt-1">Objetivo: {eur(quest.targetAmount)}</p>
+                      )}
+                    </div>
+                    {done && <Check className="w-5 h-5 text-green-500 shrink-0 mt-0.5" />}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Progress summary */}
+          {(() => {
+            const allQuests = [...STATIC_MONTHLY_QUESTS, ...quests]
+            const totalDone = allQuests.filter(q => completedQuestIds.has(q.id)).length
+            const total = allQuests.length
+            if (total === 0) return null
+            return (
+              <div className="bg-accent rounded-2xl p-4 mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-semibold text-foreground">Progreso del mes</span>
+                  <span className="text-sm font-bold text-primary">{totalDone}/{total}</span>
+                </div>
+                <div className="w-full h-2.5 bg-secondary rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-primary rounded-full transition-all"
+                    style={{ width: `${Math.round((totalDone / total) * 100)}%` }}
+                  />
+                </div>
+                {totalDone === total && total > 0 && (
+                  <p className="text-xs text-green-600 font-medium mt-2 text-center">¡Todos los retos completados! 🎉</p>
+                )}
+              </div>
+            )
+          })()}
+        </>
+      )}
+
       {/* ────── INSIGHTS (week + month) ────── */}
-      {insights.length > 0 && (
+      {insights.length > 0 && view !== 'quests' && (
         <div className="bg-accent rounded-2xl p-4 mb-4">
           <div className="flex items-center gap-2 mb-2">
             <Lightbulb className="w-4 h-4 text-primary" />
@@ -977,7 +1368,7 @@ _Generado por Summer Quest · ${getTodayStr()}_
       )}
 
       {/* ────── TRANSACTIONS LIST ────── */}
-      <div className="bg-card rounded-2xl p-4">
+      {view !== 'quests' && <div className="bg-card rounded-2xl p-4">
         <h2 className="text-base font-semibold text-foreground mb-3">
           {view === 'dia' ? 'Movimientos de hoy' : view === 'semana' ? 'Movimientos de la semana' : 'Movimientos del mes'}
         </h2>
@@ -1042,7 +1433,7 @@ _Generado por Summer Quest · ${getTodayStr()}_
             </div>
           ))}
         </div>
-      </div>
+      </div>}
 
       {/* ────── EDIT EXPENSE MODAL ────── */}
       {editingExpenseId && (
@@ -1092,6 +1483,7 @@ _Generado por Summer Quest · ${getTodayStr()}_
           title={`Informe ${monthLabel}`}
           filename={`finanzas-${thisMonth.start.slice(0, 7)}.md`}
           text={buildMonthReport()}
+          reportData={buildReportData()}
           onClose={() => setShowReport(false)}
         />
       )}
