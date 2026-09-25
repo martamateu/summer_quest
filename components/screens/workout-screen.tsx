@@ -287,6 +287,16 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
       .then(r => r.json())
       .then(d => { setStravaConnected(!!d.connected); setStravaConfigured(d.configured !== false) })
       .catch(() => {})
+    // Carga check-ins de USC desde Redis al abrir (sin re-autenticar)
+    fetch('/api/usc/checkins')
+      .then(r => r.json())
+      .then(d => {
+        if (Array.isArray(d.checkins) && d.checkins.length > 0) {
+          mergeUscCheckins(d.checkins)
+          setUscCheckins(readUscCheckins())
+        }
+      })
+      .catch(() => {})
     return () => window.removeEventListener('sq-data-changed', handler)
   }, [])
 
@@ -341,9 +351,16 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
     setSyncingUsc(true)
     setUscMsg(null)
     try {
-      const res = await fetch('/api/usc/checkins?limit=100')
+      // Trigger a live sync (auth + fetch from USC → Redis), then read result
+      const syncRes = await fetch('/api/usc/sync')
+      const syncData = await syncRes.json()
+      if (!syncRes.ok) throw new Error(syncData.error || 'Error al sincronizar con Urban Sports')
+
+      // Read the freshly stored check-ins from Redis
+      const res = await fetch('/api/usc/checkins')
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Error al obtener check-ins de Urban Sports')
+      if (!res.ok) throw new Error(data.error || 'Error al obtener check-ins')
+
       if (Array.isArray(data.checkins) && data.checkins.length > 0) {
         mergeUscCheckins(data.checkins)
         setUscCheckins(readUscCheckins())
@@ -353,7 +370,7 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
           if (c.date === today) markTodayGoalForWorkout(c.activityType, today)
         }
       }
-      setUscMsg(`✓ ${data.count} check-in${data.count === 1 ? '' : 's'} importado${data.count === 1 ? '' : 's'}`)
+      setUscMsg(`✓ ${syncData.total} check-in${syncData.total === 1 ? '' : 's'} sincronizado${syncData.total === 1 ? '' : 's'}`)
     } catch (e: any) {
       setUscMsg(`✗ ${e?.message || 'Error'}`)
     } finally {
