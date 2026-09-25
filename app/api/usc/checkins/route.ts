@@ -3,7 +3,6 @@ import { auth } from '@/auth'
 // USC mobile app API — private API used by the Android/iOS app.
 const USC_API_BASE = 'https://api.urbansportsclub.com'
 const USC_CLIENT_ID = '86093282310'
-const USC_CLIENT_SECRET = '1BJX3V5HWUYVCZ77S1TY9L1PSWAXA3K95ZMUC3ZRBAP3M696ZF4SD3QW5VBNU81H'
 
 // Headers that mimic the USC Android app.
 const USC_APP_HEADERS: Record<string, string> = {
@@ -75,10 +74,10 @@ function inferActivityType(name: string, categoryName?: string): WorkoutType {
 async function getUscToken(): Promise<string> {
   const email = process.env.USC_EMAIL
   const password = process.env.USC_PASSWORD
-  const clientSecret = process.env.USC_CLIENT_SECRET || USC_CLIENT_SECRET
+  const clientSecret = process.env.USC_CLIENT_SECRET
 
-  if (!email || !password) {
-    throw new Error('USC_EMAIL or USC_PASSWORD env vars not set')
+  if (!email || !password || !clientSecret) {
+    throw new Error('USC_EMAIL, USC_PASSWORD or USC_CLIENT_SECRET env vars not set')
   }
 
   const body = new URLSearchParams({
