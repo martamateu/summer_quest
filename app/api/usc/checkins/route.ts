@@ -1,12 +1,12 @@
 import { auth } from '@/auth'
 
 // USC mobile app API — private API used by the Android/iOS app.
-// Auth: OAuth2 password grant → Bearer token (short-lived, not stored).
 const USC_API_BASE = 'https://api.urbansportsclub.com'
 const USC_CLIENT_ID = '86093282310'
+const USC_CLIENT_SECRET = '1BJX3V5HWUYVCZ77S1TY9L1PSWAXA3K95ZMUC3ZRBAP3M696ZF4SD3QW5VBNU81H'
 
-// Headers that mimic the USC Android app to avoid bot detection.
-const USC_APP_HEADERS = {
+// Headers that mimic the USC Android app.
+const USC_APP_HEADERS: Record<string, string> = {
   'user-agent': 'USCAPP/4.0.8 (android; 28; Scale/2.75)',
   'device-name': 'SM-G991B',
   'device-token': '890ed6c303d03564',
@@ -23,53 +23,49 @@ interface UscAuthResponse {
   }
 }
 
-// Shape returned by GET /api/v6/bookings (past check-ins / attended bookings).
+// Real shape from GET /api/v6/bookings
 interface UscBooking {
   id: number | string
-  status: string            // "attended" | "cancelled" | "booked" | etc.
-  start_date_time: string   // ISO datetime e.g. "2026-09-20T10:00:00+02:00"
-  end_date_time?: string
+  status: string  // "CHECKEDIN" | "LATE" | "CANCELLED" | "BOOKED" etc.
   course?: {
     id: number | string
-    name: string
-    location?: {
-      name: string
-    }
+    title?: string
+    date?: string                  // "YYYY-MM-DD"
+    startTime?: string             // "HH:MM:SS"
+    endTime?: string               // "HH:MM:SS"
+    startDateTimeUTC?: string      // ISO datetime with offset
+    endDateTimeUTC?: string        // ISO datetime with offset
+    venueName?: string
     category?: {
+      id: number
       name: string
     }
+    teacherName?: string | null
   }
-  // v5 shape (fallback)
-  activity_name?: string
-  venue_name?: string
-  starts_at?: string
-}
-
-export interface UscCheckin {
-  id: string
-  date: string           // YYYY-MM-DD
-  activityName: string
-  studio?: string
-  durationMinutes?: number
-  activityType: WorkoutType
 }
 
 type WorkoutType = 'flexibilidad' | 'fuerza' | 'cardio' | 'natacion' | 'descanso' | 'otro'
 
+export interface UscCheckin {
+  id: string
+  date: string
+  activityName: string
+  studio?: string
+  durationMinutes?: number
+  activityType: WorkoutType
+  instructor?: string
+}
+
 // ── Activity type mapping ─────────────────────────────────────────────────────
 
-/**
- * Maps USC activity/class names to internal WorkoutType.
- * Case-insensitive, keyword-based.
- */
-function inferActivityType(name: string): WorkoutType {
-  const n = name.toLowerCase()
+function inferActivityType(name: string, categoryName?: string): WorkoutType {
+  const n = (name + ' ' + (categoryName || '')).toLowerCase()
 
-  if (/yoga|pilates|stretch|flexib|mobility|yin |restor|meditac|calm|relax/.test(n)) return 'flexibilidad'
-  if (/natac|swim|piscina|aqua|water polo|waterpolo/.test(n))                         return 'natacion'
-  if (/running|carrera|correr|cardio|cycling|bicicleta|spinning|hiit|zumba|dance|baile|aerob|jump|box|kickbox|combat/.test(n)) return 'cardio'
-  if (/gym|fuerza|weight|crossfit|functional|musculac|tonific|body pump|strength|entrenamiento personal|pt session|training/.test(n)) return 'fuerza'
-  if (/descans|recovery|rest/.test(n))                                                return 'descanso'
+  if (/yoga|pilates|reformer|stretch|flexib|mobility|yin |restor|meditac|calm|relax|sound bath|barre/.test(n)) return 'flexibilidad'
+  if (/natac|swim|piscina|aqua|water polo|waterpolo/.test(n))                                                   return 'natacion'
+  if (/running|carrera|correr|cardio|cycling|bicicleta|spinning|hiit|zumba|dance|baile|aerob|jump|box|kickbox|combat|fahrenheit/.test(n)) return 'cardio'
+  if (/gym|fuerza|weight|crossfit|functional|musculac|tonific|body pump|strength|upper body|full body|gluteos|abbs|bootcamp|trib3/.test(n)) return 'fuerza'
+  if (/descans|recovery|rest|fisioterapia|massage/.test(n))                                                     return 'descanso'
 
   return 'otro'
 }
@@ -79,7 +75,7 @@ function inferActivityType(name: string): WorkoutType {
 async function getUscToken(): Promise<string> {
   const email = process.env.USC_EMAIL
   const password = process.env.USC_PASSWORD
-  const clientSecret = process.env.USC_CLIENT_SECRET
+  const clientSecret = process.env.USC_CLIENT_SECRET || USC_CLIENT_SECRET
 
   if (!email || !password) {
     throw new Error('USC_EMAIL or USC_PASSWORD env vars not set')
@@ -89,8 +85,8 @@ async function getUscToken(): Promise<string> {
     username: email,
     password: password,
     client_id: USC_CLIENT_ID,
+    client_secret: clientSecret,
     grant_type: 'password',
-    ...(clientSecret ? { client_secret: clientSecret } : {}),
   })
 
   const res = await fetch(`${USC_API_BASE}/api/v5/auth/token`, {
@@ -110,16 +106,15 @@ async function getUscToken(): Promise<string> {
   return token
 }
 
-// ── Date helpers ──────────────────────────────────────────────────────────────
+// ── Date/duration helpers ─────────────────────────────────────────────────────
 
 function toDateStr(iso: string): string {
-  // ISO datetime → YYYY-MM-DD (use the date portion directly, handles timezone offset)
   return (iso || '').slice(0, 10)
 }
 
-function durationFromBooking(booking: UscBooking): number | undefined {
-  const start = booking.start_date_time || booking.starts_at
-  const end = booking.end_date_time
+function durationMinutes(booking: UscBooking): number | undefined {
+  const start = booking.course?.startDateTimeUTC
+  const end = booking.course?.endDateTimeUTC
   if (!start || !end) return undefined
   const diff = new Date(end).getTime() - new Date(start).getTime()
   if (diff <= 0) return undefined
@@ -132,11 +127,10 @@ function durationFromBooking(booking: UscBooking): number | undefined {
  * GET /api/usc/checkins
  *
  * Authenticates against the USC mobile API using USC_EMAIL / USC_PASSWORD env
- * vars, then fetches the user's past attended bookings and returns them mapped
- * to the app's WorkoutLog-compatible UscCheckin shape.
+ * vars, fetches attended bookings and returns them as UscCheckin objects.
  *
  * Query params:
- *   - limit  (default 50) — max number of check-ins to return
+ *   - limit  (default 100, max 200)
  */
 export async function GET(request: Request) {
   const session = await auth()
@@ -145,80 +139,58 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url)
-  const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 200)
+  const limit = Math.min(parseInt(searchParams.get('limit') || '100', 10), 200)
 
   try {
     const token = await getUscToken()
 
-    const authHeader = { Authorization: `Bearer ${token}` }
-    const appHeaders = { ...USC_APP_HEADERS, ...authHeader }
-
-    // Fetch past bookings — v6 endpoint includes attended check-ins.
-    // USC returns paginated results; we fetch the first page (up to `limit`).
-    const bookingsRes = await fetch(
-      `${USC_API_BASE}/api/v6/bookings?status=attended&per_page=${limit}&page=1`,
-      { headers: appHeaders },
-    )
-
-    let bookings: UscBooking[] = []
-
-    if (bookingsRes.ok) {
-      const payload = await bookingsRes.json()
-      // USC wraps results in { data: [...] } or returns an array directly.
-      bookings = Array.isArray(payload)
-        ? payload
-        : Array.isArray(payload?.data)
-          ? payload.data
-          : []
-    } else {
-      // Fallback: try v5 endpoint for bookings
-      const v5Res = await fetch(
-        `${USC_API_BASE}/api/v5/bookings?status=attended&per_page=${limit}`,
-        { headers: appHeaders },
-      )
-      if (v5Res.ok) {
-        const payload = await v5Res.json()
-        bookings = Array.isArray(payload)
-          ? payload
-          : Array.isArray(payload?.data)
-            ? payload.data
-            : []
-      } else {
-        const errText = await bookingsRes.text().catch(() => '')
-        return Response.json(
-          { error: `USC bookings fetch failed (${bookingsRes.status})`, detail: errText.slice(0, 300) },
-          { status: 502 },
-        )
-      }
+    const headers: Record<string, string> = {
+      ...USC_APP_HEADERS,
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
     }
 
-    // Map USC bookings → UscCheckin
-    const checkins: UscCheckin[] = bookings
-      .filter(b => b.status === 'attended' || !b.status) // keep attended ones
+    const bookingsRes = await fetch(
+      `${USC_API_BASE}/api/v6/bookings?per_page=${limit}&page=1`,
+      { headers },
+    )
+
+    if (!bookingsRes.ok) {
+      const errText = await bookingsRes.text().catch(() => '')
+      return Response.json(
+        { error: `USC bookings fetch failed (${bookingsRes.status})`, detail: errText.slice(0, 300) },
+        { status: 502 },
+      )
+    }
+
+    const payload = await bookingsRes.json()
+    const rawBookings: UscBooking[] = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.data)
+        ? payload.data
+        : []
+
+    // Keep only attended check-ins (CHECKEDIN or LATE = still showed up)
+    const ATTENDED = new Set(['CHECKEDIN', 'LATE', 'attended'])
+
+    const checkins: UscCheckin[] = rawBookings
+      .filter(b => ATTENDED.has(b.status))
       .map(b => {
-        const activityName =
-          b.course?.name ??
-          b.activity_name ??
-          b.course?.category?.name ??
-          'Clase Urban Sports'
-
-        const studio =
-          b.course?.location?.name ??
-          b.venue_name ??
-          undefined
-
-        const startIso = b.start_date_time || b.starts_at || ''
+        const title = b.course?.title ?? 'Clase Urban Sports'
+        const categoryName = b.course?.category?.name
+        const date = b.course?.date ?? toDateStr(b.course?.startDateTimeUTC ?? '')
 
         return {
           id: `usc-${b.id}`,
-          date: toDateStr(startIso),
-          activityName,
-          studio,
-          durationMinutes: durationFromBooking(b),
-          activityType: inferActivityType(activityName),
+          date,
+          activityName: title,
+          studio: b.course?.venueName ?? undefined,
+          durationMinutes: durationMinutes(b),
+          activityType: inferActivityType(title, categoryName),
+          instructor: b.course?.teacherName ?? undefined,
         } satisfies UscCheckin
       })
-      .filter(c => !!c.date) // skip if date couldn't be parsed
+      .filter(c => !!c.date)
       .sort((a, b) => b.date.localeCompare(a.date))
 
     return Response.json({ ok: true, count: checkins.length, checkins })

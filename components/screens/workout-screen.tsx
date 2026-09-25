@@ -81,6 +81,7 @@ interface UscCheckin {
   studio?: string
   durationMinutes?: number
   activityType: WorkoutType
+  instructor?: string
 }
 
 function readUscCheckins(): UscCheckin[] {
@@ -678,6 +679,7 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
                         {fmtDate(c.date)}
                         {c.studio && ` · ${c.studio}`}
                         {c.durationMinutes && ` · ${c.durationMinutes} min`}
+                        {c.instructor && ` · ${c.instructor}`}
                       </p>
                     </div>
                   </div>
