@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Camera, Trash2, ChevronLeft, ChevronRight, Loader2, Dumbbell, PersonStanding, Waves, Heart, Activity, Check, X, Plus, Footprints, RefreshCw, Moon } from 'lucide-react'
+import { Camera, Trash2, ChevronLeft, ChevronRight, Loader2, Dumbbell, PersonStanding, Waves, Heart, Activity, Check, X, Plus, Footprints, RefreshCw, Moon, Building2 } from 'lucide-react'
 import { recordTombstones } from '@/lib/sync-tombstones'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -68,6 +68,38 @@ function readWorkouts(): WorkoutLog[] {
 
 function saveWorkouts(logs: WorkoutLog[]) {
   localStorage.setItem(WORKOUT_KEY, JSON.stringify(logs))
+  window.dispatchEvent(new Event('sq-data-changed'))
+}
+
+// ── Urban Sports Club check-ins ───────────────────────────────────────────────
+const USC_KEY = 'sq_usc_checkins'
+
+interface UscCheckin {
+  id: string
+  date: string
+  activityName: string
+  studio?: string
+  durationMinutes?: number
+  activityType: WorkoutType
+}
+
+function readUscCheckins(): UscCheckin[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const parsed = JSON.parse(localStorage.getItem(USC_KEY) || '[]')
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((c): c is UscCheckin => !!c && typeof c === 'object' && typeof c.id === 'string')
+  } catch {
+    return []
+  }
+}
+
+function mergeUscCheckins(incoming: UscCheckin[]) {
+  const local = readUscCheckins()
+  const byId = new Map<string, UscCheckin>()
+  for (const c of local) byId.set(c.id, c)
+  for (const c of incoming) byId.set(c.id, c)
+  localStorage.setItem(USC_KEY, JSON.stringify(Array.from(byId.values())))
   window.dispatchEvent(new Event('sq-data-changed'))
 }
 
@@ -238,10 +270,16 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
   const [syncingSheet, setSyncingSheet] = useState(false)
   const [sheetMsg, setSheetMsg] = useState<string | null>(null)
 
+  // Urban Sports Club state
+  const [uscCheckins, setUscCheckins] = useState<UscCheckin[]>([])
+  const [syncingUsc, setSyncingUsc] = useState(false)
+  const [uscMsg, setUscMsg] = useState<string | null>(null)
+
   useEffect(() => {
     setWorkouts(readWorkouts())
     setRuns(readRuns())
-    const handler = () => { setWorkouts(readWorkouts()); setRuns(readRuns()) }
+    setUscCheckins(readUscCheckins())
+    const handler = () => { setWorkouts(readWorkouts()); setRuns(readRuns()); setUscCheckins(readUscCheckins()) }
     window.addEventListener('sq-data-changed', handler)
     // Estado de conexión con Strava
     fetch('/api/strava/status')
@@ -295,6 +333,31 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
     } finally {
       setSyncingSheet(false)
       setTimeout(() => setSheetMsg(null), 6000)
+    }
+  }
+
+  const syncUsc = async () => {
+    setSyncingUsc(true)
+    setUscMsg(null)
+    try {
+      const res = await fetch('/api/usc/checkins?limit=100')
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Error al obtener check-ins de Urban Sports')
+      if (Array.isArray(data.checkins) && data.checkins.length > 0) {
+        mergeUscCheckins(data.checkins)
+        setUscCheckins(readUscCheckins())
+        // Auto-mark today's goal if there's a check-in today
+        const today = getTodayStr()
+        for (const c of data.checkins as UscCheckin[]) {
+          if (c.date === today) markTodayGoalForWorkout(c.activityType, today)
+        }
+      }
+      setUscMsg(`✓ ${data.count} check-in${data.count === 1 ? '' : 's'} importado${data.count === 1 ? '' : 's'}`)
+    } catch (e: any) {
+      setUscMsg(`✗ ${e?.message || 'Error'}`)
+    } finally {
+      setSyncingUsc(false)
+      setTimeout(() => setUscMsg(null), 5000)
     }
   }
 
@@ -404,6 +467,11 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
     acc[w.activityType] = (acc[w.activityType] || 0) + 1
     return acc
   }, {} as Record<WorkoutType, number>)
+
+  // USC check-ins del periodo
+  const uscInRange = uscCheckins
+    .filter(c => c.date >= range.start && c.date <= range.end)
+    .sort((a, b) => b.date.localeCompare(a.date))
 
   // Carreras del periodo (Strava)
   const runsInRange = runs
@@ -573,6 +641,60 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
         <button onClick={() => setOffset(o => Math.min(o + 1, 0))} disabled={offset >= 0} className="p-1.5 rounded-full hover:bg-secondary disabled:opacity-30">
           <ChevronRight className="w-4 h-4 text-muted-foreground" />
         </button>
+      </div>
+
+      {/* Urban Sports Club check-ins */}
+      <div className="bg-card rounded-2xl p-4 mb-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Building2 className="w-4 h-4 text-blue-500" />
+            <p className="text-sm font-semibold text-foreground">Urban Sports</p>
+            <span className="text-[10px] text-muted-foreground">USC</span>
+          </div>
+          <button
+            onClick={syncUsc}
+            disabled={syncingUsc}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-500 text-white text-xs font-medium disabled:opacity-60"
+          >
+            {syncingUsc ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            Sincronizar
+          </button>
+        </div>
+
+        {uscMsg && <p className="text-[11px] text-muted-foreground mb-2">{uscMsg}</p>}
+
+        {uscInRange.length > 0 ? (
+          <div className="space-y-2">
+            {uscInRange.map(c => {
+              const meta = TYPE_META[c.activityType] || TYPE_META['otro']
+              return (
+                <div key={c.id} className="flex items-center justify-between bg-secondary rounded-xl p-2.5"
+                  style={{ borderLeft: `3px solid ${meta.color}` }}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span style={{ color: meta.color }} className="shrink-0">{meta.icon}</span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-foreground truncate">{c.activityName}</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {fmtDate(c.date)}
+                        {c.studio && ` · ${c.studio}`}
+                        {c.durationMinutes && ` · ${c.durationMinutes} min`}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-medium shrink-0 ml-2" style={{ color: meta.color }}>
+                    {meta.label}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <p className="text-[11px] text-muted-foreground">
+            {uscCheckins.length > 0
+              ? 'No hay check-ins de USC en este periodo.'
+              : 'Pulsa Sincronizar para importar tus check-ins de Urban Sports.'}
+          </p>
+        )}
       </div>
 
       {/* Carreras (Strava) */}
