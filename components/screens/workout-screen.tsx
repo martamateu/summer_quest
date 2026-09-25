@@ -96,11 +96,35 @@ function readUscCheckins(): UscCheckin[] {
 }
 
 function mergeUscCheckins(incoming: UscCheckin[]) {
+  // 1. Merge into sq_usc_checkins (source of truth for the USC section)
   const local = readUscCheckins()
   const byId = new Map<string, UscCheckin>()
   for (const c of local) byId.set(c.id, c)
   for (const c of incoming) byId.set(c.id, c)
   localStorage.setItem(USC_KEY, JSON.stringify(Array.from(byId.values())))
+
+  // 2. Also merge into sq_workout_logs so stats-screen, today-dashboard, etc. see USC activity
+  try {
+    const existing: WorkoutLog[] = JSON.parse(localStorage.getItem(WORKOUT_KEY) || '[]')
+    const workoutById = new Map<string, WorkoutLog>()
+    for (const w of existing) workoutById.set(w.id, w)
+    for (const c of byId.values()) {
+      if (!workoutById.has(c.id)) {
+        workoutById.set(c.id, {
+          id: c.id,
+          date: c.date,
+          activityName: c.activityName,
+          activityType: c.activityType,
+          studio: c.studio,
+          durationMinutes: c.durationMinutes,
+          instructor: c.instructor,
+          addedManually: false,
+        })
+      }
+    }
+    localStorage.setItem(WORKOUT_KEY, JSON.stringify(Array.from(workoutById.values())))
+  } catch {}
+
   window.dispatchEvent(new Event('sq-data-changed'))
 }
 
