@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { Camera, Plus, X, Check, Loader2, Receipt, TrendingDown, TrendingUp, Trash2, ChevronLeft, ChevronRight, ArrowDownCircle, ArrowUpCircle, Lightbulb, Pencil, FileText, Sparkles, Trophy, Star, Zap, RefreshCw } from 'lucide-react'
+import { Camera, Plus, X, Check, Loader2, Receipt, TrendingDown, TrendingUp, Trash2, ChevronLeft, ChevronRight, ArrowDownCircle, ArrowUpCircle, Lightbulb, Pencil, FileText, Sparkles, Trophy, Star, Zap, RefreshCw, Landmark } from 'lucide-react'
 import type { Expense, ExpenseCategory } from '@/lib/types'
 import { EXPENSE_CATEGORY_LABELS } from '@/lib/types'
 import { ReportExportModal, type MonthlyReportData } from '@/components/report-export-modal'
@@ -32,33 +32,16 @@ interface FinanceQuest {
   icon: string
 }
 
-// Static monthly quests that always show regardless of AI
-const STATIC_MONTHLY_QUESTS: FinanceQuest[] = [
-  {
-    id: 'static-registrar-gastos',
-    title: 'Registra todos tus gastos',
-    description: 'Añade cada gasto el mismo día que lo haces. Sin excepciones durante todo el mes.',
-    category: 'habito',
-    difficulty: 'facil',
-    icon: '📝',
-  },
-  {
-    id: 'static-revisar-suscripciones',
-    title: 'Audita tus suscripciones',
-    description: 'Revisa todas tus suscripciones activas y cancela al menos una que no uses al 100%.',
-    category: 'habito',
-    difficulty: 'medio',
-    icon: '🔍',
-  },
-  {
-    id: 'static-no-compras-impulsivas',
-    title: 'Regla de las 48h',
-    description: 'Antes de cualquier compra >30€ no planificada, espera 48h. Si aún la quieres, compra. Si no, cancela.',
-    category: 'habito',
-    difficulty: 'medio',
-    icon: '⏳',
-  },
-]
+// Clave de semana ISO para caché de retos (YYYY-Www)
+function getISOWeekKey(): string {
+  const now = new Date()
+  const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))
+  const day = d.getUTCDay() || 7
+  d.setUTCDate(d.getUTCDate() + 4 - day)
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+  const week = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
+  return `${d.getUTCFullYear()}-W${String(week).padStart(2, '0')}`
+}
 
 type FinanceView = 'dia' | 'semana' | 'mes' | 'quests'
 
@@ -144,6 +127,16 @@ function categoryTotals(expenses: Expense[]) {
   }, {} as Partial<Record<ExpenseCategory, number>>)
 }
 
+// Totales netos por categoría: gastos - bizzums/ingresos de la misma categoría
+function netCategoryTotals(allItems: Expense[]) {
+  const net: Partial<Record<ExpenseCategory, number>> = {}
+  for (const e of allItems) {
+    const delta = e.isIncome ? -e.amount : e.amount
+    net[e.category] = (net[e.category] || 0) + delta
+  }
+  return net
+}
+
 function isPayrollIncome(entry: Expense) {
   if (!entry.isIncome) return false
   if (entry.category === 'nomina') return true
@@ -185,6 +178,14 @@ export function FinanzasScreen() {
   const [editCategory, setEditCategory] = useState<ExpenseCategory>('otros')
   const [editDate, setEditDate] = useState('')
   const [editIsIncome, setEditIsIncome] = useState(false)
+  // GoCardless (Open Banking) state
+  const [gcConnected, setGcConnected] = useState(false)
+  const [gcConfigured, setGcConfigured] = useState(false)
+  const [gcSyncing, setGcSyncing] = useState(false)
+  const [gcMsg, setGcMsg] = useState<string | null>(null)
+  const [gcConnecting, setGcConnecting] = useState(false)
+  const [gcInstitution, setGcInstitution] = useState('N26_NTSBDEB1')
+
   // Finance Quests state
   const [quests, setQuests] = useState<FinanceQuest[]>([])
   const [questsLoading, setQuestsLoading] = useState(false)
@@ -194,7 +195,7 @@ export function FinanzasScreen() {
       const stored = localStorage.getItem('sq_finance_quest_completed')
       if (!stored) return new Set()
       const { month, ids } = JSON.parse(stored)
-      const curMonth = new Date().toISOString().slice(0, 7)
+      const curMonth = getISOWeekKey()
       return month === curMonth ? new Set(ids) : new Set()
     } catch { return new Set() }
   })
@@ -270,6 +271,26 @@ export function FinanzasScreen() {
     }
     document.addEventListener('visibilitychange', handleVisibility)
     window.addEventListener('storage', handleStorage)
+
+    // GoCardless status
+    fetch('/api/gocardless/status')
+      .then(r => r.json())
+      .then(d => { setGcConfigured(!!d.configured); setGcConnected(!!d.connected) })
+      .catch(() => {})
+
+    // Handle redirect back from GoCardless bank auth
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('gc_connected') === 'true') {
+      setGcConnected(true)
+      setGcMsg('✓ Banco conectado correctamente')
+      window.history.replaceState({}, '', window.location.pathname)
+      setTimeout(() => setGcMsg(null), 5000)
+    } else if (params.get('gc_error')) {
+      setGcMsg(`✗ Error al conectar el banco: ${params.get('gc_error')}`)
+      window.history.replaceState({}, '', window.location.pathname)
+      setTimeout(() => setGcMsg(null), 8000)
+    }
+
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility)
       window.removeEventListener('storage', handleStorage)
@@ -296,8 +317,8 @@ export function FinanzasScreen() {
   const thisWeekTotal = thisWeekExpenses.reduce((s, e) => s + e.amount, 0)
   const thisWeekIncomeTotal = thisWeekIncome.reduce((s, e) => s + e.amount, 0)
   const prevWeekTotal = prevWeekExpenses.reduce((s, e) => s + e.amount, 0)
-  const thisWeekCats = categoryTotals(thisWeekExpenses)
-  const prevWeekCats = categoryTotals(prevWeekExpenses)
+  const thisWeekCats = netCategoryTotals(thisWeekItems)
+  const prevWeekCats = netCategoryTotals(filterByRange(expenses, prevWeek.start, prevWeek.end))
 
   // Month data
   const thisMonth = getMonthRange(now, monthOffset)
@@ -314,7 +335,7 @@ export function FinanzasScreen() {
   const monthlySpendingTotal = monthlyTotal - monthlyInvestmentTotal // gastos reales sin inversión
   const prevMonthPayrollIncome = prevMonthIncome.filter(isPayrollIncome).reduce((s, e) => s + e.amount, 0)
   const prevMonthTotal = prevMonthExpenses.reduce((s, e) => s + e.amount, 0)
-  const thisMonthCats = categoryTotals(thisMonthExpenses)
+  const thisMonthCats = netCategoryTotals(thisMonthItems)
   const monthlyFixedTotal = thisMonthExpenses
     .filter(e => FIXED_EXPENSE_CATEGORIES.includes(e.category))
     .reduce((s, e) => s + e.amount, 0)
@@ -348,7 +369,15 @@ export function FinanzasScreen() {
   const buildMonthReport = () => {
     const catLines = Object.entries(thisMonthCats)
       .sort((a, b) => (b[1] as number) - (a[1] as number))
-      .map(([cat, total]) => `- ${EXPENSE_CATEGORY_LABELS[cat as ExpenseCategory]}: ${eur(total as number)}${monthlyTotal > 0 ? ` (${Math.round(((total as number) / monthlyTotal) * 100)}%)` : ''}`)
+      .map(([cat, total]) => {
+        const t = total as number
+        const absT = Math.abs(t)
+        const label = EXPENSE_CATEGORY_LABELS[cat as ExpenseCategory]
+        const pctStr = monthlyTotal > 0 ? ` (${Math.round((absT / monthlyTotal) * 100)}%)` : ''
+        return t < 0
+          ? `- ${label}: −${eur(absT)} (bizzum neto)${pctStr}`
+          : `- ${label}: ${eur(t)}${pctStr}`
+      })
       .join('\n') || '- (sin gastos)'
 
     const incomeLines = thisMonthIncome
@@ -700,7 +729,7 @@ _Generado por Summer Quest · ${getTodayStr()}_
         setQuests(result.quests)
         try {
           localStorage.setItem('sq_finance_quests', JSON.stringify({
-            month: new Date().toISOString().slice(0, 7),
+            month: getISOWeekKey(),
             quests: result.quests,
           }))
         } catch { /* ignore */ }
@@ -717,7 +746,7 @@ _Generado por Summer Quest · ${getTodayStr()}_
       const stored = localStorage.getItem('sq_finance_quests')
       if (!stored) return false
       const { month, quests: cachedQuests } = JSON.parse(stored)
-      const curMonth = new Date().toISOString().slice(0, 7)
+      const curMonth = getISOWeekKey()
       if (month === curMonth && Array.isArray(cachedQuests)) {
         setQuests(cachedQuests)
         return true
@@ -733,7 +762,7 @@ _Generado por Summer Quest · ${getTodayStr()}_
       else next.add(id)
       try {
         localStorage.setItem('sq_finance_quest_completed', JSON.stringify({
-          month: new Date().toISOString().slice(0, 7),
+          month: getISOWeekKey(),
           ids: Array.from(next),
         }))
       } catch { /* ignore */ }
@@ -780,6 +809,89 @@ _Generado por Summer Quest · ${getTodayStr()}_
           </button>
         </div>
       </div>
+
+      {/* GoCardless — Open Banking */}
+      {gcConfigured && (
+        <div className="bg-card rounded-2xl p-4 mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Landmark className="w-4 h-4 text-emerald-500" />
+              <p className="text-sm font-semibold text-foreground">Banco</p>
+              <span className="text-[10px] text-muted-foreground">Open Banking</span>
+            </div>
+            {gcConnected ? (
+              <button
+                onClick={async () => {
+                  setGcSyncing(true)
+                  setGcMsg(null)
+                  try {
+                    const res = await fetch('/api/gocardless/sync')
+                    const data = await res.json()
+                    if (!res.ok) throw new Error(data.error || 'Error al sincronizar')
+                    if (Array.isArray(data.expenses) && data.expenses.length > 0) {
+                      const current = readExpenses()
+                      const byId = new Map(current.map((e: Expense) => [e.id, e]))
+                      for (const e of data.expenses) if (!byId.has(e.id)) byId.set(e.id, e)
+                      const merged = Array.from(byId.values()).sort((a: Expense, b: Expense) => b.date.localeCompare(a.date))
+                      saveExpenses(merged)
+                    }
+                    setGcMsg(`✓ ${data.fetched} transacciones importadas`)
+                  } catch (e: any) {
+                    setGcMsg(`✗ ${e?.message || 'Error'}`)
+                  } finally {
+                    setGcSyncing(false)
+                    setTimeout(() => setGcMsg(null), 5000)
+                  }
+                }}
+                disabled={gcSyncing}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500 text-white text-xs font-medium disabled:opacity-60"
+              >
+                {gcSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                Sincronizar
+              </button>
+            ) : (
+              <button
+                onClick={async () => {
+                  setGcConnecting(true)
+                  try {
+                    const res = await fetch(`/api/gocardless/connect?institution_id=${gcInstitution}`)
+                    const data = await res.json()
+                    if (!res.ok) throw new Error(data.error || 'Error al conectar')
+                    window.location.href = data.link
+                  } catch (e: any) {
+                    setGcMsg(`✗ ${e?.message || 'Error'}`)
+                    setGcConnecting(false)
+                    setTimeout(() => setGcMsg(null), 5000)
+                  }
+                }}
+                disabled={gcConnecting}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500 text-white text-xs font-medium disabled:opacity-60"
+              >
+                {gcConnecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Landmark className="w-3.5 h-3.5" />}
+                Conectar banco
+              </button>
+            )}
+          </div>
+          {!gcConnected && (
+            <select
+              value={gcInstitution}
+              onChange={e => setGcInstitution(e.target.value)}
+              className="w-full text-xs bg-secondary rounded-xl px-3 py-2 text-foreground outline-none mb-2"
+            >
+              <option value="N26_NTSBDEB1">N26</option>
+              <option value="REVOLUT_REVOLT21">Revolut</option>
+              <option value="BBVA_BBVAESMMXXX">BBVA</option>
+              <option value="CAIXABANK_CAIXESBB">CaixaBank</option>
+              <option value="SABADELL_BSABESBB">Sabadell</option>
+              <option value="SANTANDER_BSCHESMMXXX">Santander</option>
+            </select>
+          )}
+          {gcMsg && <p className="text-[11px] text-muted-foreground mt-1">{gcMsg}</p>}
+          {gcConnected && !gcSyncing && !gcMsg && (
+            <p className="text-[11px] text-muted-foreground">Banco conectado · sincronización automática cada lunes</p>
+          )}
+        </div>
+      )}
 
       {/* View Tabs */}
       <div className="flex gap-1 mb-4 bg-secondary rounded-xl p-1">
@@ -860,18 +972,22 @@ _Generado por Summer Quest · ${getTodayStr()}_
                 const cur = thisWeekCats[cat] || 0
                 const prev = prevWeekCats[cat] || 0
                 if (cur === 0 && prev === 0) return null
-                const max = Math.max(cur, prev, 1)
+                const absCur = Math.abs(cur)
+                const absPrev = Math.abs(prev)
+                const max = Math.max(absCur, absPrev, 1)
+                const isNet = cur < 0
                 return (
                   <div key={cat}>
                     <div className="flex items-center justify-between text-xs mb-1">
                       <span className="text-foreground">{EXPENSE_CATEGORY_LABELS[cat]}</span>
-                      <span className="text-muted-foreground">
-                        {eur(cur)} {prev > 0 && <span className="opacity-50">(ant: {eur(prev)})</span>}
+                      <span className={isNet ? 'text-green-600 font-medium' : 'text-muted-foreground'}>
+                        {isNet ? `−${eur(-cur)} bizzum` : eur(cur)}
+                        {prev !== 0 && <span className="opacity-50 ml-1">(ant: {eur(Math.abs(prev))})</span>}
                       </span>
                     </div>
                     <div className="flex gap-1 h-2">
-                      <div className="rounded-full" style={{ width: `${(cur / max) * 100}%`, backgroundColor: CATEGORY_COLORS[cat] }} />
-                      {prev > 0 && <div className="rounded-full opacity-30" style={{ width: `${(prev / max) * 100}%`, backgroundColor: CATEGORY_COLORS[cat] }} />}
+                      <div className="rounded-full" style={{ width: `${(absCur / max) * 100}%`, backgroundColor: isNet ? '#22c55e' : CATEGORY_COLORS[cat] }} />
+                      {absPrev > 0 && <div className="rounded-full opacity-30" style={{ width: `${(absPrev / max) * 100}%`, backgroundColor: CATEGORY_COLORS[cat] }} />}
                     </div>
                   </div>
                 )
@@ -1041,12 +1157,17 @@ _Generado por Summer Quest · ${getTodayStr()}_
               {categories.map(cat => {
                 const total = thisMonthCats[cat] || 0
                 if (total === 0) return null
-                const pct = monthlyTotal > 0 ? (total / monthlyTotal) * 100 : 0
+                const isNet = total < 0
+                const absTotal = Math.abs(total)
+                const pct = monthlyTotal > 0 ? (absTotal / monthlyTotal) * 100 : 0
                 return (
                   <div key={cat} className="flex items-center gap-3">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: CATEGORY_COLORS[cat] }} />
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: isNet ? '#22c55e' : CATEGORY_COLORS[cat] }} />
                     <span className="text-sm text-foreground flex-1">{EXPENSE_CATEGORY_LABELS[cat]}</span>
-                    <span className="text-sm font-medium text-foreground">{eur(total)}</span>
+                    <span className={`text-sm font-medium ${isNet ? 'text-green-600' : 'text-foreground'}`}>
+                      {isNet ? `−${eur(absTotal)}` : eur(total)}
+                      {isNet && <span className="text-[10px] text-green-500 ml-1">bizzum</span>}
+                    </span>
                     <span className="text-xs text-muted-foreground w-10 text-right">{pct.toFixed(0)}%</span>
                   </div>
                 )
@@ -1078,52 +1199,15 @@ _Generado por Summer Quest · ${getTodayStr()}_
           <div className="mb-4">
             <div className="flex items-center gap-2 mb-1">
               <Trophy className="w-5 h-5 text-primary" />
-              <h2 className="text-lg font-bold text-foreground">Retos del mes</h2>
+              <h2 className="text-lg font-bold text-foreground">Retos de la semana</h2>
             </div>
-            <p className="text-xs text-muted-foreground">Completa estos retos para mejorar tus finanzas este mes.</p>
-          </div>
-
-          {/* Static quests — always visible */}
-          <div className="space-y-3 mb-4">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Retos fijos</p>
-            {STATIC_MONTHLY_QUESTS.map(quest => {
-              const done = completedQuestIds.has(quest.id)
-              return (
-                <button
-                  key={quest.id}
-                  onClick={() => toggleQuestComplete(quest.id)}
-                  className={`w-full text-left rounded-2xl p-4 transition-all border-2 ${
-                    done ? 'bg-green-50 border-green-200 opacity-80' : 'bg-card border-transparent'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <span className="text-2xl">{quest.icon}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <p className={`text-sm font-semibold ${done ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
-                          {quest.title}
-                        </p>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
-                          quest.difficulty === 'facil' ? 'bg-green-100 text-green-700' :
-                          quest.difficulty === 'medio' ? 'bg-amber-100 text-amber-700' :
-                          'bg-red-100 text-red-700'
-                        }`}>
-                          {quest.difficulty === 'facil' ? 'Fácil' : quest.difficulty === 'medio' ? 'Medio' : 'Difícil'}
-                        </span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">{quest.description}</p>
-                    </div>
-                    {done && <Check className="w-5 h-5 text-green-500 shrink-0 mt-0.5" />}
-                  </div>
-                </button>
-              )
-            })}
+            <p className="text-xs text-muted-foreground">Gemini genera retos personalizados cada semana según tus gastos.</p>
           </div>
 
           {/* AI-generated quests */}
           <div className="space-y-3 mb-4">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Retos personalizados IA</p>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Retos IA · {getISOWeekKey()}</p>
               {quests.length > 0 && (
                 <button
                   onClick={() => { setQuests([]); fetchAIQuests() }}
@@ -1139,7 +1223,7 @@ _Generado por Summer Quest · ${getTodayStr()}_
               <div className="bg-card rounded-2xl p-5 text-center">
                 <Sparkles className="w-8 h-8 text-primary mx-auto mb-2" />
                 <p className="text-sm font-medium text-foreground mb-1">Retos personalizados con IA</p>
-                <p className="text-xs text-muted-foreground mb-4">Gemini analizará tus gastos del mes y generará retos específicos para ti.</p>
+                <p className="text-xs text-muted-foreground mb-4">Gemini analizará tus gastos y generará retos específicos para esta semana.</p>
                 <button
                   onClick={() => { if (!loadCachedQuests()) fetchAIQuests() }}
                   disabled={incomeBase === 0}
@@ -1210,14 +1294,13 @@ _Generado por Summer Quest · ${getTodayStr()}_
 
           {/* Progress summary */}
           {(() => {
-            const allQuests = [...STATIC_MONTHLY_QUESTS, ...quests]
-            const totalDone = allQuests.filter(q => completedQuestIds.has(q.id)).length
-            const total = allQuests.length
+            const totalDone = quests.filter(q => completedQuestIds.has(q.id)).length
+            const total = quests.length
             if (total === 0) return null
             return (
               <div className="bg-accent rounded-2xl p-4 mb-4">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-semibold text-foreground">Progreso del mes</span>
+                  <span className="text-sm font-semibold text-foreground">Progreso semanal</span>
                   <span className="text-sm font-bold text-primary">{totalDone}/{total}</span>
                 </div>
                 <div className="w-full h-2.5 bg-secondary rounded-full overflow-hidden">
