@@ -299,6 +299,7 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
   const [uscCheckins, setUscCheckins] = useState<UscCheckin[]>([])
   const [syncingUsc, setSyncingUsc] = useState(false)
   const [uscMsg, setUscMsg] = useState<string | null>(null)
+  const [pushingStrava, setPushingStrava] = useState(false)
 
   useEffect(() => {
     setWorkouts(readWorkouts())
@@ -400,6 +401,33 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
     } finally {
       setSyncingUsc(false)
       setTimeout(() => setUscMsg(null), 5000)
+    }
+  }
+
+  const pushUscToStrava = async () => {
+    setPushingStrava(true)
+    setUscMsg(null)
+    try {
+      const res = await fetch('/api/usc/push-to-strava', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) {
+        if (data.error === 'not_connected') {
+          setUscMsg('✗ Conecta Strava primero')
+        } else {
+          throw new Error(data.error || 'Error')
+        }
+        return
+      }
+      if (data.pushed === 0) {
+        setUscMsg('✓ Todo ya estaba en Strava')
+      } else {
+        setUscMsg(`✓ ${data.pushed} actividad${data.pushed === 1 ? '' : 'es'} enviada${data.pushed === 1 ? '' : 's'} a Strava${data.failed > 0 ? ` (${data.failed} fallida${data.failed === 1 ? '' : 's'})` : ''}`)
+      }
+    } catch (e: any) {
+      setUscMsg(`✗ ${e?.message || 'Error'}`)
+    } finally {
+      setPushingStrava(false)
+      setTimeout(() => setUscMsg(null), 6000)
     }
   }
 
@@ -693,14 +721,26 @@ export function WorkoutScreen({ embedded = false }: { embedded?: boolean }) {
             <p className="text-sm font-semibold text-foreground">Urban Sports</p>
             <span className="text-[10px] text-muted-foreground">USC</span>
           </div>
-          <button
-            onClick={syncUsc}
-            disabled={syncingUsc}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-500 text-white text-xs font-medium disabled:opacity-60"
-          >
-            {syncingUsc ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-            Sincronizar
-          </button>
+          <div className="flex items-center gap-2">
+            {uscCheckins.length > 0 && stravaConnected && (
+              <button
+                onClick={pushUscToStrava}
+                disabled={pushingStrava}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange-500 text-white text-xs font-medium disabled:opacity-60"
+              >
+                {pushingStrava ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Footprints className="w-3.5 h-3.5" />}
+                Strava
+              </button>
+            )}
+            <button
+              onClick={syncUsc}
+              disabled={syncingUsc}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-500 text-white text-xs font-medium disabled:opacity-60"
+            >
+              {syncingUsc ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+              Sincronizar
+            </button>
+          </div>
         </div>
 
         {uscMsg && <p className="text-[11px] text-muted-foreground mb-2">{uscMsg}</p>}

@@ -20,8 +20,8 @@ export async function GET(request: Request) {
   authUrl.searchParams.set('client_id', clientId)
   authUrl.searchParams.set('response_type', 'code')
   authUrl.searchParams.set('redirect_uri', redirectUri)
-  authUrl.searchParams.set('approval_prompt', 'auto')
-  authUrl.searchParams.set('scope', 'activity:read_all')
+  authUrl.searchParams.set('approval_prompt', 'force') // force re-consent to pick up new scopes
+  authUrl.searchParams.set('scope', 'activity:read_all,activity:write')
 
   return Response.redirect(authUrl.toString())
 }
