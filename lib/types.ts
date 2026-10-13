@@ -37,6 +37,18 @@ export interface Expense {
   date: string
   isIncome?: boolean
   source?: string // e.g. 'tarjeta comida', 'cuenta corriente', 'N26', etc.
+  /**
+   * Gastos pagados con tarjeta comedor (ticket restaurant).
+   * Estos gastos se descuentan de la nómina: del 1-15 en la nómina del mismo mes,
+   * del 16-31 en la nómina del mes siguiente. El sistema genera automáticamente
+   * un ingreso compensatorio en el mes que corresponde para que el cálculo cuadre.
+   */
+  isMealCard?: boolean
+  /**
+   * ID del gasto original al que corresponde este ingreso compensatorio de tarjeta comedor.
+   * Solo presente en entradas generadas automáticamente (isIncome: true, isMealCard: true).
+   */
+  mealCardSourceId?: string
 }
 
 export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {

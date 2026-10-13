@@ -22,6 +22,30 @@ interface PendingItem {
   isIncome: boolean
 }
 
+// ── Statement verifier types ──
+
+interface StatementItem {
+  date: string
+  description: string
+  amount: number
+  isIncome: boolean
+}
+
+type MatchStatus = 'ok' | 'missing' | 'duplicate'
+
+interface VerifiedItem {
+  statementItem: StatementItem
+  status: MatchStatus
+  /** Expense already in the app that matches this statement item (if status !== 'missing') */
+  matchedExpense?: Expense
+}
+
+interface VerifyResult {
+  items: VerifiedItem[]
+  sourceType: 'bank' | 'meal_card' | 'unknown'
+  statementMonth?: string
+}
+
 interface FinanceQuest {
   id: string
   title: string
@@ -144,6 +168,85 @@ function isPayrollIncome(entry: Expense) {
   return text.includes('nomina') || text.includes('nómina') || text.includes('sueldo') || text.includes('salary') || text.includes('payroll')
 }
 
+/**
+ * Calcula la fecha del ingreso compensatorio para un gasto de tarjeta comedor.
+ * Ciclo: gastos del 1-15 se descuentan en la nómina del mismo mes,
+ * gastos del 16-31 se descuentan en la nómina del mes siguiente.
+ * El ingreso compensatorio se pone el día 1 del mes que corresponde.
+ */
+function getMealCardCompensationDate(expenseDate: string): string {
+  const [year, month, day] = expenseDate.split('-').map(Number)
+  if (day <= 15) {
+    // Mismo mes: compensación el día 1 del mismo mes
+    return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-01`
+  } else {
+    // Mes siguiente: compensación el día 1 del mes siguiente
+    const nextMonth = month === 12 ? 1 : month + 1
+    const nextYear = month === 12 ? year + 1 : year
+    return `${String(nextYear).padStart(4, '0')}-${String(nextMonth).padStart(2, '0')}-01`
+  }
+}
+
+/**
+ * Fuzzy-matches a statement item against the app's expense list.
+ * A match requires: same isIncome direction, amount within 0.02€ tolerance,
+ * and date within a 3-day window (to handle bank processing delays).
+ * Returns the best matching expense or undefined.
+ */
+function findMatchingExpense(item: StatementItem, appExpenses: Expense[]): Expense | undefined {
+  const AMOUNT_TOLERANCE = 0.02
+  const DATE_WINDOW_DAYS = 3
+  const itemDate = new Date(item.date).getTime()
+
+  return appExpenses.find(e => {
+    if (!!e.isIncome !== item.isIncome) return false
+    if (Math.abs(e.amount - item.amount) > AMOUNT_TOLERANCE) return false
+    const eDate = new Date(e.date).getTime()
+    const diffDays = Math.abs((eDate - itemDate) / 86_400_000)
+    return diffDays <= DATE_WINDOW_DAYS
+  })
+}
+
+/**
+ * Compares extracted statement items against the app's expenses for a given month.
+ * Returns a VerifiedItem list with status 'ok', 'missing', or 'duplicate'.
+ * 'duplicate' means the same amount+date appears more than once in the app.
+ */
+function compareStatementToApp(
+  statementItems: StatementItem[],
+  appExpenses: Expense[],
+  sourceType: 'bank' | 'meal_card' | 'unknown',
+  statementMonth?: string,
+): VerifyResult {
+  // Filter app expenses to the statement month if known
+  let scopedExpenses = appExpenses
+  if (statementMonth) {
+    const [y, m] = statementMonth.split('-').map(Number)
+    const start = `${y}-${String(m).padStart(2, '0')}-01`
+    const end = `${y}-${String(m + 1 > 12 ? 1 : m + 1).padStart(2, '0')}-01`
+    const endDate = m === 12 ? `${y + 1}-01-01` : end
+    scopedExpenses = appExpenses.filter(e => e.date >= start && e.date < endDate)
+  }
+
+  // Track which app expenses have already been matched (to detect duplicates)
+  const matchedExpenseIds = new Set<string>()
+
+  const items: VerifiedItem[] = statementItems.map(si => {
+    const match = findMatchingExpense(si, scopedExpenses)
+    if (!match) {
+      return { statementItem: si, status: 'missing' as MatchStatus }
+    }
+    if (matchedExpenseIds.has(match.id)) {
+      // The same app expense was already matched by a previous statement item → duplicate in app
+      return { statementItem: si, status: 'duplicate' as MatchStatus, matchedExpense: match }
+    }
+    matchedExpenseIds.add(match.id)
+    return { statementItem: si, status: 'ok' as MatchStatus, matchedExpense: match }
+  })
+
+  return { items, sourceType, statementMonth }
+}
+
 // Direct localStorage helpers — no effects, no race conditions
 function readExpenses(): Expense[] {
   try {
@@ -167,6 +270,15 @@ export function FinanzasScreen() {
   const [manualCategory, setManualCategory] = useState<ExpenseCategory>('otros')
   const [manualDate, setManualDate] = useState(getTodayStr())
   const [manualIsIncome, setManualIsIncome] = useState(false)
+  const [manualIsMealCard, setManualIsMealCard] = useState(false)
+  // Statement verifier state
+  const [showVerifier, setShowVerifier] = useState(false)
+  const [verifierLoading, setVerifierLoading] = useState(false)
+  const [verifierError, setVerifierError] = useState<string | null>(null)
+  const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null)
+  const [verifierSource, setVerifierSource] = useState<'bank' | 'meal_card'>('bank')
+  const [selectedToImport, setSelectedToImport] = useState<Set<number>>(new Set())
+
   const [view, setView] = useState<FinanceView>('dia')
   const [weekOffset, setWeekOffset] = useState(0)
   const [monthOffset, setMonthOffset] = useState(0)
@@ -650,28 +762,117 @@ _Generado por Summer Quest · ${getTodayStr()}_
 
   const addManualExpense = () => {
     if (!manualDescription || !manualAmount) return
+    const expenseId = Date.now().toString()
+    const isMealCard = !manualIsIncome && manualIsMealCard
     const newExpense: Expense = {
-      id: Date.now().toString(),
+      id: expenseId,
       description: manualDescription,
       amount: parseFloat(manualAmount),
       category: manualCategory,
       date: manualDate,
       isIncome: manualIsIncome,
+      isMealCard: isMealCard || undefined,
     }
+    const toSave: Expense[] = [newExpense]
+
+    // Si es un gasto de tarjeta comedor, crear ingreso compensatorio automático.
+    // El ingreso se registra el día 1 del mes que corresponde según el ciclo 1-15 / 16-31.
+    if (isMealCard) {
+      const compensationDate = getMealCardCompensationDate(manualDate)
+      const compensation: Expense = {
+        id: expenseId + '_mc_comp',
+        description: `Compensación tarjeta comedor (${manualDescription})`,
+        amount: parseFloat(manualAmount),
+        category: 'nomina',
+        date: compensationDate,
+        isIncome: true,
+        isMealCard: true,
+        mealCardSourceId: expenseId,
+      }
+      toSave.push(compensation)
+    }
+
     const current = readExpenses()
-    saveExpenses([newExpense, ...current])
+    saveExpenses([...toSave, ...current])
     setManualDescription('')
     setManualAmount('')
     setManualCategory('otros')
     setManualDate(getTodayStr())
     setManualIsIncome(false)
+    setManualIsMealCard(false)
     setShowManualAdd(false)
+  }
+
+  const handleVerifyStatement = async (file: File) => {
+    setVerifierLoading(true)
+    setVerifierError(null)
+    setVerifyResult(null)
+    setSelectedToImport(new Set())
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('sourceHint', verifierSource)
+      const res = await fetch('/api/verify-statement', { method: 'POST', body: formData })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      const result = compareStatementToApp(data.items, expenses, data.sourceType, data.statementMonth)
+      setVerifyResult(result)
+      // Pre-select all missing items for import
+      const missingIndices = new Set(
+        result.items.map((item, i) => item.status === 'missing' ? i : -1).filter(i => i >= 0)
+      )
+      setSelectedToImport(missingIndices)
+    } catch (e: unknown) {
+      setVerifierError(e instanceof Error ? e.message : 'Error al analizar el extracto')
+    } finally {
+      setVerifierLoading(false)
+    }
+  }
+
+  const importSelectedMissing = () => {
+    if (!verifyResult) return
+    const toImport: Expense[] = []
+    for (const idx of selectedToImport) {
+      const item = verifyResult.items[idx]
+      if (!item || item.status !== 'missing') continue
+      const si = item.statementItem
+      toImport.push({
+        id: Date.now().toString() + '_vs_' + idx + '_' + Math.random().toString(36).slice(2, 5),
+        description: si.description,
+        amount: si.amount,
+        category: si.isIncome ? 'nomina' : 'otros',
+        date: si.date,
+        isIncome: si.isIncome,
+        source: verifyResult.sourceType === 'meal_card' ? 'tarjeta comedor' : 'extracto bancario',
+      })
+    }
+    if (toImport.length === 0) return
+    const current = readExpenses()
+    saveExpenses([...toImport, ...current])
+    // Mark imported items as ok in result
+    setVerifyResult(prev => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        items: prev.items.map((item, i) =>
+          selectedToImport.has(i) && item.status === 'missing'
+            ? { ...item, status: 'ok' as MatchStatus }
+            : item
+        ),
+      }
+    })
+    setSelectedToImport(new Set())
   }
 
   const deleteExpense = (id: string) => {
     const current = readExpenses()
-    recordTombstones(EXPENSES_STORAGE_KEY, [id])
-    saveExpenses(current.filter(e => e.id !== id))
+    // Si es un gasto de tarjeta comedor, eliminar también el ingreso compensatorio asociado
+    const compensationId = id + '_mc_comp'
+    const hasCompensation = current.some(e => e.id === compensationId)
+    const idsToDelete = hasCompensation ? [id, compensationId] : [id]
+    recordTombstones(EXPENSES_STORAGE_KEY, idsToDelete)
+    saveExpenses(current.filter(e => !idsToDelete.includes(e.id)))
   }
 
   const openEditExpense = (expense: Expense) => {
@@ -1007,14 +1208,23 @@ _Generado por Summer Quest · ${getTodayStr()}_
             <button onClick={() => setMonthOffset(m => Math.min(m + 1, 0))} className="p-2 rounded-full hover:bg-secondary" disabled={monthOffset >= 0}><ChevronRight className={`w-5 h-5 ${monthOffset >= 0 ? 'text-muted-foreground/30' : 'text-muted-foreground'}`} /></button>
           </div>
 
-          {/* Export monthly report */}
-          <button
-            onClick={() => setShowReport(true)}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-secondary text-foreground text-sm font-medium mb-4"
-          >
-            <FileText className="w-4 h-4" />
-            Exportar informe (NotebookLM / PDF)
-          </button>
+          {/* Export monthly report + Verify statement */}
+          <div className="flex gap-2 mb-4">
+            <button
+              onClick={() => setShowReport(true)}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-secondary text-foreground text-sm font-medium"
+            >
+              <FileText className="w-4 h-4" />
+              Exportar informe
+            </button>
+            <button
+              onClick={() => { setShowVerifier(true); setVerifyResult(null); setVerifierError(null) }}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-secondary text-foreground text-sm font-medium"
+            >
+              <Check className="w-4 h-4" />
+              Verificar extracto
+            </button>
+          </div>
 
           {/* Income / Expenses / Savings */}
           <div className="grid grid-cols-2 gap-2 mb-2">
@@ -1422,18 +1632,31 @@ _Generado por Summer Quest · ${getTodayStr()}_
           {/* Income/Expense toggle */}
           <div className="flex gap-2 mb-3">
             <button
-              onClick={() => setManualIsIncome(false)}
+              onClick={() => { setManualIsIncome(false) }}
               className={`flex-1 py-2 rounded-xl text-sm font-medium transition-all ${!manualIsIncome ? 'bg-red-100 text-red-700' : 'bg-secondary text-muted-foreground'}`}
             >
               Gasto
             </button>
             <button
-              onClick={() => setManualIsIncome(true)}
+              onClick={() => { setManualIsIncome(true); setManualIsMealCard(false) }}
               className={`flex-1 py-2 rounded-xl text-sm font-medium transition-all ${manualIsIncome ? 'bg-green-100 text-green-700' : 'bg-secondary text-muted-foreground'}`}
             >
               Ingreso
             </button>
           </div>
+          {/* Meal card toggle — only for expenses */}
+          {!manualIsIncome && (
+            <button
+              onClick={() => setManualIsMealCard(prev => !prev)}
+              className={`w-full py-2 rounded-xl text-sm font-medium mb-3 transition-all border-2 ${
+                manualIsMealCard
+                  ? 'bg-orange-100 text-orange-700 border-orange-300'
+                  : 'bg-secondary text-muted-foreground border-transparent'
+              }`}
+            >
+              {manualIsMealCard ? '🍽 Tarjeta comedor (activa)' : '🍽 Tarjeta comedor'}
+            </button>
+          )}
           <input type="text" placeholder="Descripción" value={manualDescription} onChange={e => setManualDescription(e.target.value)} className="w-full p-3 rounded-xl bg-secondary text-foreground mb-2 outline-none focus:ring-2 focus:ring-primary" />
           <input type="number" placeholder="Cantidad (EUR)" value={manualAmount} onChange={e => setManualAmount(e.target.value)} className="w-full p-3 rounded-xl bg-secondary text-foreground mb-2 outline-none focus:ring-2 focus:ring-primary" />
           <input type="date" value={manualDate} onChange={e => setManualDate(e.target.value)} className="w-full p-3 rounded-xl bg-secondary text-foreground mb-3 outline-none focus:ring-2 focus:ring-primary" />
@@ -1491,30 +1714,45 @@ _Generado por Summer Quest · ${getTodayStr()}_
           )}
           {viewItems
             .sort((a, b) => b.date.localeCompare(a.date))
-            .map(expense => (
-            <div key={expense.id} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
-              <div className="flex items-center gap-2 flex-1">
-                {expense.isIncome
-                  ? <ArrowDownCircle className="w-4 h-4 text-green-500 shrink-0" />
-                  : <ArrowUpCircle className="w-4 h-4 text-red-400 shrink-0" />}
-                <div>
-                  <p className="text-sm font-medium text-foreground">{expense.description}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {EXPENSE_CATEGORY_LABELS[expense.category]} · {new Date(expense.date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
+            .map(expense => {
+              // Los ingresos compensatorios de tarjeta comedor se muestran con estilo tenue
+              const isMealCardCompensation = expense.isIncome && expense.isMealCard && !!expense.mealCardSourceId
+              return (
+                <div key={expense.id} className={`flex items-center justify-between py-2 border-b border-border/50 last:border-0 ${isMealCardCompensation ? 'opacity-60' : ''}`}>
+                  <div className="flex items-center gap-2 flex-1">
+                    {expense.isIncome
+                      ? <ArrowDownCircle className="w-4 h-4 text-green-500 shrink-0" />
+                      : <ArrowUpCircle className="w-4 h-4 text-red-400 shrink-0" />}
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-medium text-foreground">{expense.description}</p>
+                        {expense.isMealCard && !isMealCardCompensation && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-600 font-medium shrink-0">🍽 comedor</span>
+                        )}
+                        {isMealCardCompensation && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-50 text-orange-400 font-medium shrink-0">auto</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {EXPENSE_CATEGORY_LABELS[expense.category]} · {new Date(expense.date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
+                      </p>
+                    </div>
+                  </div>
+                  <p className={`text-sm font-bold mr-3 ${expense.isIncome ? 'text-green-600' : 'text-foreground'}`}>
+                    {expense.isIncome ? '+' : ''}{eur(expense.amount)}
                   </p>
+                  {/* No permitir editar ingresos compensatorios automáticos */}
+                  {!isMealCardCompensation && (
+                    <button onClick={() => openEditExpense(expense)} className="p-1 rounded-full hover:bg-secondary transition-colors">
+                      <Pencil className="w-4 h-4 text-muted-foreground" />
+                    </button>
+                  )}
+                  <button onClick={() => deleteExpense(expense.id)} className="p-1 rounded-full hover:bg-secondary transition-colors">
+                    <Trash2 className="w-4 h-4 text-muted-foreground" />
+                  </button>
                 </div>
-              </div>
-              <p className={`text-sm font-bold mr-3 ${expense.isIncome ? 'text-green-600' : 'text-foreground'}`}>
-                {expense.isIncome ? '+' : ''}{eur(expense.amount)}
-              </p>
-              <button onClick={() => openEditExpense(expense)} className="p-1 rounded-full hover:bg-secondary transition-colors">
-                <Pencil className="w-4 h-4 text-muted-foreground" />
-              </button>
-              <button onClick={() => deleteExpense(expense.id)} className="p-1 rounded-full hover:bg-secondary transition-colors">
-                <Trash2 className="w-4 h-4 text-muted-foreground" />
-              </button>
-            </div>
-          ))}
+              )
+            })}
         </div>
       </div>}
 
@@ -1569,6 +1807,188 @@ _Generado por Summer Quest · ${getTodayStr()}_
           reportData={buildReportData()}
           onClose={() => setShowReport(false)}
         />
+      )}
+
+      {/* ────── STATEMENT VERIFIER MODAL ────── */}
+      {showVerifier && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-end justify-center p-4">
+          <div className="bg-card w-full max-w-lg rounded-2xl p-5 max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-4 shrink-0">
+              <div>
+                <p className="font-semibold text-foreground">Verificar extracto</p>
+                <p className="text-xs text-muted-foreground">Sube el PDF del banco o tarjeta comedor</p>
+              </div>
+              <button
+                onClick={() => { setShowVerifier(false); setVerifyResult(null); setVerifierError(null) }}
+              >
+                <X className="w-5 h-5 text-muted-foreground" />
+              </button>
+            </div>
+
+            {/* Source selector */}
+            {!verifyResult && !verifierLoading && (
+              <>
+                <div className="flex gap-2 mb-4">
+                  <button
+                    onClick={() => setVerifierSource('bank')}
+                    className={`flex-1 py-2 rounded-xl text-sm font-medium transition-all border-2 ${verifierSource === 'bank' ? 'border-primary bg-primary/10 text-primary' : 'border-transparent bg-secondary text-muted-foreground'}`}
+                  >
+                    Banco
+                  </button>
+                  <button
+                    onClick={() => setVerifierSource('meal_card')}
+                    className={`flex-1 py-2 rounded-xl text-sm font-medium transition-all border-2 ${verifierSource === 'meal_card' ? 'border-orange-400 bg-orange-50 text-orange-700' : 'border-transparent bg-secondary text-muted-foreground'}`}
+                  >
+                    🍽 Tarjeta comedor
+                  </button>
+                </div>
+
+                <label className="w-full cursor-pointer">
+                  <div className="border-2 border-dashed border-border rounded-xl p-8 text-center hover:border-primary transition-colors">
+                    <FileText className="w-10 h-10 text-muted-foreground mx-auto mb-2" />
+                    <p className="text-sm font-medium text-foreground">Selecciona el PDF del extracto</p>
+                    <p className="text-xs text-muted-foreground mt-1">PDF, imágenes — el mes que tienes abierto en la app</p>
+                  </div>
+                  <input
+                    type="file"
+                    accept=".pdf,image/*"
+                    className="hidden"
+                    onChange={e => {
+                      const file = e.target.files?.[0]
+                      if (file) handleVerifyStatement(file)
+                      e.target.value = ''
+                    }}
+                  />
+                </label>
+              </>
+            )}
+
+            {/* Loading */}
+            {verifierLoading && (
+              <div className="flex flex-col items-center justify-center py-12 gap-3">
+                <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                <p className="text-sm text-muted-foreground">Analizando extracto con IA...</p>
+              </div>
+            )}
+
+            {/* Error */}
+            {verifierError && (
+              <div className="bg-red-50 rounded-xl p-4 text-center">
+                <p className="text-sm text-red-600">{verifierError}</p>
+                <button
+                  onClick={() => { setVerifierError(null); setVerifyResult(null) }}
+                  className="mt-3 text-xs text-red-500 underline"
+                >
+                  Intentar de nuevo
+                </button>
+              </div>
+            )}
+
+            {/* Results */}
+            {verifyResult && !verifierLoading && (
+              <>
+                {/* Summary pills */}
+                {(() => {
+                  const ok = verifyResult.items.filter(i => i.status === 'ok').length
+                  const missing = verifyResult.items.filter(i => i.status === 'missing').length
+                  const duplicates = verifyResult.items.filter(i => i.status === 'duplicate').length
+                  return (
+                    <div className="flex gap-2 mb-4 shrink-0">
+                      <div className="flex-1 bg-green-50 rounded-xl p-2.5 text-center">
+                        <p className="text-lg font-bold text-green-600">{ok}</p>
+                        <p className="text-[10px] text-green-600">Coinciden</p>
+                      </div>
+                      <div className="flex-1 bg-red-50 rounded-xl p-2.5 text-center">
+                        <p className="text-lg font-bold text-red-600">{missing}</p>
+                        <p className="text-[10px] text-red-600">Faltan</p>
+                      </div>
+                      <div className="flex-1 bg-yellow-50 rounded-xl p-2.5 text-center">
+                        <p className="text-lg font-bold text-yellow-600">{duplicates}</p>
+                        <p className="text-[10px] text-yellow-600">Duplicados</p>
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                {/* Import button for missing items */}
+                {selectedToImport.size > 0 && (
+                  <button
+                    onClick={importSelectedMissing}
+                    className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium mb-3 shrink-0"
+                  >
+                    Importar {selectedToImport.size} movimiento{selectedToImport.size !== 1 ? 's' : ''} seleccionado{selectedToImport.size !== 1 ? 's' : ''}
+                  </button>
+                )}
+
+                {/* Item list */}
+                <div className="overflow-y-auto flex-1 space-y-2 pr-1">
+                  {verifyResult.items.map((item, idx) => {
+                    const si = item.statementItem
+                    const isMissing = item.status === 'missing'
+                    const isSelected = selectedToImport.has(idx)
+                    return (
+                      <div
+                        key={idx}
+                        onClick={() => {
+                          if (!isMissing) return
+                          setSelectedToImport(prev => {
+                            const next = new Set(prev)
+                            if (next.has(idx)) next.delete(idx)
+                            else next.add(idx)
+                            return next
+                          })
+                        }}
+                        className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
+                          item.status === 'ok'
+                            ? 'bg-green-50/50 border-green-100'
+                            : item.status === 'duplicate'
+                            ? 'bg-yellow-50/50 border-yellow-100'
+                            : isSelected
+                            ? 'bg-red-50 border-red-300 cursor-pointer'
+                            : 'bg-red-50/30 border-red-100 cursor-pointer'
+                        }`}
+                      >
+                        {/* Status icon / checkbox */}
+                        <div className="shrink-0">
+                          {item.status === 'ok' && <Check className="w-4 h-4 text-green-500" />}
+                          {item.status === 'duplicate' && <span className="text-yellow-500 text-xs font-bold">2x</span>}
+                          {isMissing && (
+                            <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${isSelected ? 'bg-primary border-primary' : 'border-red-300'}`}>
+                              {isSelected && <Check className="w-2.5 h-2.5 text-white" />}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Description + date */}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-foreground truncate">{si.description}</p>
+                          <p className="text-[10px] text-muted-foreground">
+                            {new Date(si.date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
+                            {item.status === 'duplicate' && ' · Posible duplicado en la app'}
+                          </p>
+                        </div>
+
+                        {/* Amount */}
+                        <p className={`text-xs font-bold shrink-0 ${si.isIncome ? 'text-green-600' : 'text-foreground'}`}>
+                          {si.isIncome ? '+' : ''}{eur(si.amount)}
+                        </p>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* Reset */}
+                <button
+                  onClick={() => { setVerifyResult(null); setVerifierError(null); setSelectedToImport(new Set()) }}
+                  className="mt-3 w-full py-2 rounded-xl bg-secondary text-muted-foreground text-sm shrink-0"
+                >
+                  Subir otro extracto
+                </button>
+              </>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )
