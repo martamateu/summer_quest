@@ -2,7 +2,7 @@ import { generateObject } from 'ai'
 import { google } from '@ai-sdk/google'
 import { z } from 'zod'
 
-export const maxDuration = 120 // PDFs can take longer than receipts
+export const maxDuration = 60
 
 const StatementItemSchema = z.object({
   date: z.string().describe('Fecha del movimiento en formato YYYY-MM-DD'),
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
       : 'Puede ser un extracto bancario o de tarjeta de beneficios.'
 
     const { object } = await generateObject({
-      model: google('gemini-2.5-flash'),
+      model: google('gemini-2.5-flash-lite-preview-06-17'),
       schema: StatementSchema,
       messages: [
         {
@@ -51,20 +51,11 @@ export async function POST(request: Request) {
             },
             {
               type: 'text',
-              text: `Analiza este extracto de movimientos financieros y extrae TODOS los movimientos que aparecen.
-
-${sourceContext}
-
-REGLAS:
-- Extrae TODOS los movimientos sin excepción, uno por uno.
-- El campo "amount" SIEMPRE es positivo. Usa "isIncome" para indicar si es cargo o abono.
-- isIncome: true → abono, ingreso, transferencia recibida, devolución, nómina, sueldo, +
-- isIncome: false → cargo, pago, compra, domiciliación, adeudo, -
-- Si hay saldo inicial/final, NO lo incluyas como movimiento.
-- Si hay totales o subtotales, NO los incluyas como movimiento.
-- Fecha: formato YYYY-MM-DD. Si solo ves día/mes, infiere el año del contexto del extracto.
-- Descripcion: texto original del extracto, limpio y conciso.
-- Identifica el tipo de extracto: "bank" para banco, "meal_card" para tarjeta comedor, "unknown" si no está claro.`,
+              text: `Extrae todos los movimientos de este extracto financiero. ${sourceContext}
+- amount siempre positivo; isIncome=true si es abono/ingreso, false si es cargo/pago.
+- Omite saldos, totales y subtotales.
+- Fecha en YYYY-MM-DD (infiere el año del contexto si solo ves día/mes).
+- description: texto original, conciso.`,
             },
           ],
         },
