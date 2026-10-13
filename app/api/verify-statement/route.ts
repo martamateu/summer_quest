@@ -38,7 +38,7 @@ export async function POST(request: Request) {
       : 'Puede ser un extracto bancario o de tarjeta de beneficios.'
 
     const { object } = await generateObject({
-      model: google('gemini-2.5-flash-lite-preview-06-17'),
+      model: google('gemini-2.5-flash'),
       schema: StatementSchema,
       messages: [
         {
@@ -64,7 +64,8 @@ export async function POST(request: Request) {
 
     return Response.json(object)
   } catch (error) {
-    console.error('[verify-statement] Error:', error)
-    return Response.json({ error: 'Failed to analyze statement' }, { status: 500 })
+    const msg = error instanceof Error ? error.message : String(error)
+    console.error('[verify-statement] Error:', msg)
+    return Response.json({ error: msg }, { status: 500 })
   }
 }
