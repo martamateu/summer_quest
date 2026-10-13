@@ -223,9 +223,13 @@ function buildHtmlReport(
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; color: #111; background: #fff; }
     .page { max-width: 700px; margin: 0 auto; padding: 32px 24px; }
+    table { page-break-inside: avoid; }
+    pre { white-space: pre-wrap; word-break: break-word; page-break-inside: avoid; }
+    svg { overflow: visible; }
     @media print {
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .page { padding: 16px; }
+      .page { padding: 16px; max-width: 100%; }
+      .no-print { display: none !important; }
     }
   </style>
 </head>
@@ -309,12 +313,41 @@ export function ReportExportModal({
 
   const printPdf = () => {
     const html = buildHtmlReport(title, text, reportData, aiInsights)
-    const w = window.open('', '_blank')
-    if (!w) return
-    w.document.write(html)
-    w.document.close()
-    w.focus()
-    setTimeout(() => w.print(), 500)
+    // Usar Blob + URL para evitar bloqueos de popup en PWA/Safari
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    // Intentar abrir en nueva pestaña; si falla, usar iframe oculto
+    const opened = window.open(url, '_blank')
+    if (opened) {
+      opened.addEventListener('load', () => {
+        setTimeout(() => {
+          opened.print()
+          URL.revokeObjectURL(url)
+        }, 400)
+      })
+      // Fallback si load no dispara
+      setTimeout(() => URL.revokeObjectURL(url), 30000)
+    } else {
+      // Fallback: iframe oculto para imprimir sin popup
+      const iframe = document.createElement('iframe')
+      iframe.style.position = 'fixed'
+      iframe.style.right = '0'
+      iframe.style.bottom = '0'
+      iframe.style.width = '0'
+      iframe.style.height = '0'
+      iframe.style.border = '0'
+      iframe.src = url
+      document.body.appendChild(iframe)
+      iframe.addEventListener('load', () => {
+        setTimeout(() => {
+          iframe.contentWindow?.print()
+          setTimeout(() => {
+            document.body.removeChild(iframe)
+            URL.revokeObjectURL(url)
+          }, 1000)
+        }, 400)
+      })
+    }
   }
 
   const assessBadge = aiInsights ? (

@@ -794,8 +794,100 @@ export function StatsScreen({ metrics }: StatsScreenProps) {
         )
       })()}
 
+      {/* Focus — gráfica de barras con minutos acumulados */}
+      {(activeMetric === 'all' || activeMetric === 'focus') && (() => {
+        const focusRows = dates.map(date => ({ date, minutes: focusLog[date] ?? 0 }))
+        const hasFocusData = focusRows.some(r => r.minutes > 0)
+        if (!hasFocusData && activeMetric !== 'focus') return null
+
+        const maxFocusMin = Math.max(...focusRows.map(r => r.minutes), 1)
+        const totalFocusMin = focusRows.reduce((s, r) => s + r.minutes, 0)
+        const daysWithFocus = focusRows.filter(r => r.minutes > 0).length
+        const daysDone = focusRows.filter(r => r.minutes >= FOCUS_GOAL_MIN).length
+        const fmtMin = (m: number) => m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`
+
+        return (
+          <div className="bg-card rounded-2xl p-4 mb-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Brain className="w-4 h-4 text-indigo-500" />
+              <p className="text-sm font-semibold text-foreground">Focus</p>
+              {totalFocusMin > 0 && (
+                <span className="text-xs font-medium text-indigo-500 ml-auto">
+                  {fmtMin(totalFocusMin)} total
+                </span>
+              )}
+            </div>
+            {view === 'dia' ? (
+              <div className="text-center py-4">
+                {focusRows[0]?.minutes > 0 ? (
+                  <>
+                    <p className="text-4xl font-bold text-foreground">{fmtMin(focusRows[0].minutes)}</p>
+                    <p className="text-sm text-muted-foreground mt-1">de foco · objetivo {fmtMin(FOCUS_GOAL_MIN)}</p>
+                    <div className="h-2 bg-secondary rounded-full overflow-hidden mt-3">
+                      <div className="h-full rounded-full bg-indigo-500" style={{ width: `${Math.min(100, (focusRows[0].minutes / FOCUS_GOAL_MIN) * 100)}%` }} />
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground py-4">Sin sesiones de foco este día</p>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  <div className="bg-secondary rounded-xl p-2 text-center">
+                    <p className="text-[10px] text-muted-foreground uppercase">Total</p>
+                    <p className="text-sm font-bold text-foreground">{fmtMin(totalFocusMin)}</p>
+                  </div>
+                  <div className="bg-secondary rounded-xl p-2 text-center">
+                    <p className="text-[10px] text-muted-foreground uppercase">Media</p>
+                    <p className="text-sm font-bold text-foreground">{daysWithFocus > 0 ? fmtMin(Math.round(totalFocusMin / daysWithFocus)) : '—'}</p>
+                  </div>
+                  <div className="bg-secondary rounded-xl p-2 text-center">
+                    <p className="text-[10px] text-muted-foreground uppercase">Días ≥{fmtMin(FOCUS_GOAL_MIN)}</p>
+                    <p className="text-sm font-bold text-foreground">{daysDone}/{dates.length}</p>
+                  </div>
+                </div>
+                {hasFocusData ? (
+                  <div className="flex items-end gap-1" style={{ height: view === 'semana' ? 100 : 80 }}>
+                    {focusRows.map((r, i) => {
+                      const barH = r.minutes > 0 ? Math.max(Math.round((r.minutes / maxFocusMin) * 72), 4) : 2
+                      const isGoal = r.minutes >= FOCUS_GOAL_MIN
+                      return (
+                        <div key={i} className="flex-1 flex flex-col items-center justify-end gap-0.5" style={{ height: view === 'semana' ? 100 : 80 }}>
+                          {view === 'semana' && r.minutes > 0 && (
+                            <span className="text-[8px] font-medium leading-none mb-0.5" style={{ color: isGoal ? '#6366f1' : '#9ca3af' }}>
+                              {fmtMin(r.minutes)}
+                            </span>
+                          )}
+                          <div
+                            className="w-full rounded-t transition-all"
+                            style={{ height: barH, backgroundColor: isGoal ? '#6366f1' : '#6366f120' }}
+                          />
+                          {view === 'semana' && (
+                            <span className="text-[8px] text-muted-foreground leading-none">
+                              {fmtDateLabel(r.date).split(' ')[0]}
+                            </span>
+                          )}
+                          {view === 'mes' && Number(r.date.split('-')[2]) % 5 === 1 && (
+                            <span className="text-[8px] text-muted-foreground leading-none">
+                              {Number(r.date.split('-')[2])}
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">Sin sesiones de foco en este período</p>
+                )}
+              </>
+            )}
+          </div>
+        )
+      })()}
+
       {/* Boolean metrics — grid de checkmarks por día */}
-      {visibleMetrics.filter(m => m.id !== 'pasos' && m.id !== 'peso').map(meta => (
+      {visibleMetrics.filter(m => m.id !== 'pasos' && m.id !== 'peso' && m.id !== 'screentime' && m.id !== 'focus').map(meta => (
         <div key={meta.id} className="bg-card rounded-2xl p-4 mb-4">
           <div className="flex items-center gap-2 mb-3">
             <span style={{ color: meta.color }}>{meta.icon}</span>

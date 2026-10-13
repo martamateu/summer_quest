@@ -1,8 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Play, Pause, RotateCcw, SkipForward, Minus, Plus, Brain, BookOpen, Code2, AlertTriangle, ChevronDown, ChevronUp, Check } from 'lucide-react'
-import { IMAS_PLAN, CI_PLAN, PAR_PLAN, getCurrentImasWeek, getCurrentCiWeek, getCurrentParWeek, getImasWeekDateRange, getCiWeekDateRange, getParWeekDateRange, getCarryoverTasks, getCarryoverId, type StudyTask } from '@/lib/study-plan'
+import { Play, Pause, RotateCcw, SkipForward, Minus, Plus, Brain } from 'lucide-react'
 
 // ── Date helpers ───────────────────────────────────────────────────────────────
 const fmtLocal = (d: Date) =>
@@ -124,31 +123,7 @@ function addFocusSubjectMinutes(subject: FocusSubject, minutes: number) {
   } catch {}
 }
 
-// ── Study plan progress persistence ───────────────────────────────────────────
-const STUDY_CHECKS_KEY = 'sq_study_checks'   // Record<taskId, boolean>
-const STUDY_HOURS_KEY  = 'sq_study_hours'    // Record<"IMAS-w1", minutes>
 
-function readStudyChecks(): Record<string, boolean> {
-  try { return JSON.parse(localStorage.getItem(STUDY_CHECKS_KEY) || '{}') } catch { return {} }
-}
-function saveStudyChecks(checks: Record<string, boolean>) {
-  localStorage.setItem(STUDY_CHECKS_KEY, JSON.stringify(checks))
-  window.dispatchEvent(new Event('sq-data-changed'))
-}
-
-function readStudyHours(): Record<string, number> {
-  try { return JSON.parse(localStorage.getItem(STUDY_HOURS_KEY) || '{}') } catch { return {} }
-}
-
-// Acumula minutos de estudio en la clave "{subject}-wN" de la semana actual
-function addStudyMinutes(subject: string, weekNum: number, minutes: number) {
-  try {
-    const key = `${subject}-w${weekNum}`
-    const hours = readStudyHours()
-    hours[key] = (hours[key] || 0) + minutes
-    localStorage.setItem(STUDY_HOURS_KEY, JSON.stringify(hours))
-  } catch {}
-}
 
 // ── Focus screen ────────────────────────────────────────────────────────────────
 export function FocusScreen() {
@@ -166,23 +141,6 @@ export function FocusScreen() {
   const [selectedSubject, setSelectedSubject] = useState<FocusSubject>('CI')
   const [subjectLog, setSubjectLog] = useState<Record<string, Record<FocusSubject, number>>>({})
 
-  // Study plan state
-  const [studyChecks, setStudyChecks] = useState<Record<string, boolean>>({})
-  const [studyHours, setStudyHours] = useState<Record<string, number>>({})
-  const [showFullPlan, setShowFullPlan] = useState(false)
-
-  // Plan activo según asignatura seleccionada (IMAS, CI o PAR)
-  const activePlan = selectedSubject === 'CI' ? CI_PLAN : selectedSubject === 'PAR' ? PAR_PLAN : IMAS_PLAN
-  const activePlanKey = selectedSubject === 'CI' ? 'CI' : selectedSubject === 'PAR' ? 'PAR' : 'IMAS'
-  const totalWeeks = activePlan.length
-  const currentWeekNum = selectedSubject === 'CI' ? getCurrentCiWeek() : selectedSubject === 'PAR' ? getCurrentParWeek() : getCurrentImasWeek()
-  const [imasViewWeek, setImasViewWeek] = useState(getCurrentImasWeek())
-  const [ciViewWeek, setCiViewWeek] = useState(getCurrentCiWeek())
-  const [parViewWeek, setParViewWeek] = useState(getCurrentParWeek())
-  const viewWeek = selectedSubject === 'CI' ? ciViewWeek : selectedSubject === 'PAR' ? parViewWeek : imasViewWeek
-  const setViewWeek = selectedSubject === 'CI' ? setCiViewWeek : selectedSubject === 'PAR' ? setParViewWeek : setImasViewWeek
-  const currentWeek = activePlan[viewWeek - 1]
-
   // Load today's focus + history on mount, and refresh on external changes (cloud sync)
   useEffect(() => {
     const refresh = () => {
@@ -191,8 +149,6 @@ export function FocusScreen() {
       setLog(l)
       setSubjectLog(sl)
       setTodayFocus(l[getTodayStr()] || 0)
-      setStudyChecks(readStudyChecks())
-      setStudyHours(readStudyHours())
     }
     // Restore last selected subject
     try {
@@ -209,12 +165,6 @@ export function FocusScreen() {
     try { localStorage.setItem(FOCUS_SUBJECT_SELECTED_KEY, s) } catch {}
   }
 
-  const toggleCheck = (taskId: string) => {
-    const next = { ...studyChecks, [taskId]: !studyChecks[taskId] }
-    setStudyChecks(next)
-    saveStudyChecks(next)
-  }
-
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
@@ -227,9 +177,6 @@ export function FocusScreen() {
       setSessionsCompleted((prev) => prev + 1)
       addFocusMinutes(workMinutes)
       addFocusSubjectMinutes(selectedSubject, workMinutes)
-      if (selectedSubject === 'IMAS') addStudyMinutes('IMAS', getCurrentImasWeek(), workMinutes)
-      if (selectedSubject === 'CI') addStudyMinutes('CI', getCurrentCiWeek(), workMinutes)
-      if (selectedSubject === 'PAR') addStudyMinutes('PAR', getCurrentParWeek(), workMinutes)
       setTodayFocus((prev) => {
         const newTotal = prev + workMinutes
         // Marcar Máster como hecha al completar el primer bloque de 25 min
@@ -504,185 +451,7 @@ export function FocusScreen() {
         </div>
       </div>
 
-      {/* ── Study Plan (IMAS o CI según asignatura seleccionada) ────────── */}
-      {(selectedSubject === 'IMAS' || selectedSubject === 'CI' || selectedSubject === 'PAR') && currentWeek && (() => {
-        const weekKey = `${activePlanKey}-w${viewWeek}`
-        const imasMinutesThisWeek = studyHours[weekKey] || 0
-        const imasHoursThisWeek = imasMinutesThisWeek / 60
-        const targetHours = currentWeek.totalHours
-        const pct = Math.min(100, Math.round((imasHoursThisWeek / targetHours) * 100))
-        const dateRange = selectedSubject === 'CI' ? getCiWeekDateRange(viewWeek) : selectedSubject === 'PAR' ? getParWeekDateRange(viewWeek) : getImasWeekDateRange(viewWeek)
-        const isCurrentWeek = viewWeek === currentWeekNum
-        const fmtDate = (s: string) => {
-          const [, m, d] = s.split('-').map(Number)
-          return `${d} ${['','ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][m]}`
-        }
 
-        const tasksByType = {
-          theory:      currentWeek.tasks.filter(t => t.type === 'theory'),
-          practice:    currentWeek.tasks.filter(t => t.type === 'practice'),
-          deliverable: currentWeek.tasks.filter(t => t.type === 'deliverable'),
-        }
-
-        // Carryovers: tareas sin hacer de semanas anteriores que aparecen en esta semana
-        const carryovers = getCarryoverTasks(viewWeek, studyChecks)
-
-        const totalTasks = currentWeek.tasks.length + carryovers.length
-        const doneTasks = currentWeek.tasks.filter(t => studyChecks[t.id]).length
-          + carryovers.filter(t => studyChecks[t.carryId]).length
-
-        // TaskRow para tareas propias de la semana
-        const TaskRow = ({ task }: { task: StudyTask }) => (
-          <button
-            onClick={() => toggleCheck(task.id)}
-            className="w-full flex items-start gap-2.5 py-1.5 text-left group"
-          >
-            <span className={`mt-0.5 w-4 h-4 rounded flex items-center justify-center shrink-0 border transition-all ${
-              studyChecks[task.id]
-                ? 'bg-pink-500 border-pink-500'
-                : 'border-muted-foreground/30 group-hover:border-pink-400'
-            }`}>
-              {studyChecks[task.id] && <Check className="w-2.5 h-2.5 text-white" />}
-            </span>
-            <span className={`text-xs leading-relaxed ${studyChecks[task.id] ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
-              {task.text}
-            </span>
-          </button>
-        )
-
-        // TaskRow para carryovers (check con su carryId)
-        const CarryRow = ({ task }: { task: typeof carryovers[0] }) => (
-          <button
-            onClick={() => toggleCheck(task.carryId)}
-            className="w-full flex items-start gap-2.5 py-1.5 text-left group"
-          >
-            <span className={`mt-0.5 w-4 h-4 rounded flex items-center justify-center shrink-0 border transition-all ${
-              studyChecks[task.carryId]
-                ? 'bg-amber-500 border-amber-500'
-                : 'border-amber-400/50 group-hover:border-amber-400'
-            }`}>
-              {studyChecks[task.carryId] && <Check className="w-2.5 h-2.5 text-white" />}
-            </span>
-            <span className={`text-xs leading-relaxed ${studyChecks[task.carryId] ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
-              <span className="text-[9px] text-amber-500 font-medium mr-1">↩ S{task.fromWeek}</span>
-              {task.text}
-            </span>
-          </button>
-        )
-
-        return (
-          <div className="bg-card rounded-2xl p-4 mb-4">
-            {/* Navegación de semana */}
-            <div className="flex items-center justify-between mb-3">
-              <button
-                onClick={() => { setViewWeek(w => Math.max(1, w - 1)); setShowFullPlan(false) }}
-                disabled={viewWeek <= 1}
-                className="p-1.5 rounded-full hover:bg-secondary disabled:opacity-30"
-              >
-                <ChevronDown className="w-4 h-4 rotate-90 text-muted-foreground" />
-              </button>
-
-              <div className="flex-1 text-center">
-                <div className="flex items-center justify-center gap-2">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-pink-500">
-                    {activePlanKey} · Semana {viewWeek}/{totalWeeks}
-                  </span>
-                  {isCurrentWeek && (
-                    <span className="text-[9px] bg-pink-500 text-white px-1.5 py-0.5 rounded-full font-medium">Esta semana</span>
-                  )}
-                  {currentWeek.mandatory && (
-                    <span className="flex items-center gap-0.5 text-[9px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full font-medium">
-                      <AlertTriangle className="w-2.5 h-2.5" /> OBLIGATORIO
-                    </span>
-                  )}
-                </div>
-                <p className="text-sm font-bold text-foreground mt-0.5">{currentWeek.title}</p>
-                <p className="text-[10px] text-muted-foreground">{currentWeek.chapters} · pp {currentWeek.pages} · {fmtDate(dateRange.start)}–{fmtDate(dateRange.end)}</p>
-              </div>
-
-              <button
-                onClick={() => { setViewWeek(w => Math.min(totalWeeks, w + 1)); setShowFullPlan(false) }}
-                disabled={viewWeek >= totalWeeks}
-                className="p-1.5 rounded-full hover:bg-secondary disabled:opacity-30"
-              >
-                <ChevronDown className="w-4 h-4 -rotate-90 text-muted-foreground" />
-              </button>
-            </div>
-
-            {/* Progreso: tareas + horas */}
-            <div className="grid grid-cols-2 gap-2 mb-3">
-              <div className="bg-secondary rounded-xl px-3 py-2">
-                <p className="text-[10px] text-muted-foreground mb-1">Tareas</p>
-                <p className="text-base font-bold text-foreground">{doneTasks}<span className="text-xs text-muted-foreground font-normal">/{totalTasks}</span></p>
-                <div className="h-1 bg-background rounded-full overflow-hidden mt-1">
-                  <div className="h-full rounded-full bg-pink-500" style={{ width: `${totalTasks > 0 ? (doneTasks/totalTasks)*100 : 0}%` }} />
-                </div>
-              </div>
-              <div className="bg-secondary rounded-xl px-3 py-2">
-                <p className="text-[10px] text-muted-foreground mb-1">Horas IMAS</p>
-                <p className="text-base font-bold text-foreground">{imasHoursThisWeek.toFixed(1)}<span className="text-xs text-muted-foreground font-normal">/{targetHours}h</span></p>
-                <div className="h-1 bg-background rounded-full overflow-hidden mt-1">
-                  <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: '#ec4899' }} />
-                </div>
-              </div>
-            </div>
-            {pct >= 100 && <p className="text-[10px] text-pink-500 font-medium text-center mb-2">¡Horas de la semana completadas! 🎉</p>}
-
-            {/* Carryovers — siempre visibles si los hay */}
-            {carryovers.length > 0 && (
-              <div className="mb-2 p-2.5 bg-amber-50 rounded-xl border border-amber-200">
-                <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-wide mb-1.5">↩ Pendientes de semanas anteriores</p>
-                <div className="space-y-0.5">
-                  {carryovers.map(t => <CarryRow key={t.carryId} task={t} />)}
-                </div>
-              </div>
-            )}
-
-            {/* Deliverable siempre visible */}
-            <div className="space-y-0.5 mb-1">
-              {tasksByType.deliverable.map(t => <TaskRow key={t.id} task={t} />)}
-            </div>
-
-            {/* Teoría + Práctica colapsables */}
-            {showFullPlan && (
-              <div className="space-y-3 mt-2 pt-2 border-t border-border/50">
-                {tasksByType.theory.length > 0 && (
-                  <div>
-                    <div className="flex items-center gap-1.5 mb-1.5">
-                      <BookOpen className="w-3 h-3 text-indigo-500" />
-                      <span className="text-[10px] font-semibold text-indigo-500 uppercase tracking-wide">Teoría · {currentWeek.theoryHours}h</span>
-                    </div>
-                    <div className="space-y-0.5">
-                      {tasksByType.theory.map(t => <TaskRow key={t.id} task={t} />)}
-                    </div>
-                  </div>
-                )}
-                {tasksByType.practice.length > 0 && (
-                  <div>
-                    <div className="flex items-center gap-1.5 mb-1.5">
-                      <Code2 className="w-3 h-3 text-emerald-500" />
-                      <span className="text-[10px] font-semibold text-emerald-500 uppercase tracking-wide">Práctica · {currentWeek.practiceHours}h</span>
-                    </div>
-                    <div className="space-y-0.5">
-                      {tasksByType.practice.map(t => <TaskRow key={t.id} task={t} />)}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <button
-              onClick={() => setShowFullPlan(v => !v)}
-              className="w-full flex items-center justify-center gap-1 mt-2 py-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-            >
-              {showFullPlan
-                ? <><ChevronUp className="w-3 h-3" /> Ver menos</>
-                : <><ChevronDown className="w-3 h-3" /> Ver todas las tareas ({tasksByType.theory.length + tasksByType.practice.length})</>
-              }
-            </button>
-          </div>
-        )
-      })()}
 
       {/* Week history */}
       <div className="bg-card rounded-2xl p-4">
