@@ -814,9 +814,25 @@ _Generado por Summer Quest · ${getTodayStr()}_
       formData.append('sourceHint', verifierSource)
       const res = await fetch('/api/verify-statement', { method: 'POST', body: formData })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json()
+
+      // The endpoint streams text chunks — read them all and reassemble
+      const reader = res.body?.getReader()
+      if (!reader) throw new Error('No response body')
+      const decoder = new TextDecoder()
+      let raw = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        raw += decoder.decode(value, { stream: true })
+      }
+
+      // The stream contains the final JSON object on the last non-empty line
+      const lines = raw.split('\n').map(l => l.trim()).filter(Boolean)
+      const lastLine = lines[lines.length - 1]
+      const data = JSON.parse(lastLine)
+
       if (data.error) throw new Error(data.error)
-      const result = compareStatementToApp(data.items, expenses, data.sourceType, data.statementMonth)
+      const result = compareStatementToApp(data.items ?? [], expenses, data.sourceType ?? 'unknown', data.statementMonth)
       setVerifyResult(result)
       // Pre-select all missing items for import
       const missingIndices = new Set(

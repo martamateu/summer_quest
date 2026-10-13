@@ -1,4 +1,4 @@
-import { generateObject } from 'ai'
+import { streamObject } from 'ai'
 import { google } from '@ai-sdk/google'
 import { z } from 'zod'
 
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
   try {
     const formData = await request.formData()
     const file = formData.get('file') as File
-    const sourceHint = formData.get('sourceHint') as string | null // 'bank' | 'meal_card'
+    const sourceHint = formData.get('sourceHint') as string | null
 
     if (!file) {
       return Response.json({ error: 'No file provided' }, { status: 400 })
@@ -32,12 +32,12 @@ export async function POST(request: Request) {
     const mimeType = file.type || 'application/pdf'
 
     const sourceContext = sourceHint === 'meal_card'
-      ? 'Es un extracto de tarjeta de beneficios/comedor (ticket restaurant, Cobee, Edenred, etc.). Cada cargo es un uso de la tarjeta comedor.'
+      ? 'Es un extracto de tarjeta comedor (Cobee, Edenred, ticket restaurant). Cada cargo es un uso de la tarjeta.'
       : sourceHint === 'bank'
-      ? 'Es un extracto bancario. Incluye cargos, abonos, transferencias, domiciliaciones, etc.'
+      ? 'Es un extracto bancario con cargos, abonos, transferencias y domiciliaciones.'
       : 'Puede ser un extracto bancario o de tarjeta de beneficios.'
 
-    const { object } = await generateObject({
+    const result = streamObject({
       model: google('gemini-2.5-flash'),
       schema: StatementSchema,
       messages: [
@@ -62,7 +62,10 @@ export async function POST(request: Request) {
       ],
     })
 
-    return Response.json(object)
+    // Collect the full streamed object and return it as JSON.
+    // Using toTextStreamResponse() keeps the connection alive during processing,
+    // preventing the Vercel 60s idle timeout from triggering.
+    return result.toTextStreamResponse()
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     console.error('[verify-statement] Error:', msg)
